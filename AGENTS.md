@@ -23,19 +23,20 @@ Go 1.24 (`go.mod`), one dependency (`gopkg.in/yaml.v3`). At runtime: `git` 2.42+
 - `internal/testutil/`: helpers for tests with real temporary Git repos.
 - `examples/warden/`: example wall configuration (placeholder remote and credential); `examples/pull/`: example Pull Guard configuration and systemd units.
 - `scripts/install-everref.sh`: optional installer for the pinned git-everref release (SHA-256 checked).
+- `Dockerfile` (+ `.dockerignore`): one image with both binaries and git, gitleaks 8.30.1 and git-everref v1.0.0, pinned and SHA-256 checked at build time. `flake.nix` (+ `flake.lock`): package (both binaries, runs `go test ./...`) and dev shell with the same pinned gitleaks and git-everref. Keep the gitleaks and everref pins equal in CI, the Dockerfile, `flake.nix` and `scripts/install-everref.sh`.
 - `docs/`: Push Guard rule reasoning, Pull Guard operation; `docs/agents/` holds the agent working docs.
 - There are exactly two guard posts.
 
 Invariants that must not break:
 
-- **Fail closed.** Any error, timeout or missing input (scanner, remote, object) rejects the push with `internal error, try again later`. Never forward on doubt. The Pull Guard fails its run (exit 1, warning) when git-everref is missing or any step fails; it never reports a backup that didn't happen.
+- **Fail closed.** Any error, timeout or missing input (scanner, remote, object) rejects the push with `internal error, try again later`. Never forward on doubt. `serve` and `init-repo` run the preflight (configuration, repos, an enabled rule, git 2.42+, gitleaks 8.x where `CONTENT-SECRET` is on) and refuse to start on any problem; the hook repeats its per-repo part on every push. The Pull Guard fails its run (exit 1, warning) when git-everref is missing or any step fails; it never reports a backup that didn't happen.
 - **Red stays silent.** A red rejection says only `rejected: waiting for a human (push <id>)`; no rule IDs, paths or reasons reach the agent. Yellow names rule, ref, path, line and why.
 - **Forward exactly the checked SHAs**, never `--force`; `--force-with-lease` only for refs whose `REF-NON-FF` / `REF-TAG-MOVE` / `REF-DELETE` was explicitly allowed or whose SHA a human approved.
 - **The remote's state is read fresh** for every push; the agent's old-oid is never trusted.
 - **Nothing in the pushed repo configures the guard** (scanner config, exceptions, attributes). Configuration lives on the wall only.
 - **Credentials stay file references:** never in YAML, logs, journal, command lines or agent output.
 - Patterns are anchored (`^(?:…)$`); lists are appended across layers, removed only by exact `*_remove`.
-- **No runtime downloads.** gitleaks and git-everref are found on `PATH` or at the configured path, never fetched, updated or built by a guard.
+- **No runtime downloads.** gitleaks and git-everref are found on `PATH` or at the configured path, never fetched, updated or built by a guard. Pinned provisioning (CI, the Dockerfile, the flake, the install script) is the only place they are downloaded.
 - **The Pull Guard never removes a protection or writes to the backup itself;** only everref writes there, and only creates and fast-forwards. It never passes `--trigger` or `--schedule` to everref.
 
 Tests cover the config merge, every rule against real temporary repos, the journal queries, and end to end: a bare remote, the guard repo with the compiled binary as hook, an agent clone pushing by file path and over HTTP (`serve`). The secret-scan tests skip without `gitleaks` on `PATH`; CI installs a pinned, checksum-verified gitleaks and sets `GITLEAKS_REQUIRED=1`, which turns that skip into a failure. `TestLiveRemote` pushes to a real HTTPS remote and only runs in CI's `live` job (or with `WARDEN_LIVE_REMOTE` and `WARDEN_LIVE_TOKEN_FILE` set); it must only ever touch its own `testrun-*` branch. `TestSSHRemote` starts a throwaway `sshd` as the current user on a free local port; CI sets `SSH_REQUIRED=1`. The Pull Guard tests use a stand-in everref script, and its end-to-end tests run the real `git-everref` against a local remote; they skip without it, and CI installs it with `scripts/install-everref.sh` and sets `EVERREF_REQUIRED=1`.
@@ -66,6 +67,7 @@ Tests cover the config merge, every rule against real temporary repos, the journ
 
 - Commit prefixes (set in `.github/dependabot.yml`): runtime dependencies and shipped Docker base images `fix(deps):` (patch release), dev dependencies `chore(deps-dev):`, GitHub Actions `ci(deps):`, images that are not shipped (examples, tests) `chore(deps):`.
 - **Never turn a dependency update into `feat!:`** or reword its title. A major dependency update is still `fix(deps)` / `chore(deps-dev)`. If it forces a breaking change on users (for example a new minimum runtime), that is a separate, deliberate commit after the maintainer decides.
+- A `gomod` update changes `go.sum`, which needs a new `vendorHash` in `flake.nix`; the `nix` CI job fails and prints the value. Pushing that one-line fix to the Dependabot branch counts as the obvious fix.
 - **Merge Dependabot PRs when CI is green** (squash, keep the Dependabot title). If one conflicts, comment `@dependabot rebase`. If CI is red and the fix is not obvious, leave the PR open and open an issue.
 
 ### Secrets

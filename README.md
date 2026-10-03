@@ -50,12 +50,12 @@ Git Warden calls a few external programs. **It doesn't install or download any o
 
 | Program | Version | License | Needed for | If it is missing |
 | --- | --- | --- | --- | --- |
-| [Git](https://git-scm.com/) | 2.42 or newer | GPL-2.0 | Both guards at runtime: every Git operation, and `git http-backend` for `push-guard serve` | Nothing works |
-| [gitleaks](https://github.com/gitleaks/gitleaks) | 8.x (CI pins 8.30.1) | MIT | Push Guard at runtime: the secret scan. Must be on `PATH`, or at the path set as `scanner.gitleaks` | **Required** for the Push Guard: every push fails closed (`internal error`), and `check-config` reports it. Optional for the tests: the secret-scan tests are skipped |
+| [Git](https://git-scm.com/) | 2.42 or newer | GPL-2.0 | Both guards at runtime: every Git operation, and `git http-backend` for `push-guard serve` | Neither guard starts: both check it in their preflight |
+| [gitleaks](https://github.com/gitleaks/gitleaks) | 8.x (CI pins 8.30.1) | MIT | Push Guard at runtime: the secret scan. Must be on `PATH`, or at the path set as `scanner.gitleaks` | **Required** for the Push Guard (unless `CONTENT-SECRET` is disabled for every repo): `serve` and `init-repo` refuse to start, every push fails closed (`internal error`), and `check-config` reports it. Optional for the tests: the secret-scan tests are skipped |
 | [git-everref](https://github.com/daojyun/git-everref) | v1.0.0 (pinned) | MIT | Pull Guard at runtime: records branches and tags in the backup. Must be on `PATH`, or at the path set as `everref.path` | **Required** for the Pull Guard: every run fails closed in its preflight, and `check-config` reports it. Optional for the tests: the end-to-end tests are skipped |
 | [Go](https://go.dev/) | 1.24 or newer | BSD-3-Clause | Building from source only | Use the release binaries |
 
-**Pinning is part of provisioning the host, not something Git Warden does at runtime.** Install gitleaks and git-everref at a fixed version and check the download's SHA-256 when you set up the host, as CI does. For git-everref there is an optional script that does exactly that: [scripts/install-everref.sh](scripts/install-everref.sh) installs v1.0.0 for Linux amd64/arm64 and checks the tarball against SHA-256 values pinned in the script ([details](SPEC.md#installing-git-everref)). Licenses of these programs and of the code compiled into the binaries: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+**Pinning is part of provisioning the host, not something Git Warden does at runtime.** Install gitleaks and git-everref at a fixed version and check the download's SHA-256 when you set up the host, as CI does. For git-everref there is an optional script that does exactly that: [scripts/install-everref.sh](scripts/install-everref.sh) installs v1.0.0 for Linux amd64/arm64 and checks the tarball against SHA-256 values pinned in the script ([details](SPEC.md#installing-git-everref)). The [container image](#docker) and the [Nix flake](#nix) bring git, gitleaks 8.30.1 and git-everref v1.0.0 along, pinned the same way. Licenses of these programs and of the code compiled into the binaries: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Build and install
 
@@ -71,6 +71,55 @@ CI installs pinned gitleaks and git-everref and sets `GITLEAKS_REQUIRED=1` and `
 The live test (`TestLiveRemote`) runs only when `WARDEN_LIVE_REMOTE` (an `https://` URL) and `WARDEN_LIVE_TOKEN_FILE` are set. It pushes through a real guard to a fresh `testrun-<UTC timestamp>-<run>` branch on that remote: green create and fast-forward, red rewrite that leaves the remote alone, approval of that SHA going out with a lease, another writer moving the branch, and finally an allowed delete. CI runs it against this repository on pushes to `main` with the job's own token, and deletes leftover `testrun-*` branches older than a day. `TestSSHRemote` starts its own `sshd` (skipped if `sshd` or `ssh-keygen` is missing; CI installs it and sets `SSH_REQUIRED=1`).
 
 Releases attach static `push-guard-linux-amd64` and `pull-guard-linux-amd64` binaries, `install-everref.sh`, `LICENSE` and `THIRD_PARTY_NOTICES.md`. Install a binary with `install -m 0755 push-guard-linux-amd64 /usr/local/bin/push-guard` (the same for `pull-guard`).
+
+## Docker
+
+The [Dockerfile](Dockerfile) builds one image with both guards and their prerequisites, provisioned at pinned versions: static `push-guard` and `pull-guard` (built with Go 1.24), Debian trixie's `git` 2.47 (the build fails below 2.42) with `openssh-client`, gitleaks 8.30.1 (the CI release, SHA-256 checked) and git-everref v1.0.0 (via [scripts/install-everref.sh](scripts/install-everref.sh), SHA-256 checked). Base images are pinned by digest. It runs as the unprivileged user `warden` (uid 10001) and contains no configuration and no secrets. The image isn't published; build it yourself:
+
+```bash
+docker build -t git-warden --build-arg VERSION=$(git describe --tags --always) .
+```
+
+**Push Guard** (the default command is `push-guard serve --config /etc/warden --listen 0.0.0.0:8418`):
+
+```bash
+docker run -d --name push-guard -p 8418:8418 \
+  -v /etc/warden:/etc/warden:ro \
+  -v warden-state:/var/lib/warden \
+  git-warden
+docker run --rm -v /etc/warden:/etc/warden:ro git-warden push-guard check-config --config /etc/warden
+```
+
+**Pull Guard**, from a timer on the backup host (for example the [systemd units](examples/pull/systemd) with this as `ExecStart`):
+
+```bash
+docker run --rm \
+  -v /etc/warden-pull:/etc/warden-pull:ro \
+  -v warden-pull-state:/var/lib/warden-pull \
+  git-warden pull-guard run --config /etc/warden-pull
+```
+
+In the container:
+
+- Set `state_dir: /var/lib/warden` (Push Guard) or `/var/lib/warden-pull` (Pull Guard) in `defaults.yaml` and keep it on a volume; the [examples](examples) already do. The configuration mount stays read-only.
+- Every file the configuration points to (`agent.token_file`, `credential`, `known_hosts`, `gitleaks.toml`) must be inside the mounted directory and readable by uid 10001. Give SSH remotes a `known_hosts` file there, since the container user has none of its own.
+- gitleaks is at `/usr/local/bin/gitleaks` and git-everref at `/usr/local/bin/git-everref`, both on `PATH`, so `scanner.gitleaks` and `everref.path` can stay unset (or keep the examples' values).
+- `notify.command` runs inside the container: mount it in as well (the image has `sh`, but no mail or HTTP client besides `git`).
+- The guard repositories in the state volume have hooks that call `/usr/local/bin/push-guard`, so keep using this image with that volume.
+
+The same preflight runs at start as on a host: without a configuration, repos, an enabled rule or gitleaks, `serve` exits with the reason instead of starting.
+
+## Nix
+
+[flake.nix](flake.nix) (nixpkgs pinned in [flake.lock](flake.lock)) gives a reproducible build and development environment on Linux (x86_64, aarch64). It needs flakes enabled (`experimental-features = nix-command flakes`).
+
+```bash
+nix build          # ./result/bin/push-guard and ./result/bin/pull-guard; runs go test ./... in the sandbox
+nix develop        # shell with Go, git, OpenSSH, gitleaks 8.30.1 and git-everref v1.0.0
+nix flake check
+```
+
+gitleaks and git-everref come from their pinned release tarballs with the same SHA-256 as CI and the Dockerfile, not from nixpkgs, so every environment runs the same versions. Git Warden's license (PolyForm Noncommercial) counts as unfree in Nix; the flake allows exactly this package. When you change `go.mod` or `go.sum`, update `vendorHash` in `flake.nix` (Nix prints the new value).
 
 ## Configuration (Push Guard)
 
@@ -140,6 +189,8 @@ The full reasoning per rule is in [docs/push-guard-rules.md](docs/push-guard-rul
 Check a configuration with `push-guard check-config --config /etc/warden` (add `--remote` to also run `ls-remote` against every remote with its credential).
 
 ## Running the Push Guard
+
+Both ways start with a preflight: `serve` and `init-repo` refuse to start, naming every problem, if the wall's `defaults.yaml` is missing or doesn't load, `git` is older than 2.42, no repo is configured, a repo has every rule disabled, or the gitleaks a repo needs for `CONTENT-SECRET` is missing or isn't 8.x. The hook repeats the per-repo part on every push and fails closed (`internal error, try again later`). `check-config` reports the same problems.
 
 **Over HTTP** (the usual setup):
 

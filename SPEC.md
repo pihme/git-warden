@@ -33,7 +33,7 @@ Both are programs in this repository; the Pull Guard drives an existing tool, gi
 - **Bricks, not a stack:** the decision core is a library without platform knowledge. Each guard post can be left out or replaced; the Pull Guard's recording is an existing tool (git-everref), which could be swapped for e.g. [Gitea Mirror](https://github.com/RayLabsHQ/gitea-mirror) with *Block & Approve*.
 - **Batteries included, assembly required:** rules, path lists and limits are configuration with sensible defaults, not code.
 - **Plain Git only:** the warden needs nothing but Git (smart HTTP or SSH, refs, objects, `fetch`, `push`), so any Git remote works and no platform API is used. Even the default branch is visible through plain Git (`git ls-remote --symref <remote> HEAD`).
-- **External programs are prerequisites, never fetched at runtime:** gitleaks (Push Guard) and git-everref (Pull Guard) must be installed on the host; a guard that can't find them fails closed. Pinning happens when the host is provisioned.
+- **External programs are prerequisites, never fetched at runtime:** gitleaks (Push Guard) and git-everref (Pull Guard) must be installed on the host; each guard checks them when it starts and fails closed if they are missing. Pinning happens when the host is provisioned (by hand, with the [container image or the Nix flake](#provisioning-docker-and-nix)).
 
 **Wall** means the isolation boundary around the agent's environment: whatever runs there (the Push Guard, its configuration and credentials) the agent can't reach or change. [Hermetarium](https://github.com/pihme/hermetarium) is one such environment, not a requirement.
 
@@ -145,6 +145,7 @@ The same model as gitleaks for the Push Guard:
 - **No runtime download.** `pull-guard` never fetches, updates or builds everref; pinning is part of provisioning the host.
 - **Optional pinned install script.** [scripts/install-everref.sh](scripts/install-everref.sh) installs git-everref `v1.0.0` for Linux (amd64, arm64) from the project's GitHub release and checks the tarball against SHA-256 values pinned in the script (`git-everref_1.0.0_linux_amd64.tar.gz`: `0f87be25d89a31b23d1851edc917751023d56ab10925f1fe695afd8b31c33861`, `…_linux_arm64.tar.gz`: `d69453cc8c59c408c9b6ae8b42676e9f815e3ed6e30567dd9413a1b1553cdbe1`, matching the release's `checksums.txt`). CI installs it the same way, as it does for gitleaks.
 - **From source:** tag `v1.0.0` (commit `f16c812`). A plain source build reports its version as `dev`, so leave `everref.version` unset for it.
+- **Container image and Nix flake** provision it with the same pinned checksums: see [Provisioning: Docker and Nix](#provisioning-docker-and-nix).
 
 #### Gaps to contribute upstream
 
@@ -171,6 +172,13 @@ In this order, to be offered to git-everref rather than worked around:
 - **Two guard posts, no AI.** Push Guard and Pull Guard only; every decision is a deterministic rule.
 - **The Pull Guard drives git-everref, it doesn't reimplement it.** Recording, the ref layout and restore are everref's; `pull-guard` adds what a scheduled, unattended backup needs around it (preflight, branch selection, logging, warnings). Missing everref features are contributed upstream rather than rebuilt here.
 
+### Provisioning: Docker and Nix
+
+Two ways to get a host (or a dev environment) with exactly the prerequisites, pinned. Both are provisioning: the binaries inside still never download anything.
+
+- **`Dockerfile`:** multi-stage. The build stage (`golang:1.24-trixie`, pinned by digest) builds static `push-guard` and `pull-guard`. The runtime image is `debian:trixie-slim` (pinned by digest) with Debian's `git` (2.47; the build fails below 2.42), `openssh-client` and `ca-certificates`; gitleaks `8.30.1` (the same release as CI; tarball SHA-256 `551f6fc8…` for amd64, `e4a487ee…` for arm64, full values in the Dockerfile) and git-everref `v1.0.0` installed by `scripts/install-everref.sh` with its pinned SHA-256. It runs as the unprivileged user `warden` (uid 10001). Configuration is mounted read-only (`/etc/warden`, `/etc/warden-pull`), state goes to a volume (`/var/lib/warden`, `/var/lib/warden-pull`). The default command is `push-guard serve --config /etc/warden --listen 0.0.0.0:8418`; the Pull Guard runs as `pull-guard run --config /etc/warden-pull` from a host timer. No configuration or secret is in the image (`.dockerignore` sends only `go.mod`, `go.sum`, `cmd/`, `internal/` and the install script). Dependabot keeps the base image digests current. The image isn't published; build it yourself.
+- **`flake.nix` + `flake.lock`:** nixpkgs pinned by the lock file (`nixos-26.05`). `packages.default` builds both binaries with `buildGoModule` and runs `go test ./...` in the sandbox with the real gitleaks and git-everref; `devShells.default` has Go, git, OpenSSH, gitleaks and git-everref. gitleaks and git-everref are not taken from nixpkgs but fetched as the same pinned release binaries (static, same SHA-256 as CI and the Dockerfile), so every environment runs the same versions. Linux only (x86_64, aarch64), like the install script. The package is marked unfree (PolyForm Noncommercial) and allowed by name inside the flake.
+
 ## Push Guard: what the implementation settled
 
 Where this section and the design above differ, this section wins.
@@ -183,6 +191,18 @@ Where this section and the design above differ, this section wins.
 - **`credential` is optional only for a local path or `file://` remote.** For SSH remotes it is a private key (`GIT_SSH_COMMAND` with `-i` and `IdentitiesOnly=yes`), for `https://` a token file read by an inline credential helper. The credential never appears in YAML, logs or command lines; only its path does.
 - **SSH host keys:** optional per-repo `known_hosts` (SSH remotes only), otherwise the guard user's own (with a per-repo file the system-wide known_hosts is ignored too); `StrictHostKeyChecking=yes` and `BatchMode=yes`, and `ssh` runs with `-F none`, so no ssh_config on the wall host can change where or how the guard connects.
 - **Wall-only settings:** `agent` and `state_dir` may not appear in a repo file; `remote`, `credential`, `default_branch` may not appear in a defaults file.
+
+### Preflight
+
+- **At start, before anything is served or set up:** `push-guard serve` and `push-guard init-repo` refuse to start, with one message that lists every problem, unless:
+  - the wall's `defaults.yaml` exists and the configuration loads;
+  - `git` 2.42 or newer is on `PATH`;
+  - at least one repo is configured (`repos/<name>/warden.yaml`) and each loads (`init-repo`: the repo it is given);
+  - each repo has at least one rule enabled, so a configuration that switches every rule off is refused rather than forwarding unchecked;
+  - for every repo with `CONTENT-SECRET` enabled (the default), its gitleaks (`scanner.gitleaks`, else `gitleaks` on `PATH`) is found and `gitleaks version` reports 8.x. With `CONTENT-SECRET` disabled everywhere, gitleaks isn't needed.
+- **In the hook, on every push:** the per-repo part of the same checks (an enabled rule; gitleaks found if `CONTENT-SECRET` is enabled) runs before the remote is read. A failure answers `internal error, try again later` and is logged in `push.jsonl`. This covers a guard repository used without `serve` (SSH, local path) and a gitleaks removed after the start.
+- **`check-config`** runs the same preflight and reports its problems with the rest. `serve` logs `preflight ok (git …, N repo(s), gitleaks …)` when it starts.
+- Same shape as the Pull Guard's preflight; both use the same git check (`internal/gitx`).
 
 ### Hook and forwarding
 
@@ -217,7 +237,7 @@ Where this section and the design above differ, this section wins. Configuration
 
 - **Commands:** `pull-guard run --config DIR [repo…]` (all repos if none is named), `pull-guard check-config --config DIR [--remote]`, `pull-guard version`. Exit codes: `0` every repo backed up, `1` a repo failed or the preflight failed, `2` usage error.
 - **Own configuration directory,** separate from the Push Guard's (it usually lives on another host): `defaults.yaml` (`everref.path`, `everref.version`, `notify.command`, `state_dir`, `timeout`) and `repos/<name>/pull.yaml` (`remote`, `credential`, `known_hosts`, `exclude_branches`). Strict: unknown keys are errors. No layers and no rules.
-- **Preflight, before anything is touched:** the configuration loads, `git` is on `PATH`, git-everref is found and answers `--version` (and matches `everref.version` if set), at least one repo is configured. Any failure ends the run with exit `1` before any state is created. `check-config` runs the same preflight plus credential, `known_hosts` and `notify.command` checks, and with `--remote` an `ls-remote` per repo.
+- **Preflight, before anything is touched:** the configuration loads, `git` 2.42 or newer is on `PATH`, git-everref is found and answers `--version` (and matches `everref.version` if set), at least one repo is configured. Any failure ends the run with exit `1` before any state is created. `check-config` runs the same preflight plus credential, `known_hosts` and `notify.command` checks, and with `--remote` an `ls-remote` per repo.
 - **Credentials:** required for SSH and HTTPS remotes, none for a local path or `file://` URL (relative local paths are refused). Same handling as the Push Guard (`internal/gitx`); the credential environment is passed to everref, so its fetches use the same key or token. Read access is enough and is all it should have.
 - **State per repo:** `state_dir/repos/<name>/bridge` (non-bare; remote `origin` = the configured remote, remote `backup` = the backup repo with no fetch refspec; local committer identity `git-warden pull-guard` for everref's journal commits) and `state_dir/repos/<name>/backup.git` (bare). Bridged tags are switched on once with `git-everref tags --remote backup on --source origin`. If the configured remote no longer matches the bridge's `origin`, the run fails: a backup is never continued with another remote.
 - **Branch selection:** every run lists the remote's branches (`ls-remote`), drops those matching `exclude_branches` (anchored regular expressions over the branch name without `refs/heads/`) and protects the new ones with `git-everref add origin/<branch>… --remote backup`, up to 100 per call. A call everref refuses is retried branch by branch; a branch that still can't be protected makes the run fail, while the others are backed up. A protection is never removed, also not when the branch is deleted upstream (everref needs it to write the tombstone) or excluded later. A remote with no branch to back up is a failure, not an empty backup.
@@ -253,7 +273,7 @@ Git Warden has no model in its decisions, so the persuasion techniques against A
 | Failure mode | Consequence | Countermeasure |
 | --- | --- | --- |
 | A guard down | Push Guard: pushes fail, agents keep working locally. Pull Guard: backups pause | Nothing goes to the remote unchecked; heartbeat |
-| A prerequisite missing (gitleaks, git-everref) | Push Guard: every push fails closed. Pull Guard: the preflight fails, nothing runs | `check-config`; a failed run warns |
+| A prerequisite missing (gitleaks, git-everref) or no configuration | Push Guard: `serve` and `init-repo` refuse to start, every push fails closed. Pull Guard: the preflight fails, nothing runs | `check-config`; a failed run warns; the [container image and Nix flake](#provisioning-docker-and-nix) bring the pinned programs along |
 | Push Guard or Pull Guard host compromised | Write credential or backup gone | Separate hosts, neither on the agents' machine; offsite write-once bundles; rotatable write keys |
 | Alert fatigue | A human waves things through | `red` used sparingly, digests, facts first |
 | False negative | A subtle backdoor gets through | Not covered by Git Warden (no semantic review); the backup keeps the history, human review still needed |
@@ -456,7 +476,9 @@ Decided:
 - **Notification and approval:** warnings go through a configurable command (`notify.command`), so the channel is the owner's choice. Approval happens on the wall host with `push-guard approve`, never through issues.
 - **Two guard posts only:** Push Guard and Pull Guard; no AI decides anything in Git Warden.
 - **Pull Guard = a git-everref run:** no own backup format and no AI; `pull-guard` drives everref and adds preflight, branch selection, logging and warnings. Missing features are contributed upstream. Cadence: every 15 minutes by default.
-- **git-everref is a prerequisite, like gitleaks:** on `PATH` or at `everref.path`, fail closed when missing, no runtime download; an optional pinned install script with SHA-256 ([Installing git-everref](#installing-git-everref)).
+- **git-everref is a prerequisite, like gitleaks (confirmed):** on `PATH` or at `everref.path`, fail closed when missing, no runtime download; an optional pinned install script with SHA-256 ([Installing git-everref](#installing-git-everref)).
+- **Both guards check their prerequisites at start:** the Pull Guard in its preflight, the Push Guard in `serve` and `init-repo` and again per push in the hook ([Preflight](#preflight)).
+- **Pinned provisioning instead of runtime fetching:** a Dockerfile and a Nix flake bring git, gitleaks 8.30.1 and git-everref v1.0.0 at pinned versions ([Provisioning](#provisioning-docker-and-nix)).
 - **Retention:** pending bundles, the backups and offsite bundles are kept forever for now; disk space is cheap compared with lost history.
 - **gittuf and git-ratchet:** not in the first stages; possibly later as an extra signal.
 

@@ -11,6 +11,8 @@ The Pull Guard (`pull-guard`) keeps an append-only backup of every branch and ta
   scripts/install-everref.sh /usr/local/bin   # v1.0.0, SHA-256 checked; default prefix ~/.local/bin
   ```
 
+  The [container image](../README.md#docker) and the [Nix flake](../README.md#nix) bring the same pinned release along.
+
 - A read-only credential per remote: an SSH deploy key without write access, or a token file with read access only. Never reuse the Push Guard's write credential.
 - A host that is neither the wall nor the agents' machine.
 
