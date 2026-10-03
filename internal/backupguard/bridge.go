@@ -40,24 +40,41 @@ func BridgePath(stateDir, name string) string {
 // repo's remote, remote backup = the local backup repo) and enables bridged
 // tags. A bridge whose origin points elsewhere than the configuration is an
 // error: the backup of one remote is never continued with another.
+//
+// The backup repository and the bridge are each set up in a temporary
+// directory next to their final place and renamed into it only when
+// complete, so a run killed during the setup leaves no half-made repository
+// that would fail every later run; the next run removes the leftovers and
+// starts the setup again. Everything after that (remotes, configuration,
+// bridged tags, everref add and run) is checked and redone on every run.
 func ensureBridge(ctx context.Context, stateDir string, repo *Repo, ev *Everref) (string, error) {
 	base, bridge, backup := repoState(stateDir, repo.Name)
 	if err := os.MkdirAll(base, 0o700); err != nil {
 		return "", err
 	}
-	git := &gitx.Git{Dir: bridge, Unset: []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"}}
-	if _, err := os.Stat(filepath.Join(backup, "HEAD")); errors.Is(err, os.ErrNotExist) {
-		if _, err := (&gitx.Git{Dir: base, Unset: git.Unset}).Run(ctx, "init", "--quiet", "--bare", backup); err != nil {
-			return "", err
-		}
+	if err := removeSetupLeftovers(base); err != nil {
+		return "", err
 	}
-	if _, err := os.Stat(filepath.Join(bridge, ".git")); errors.Is(err, os.ErrNotExist) {
-		if _, err := (&gitx.Git{Dir: base, Unset: git.Unset}).Run(ctx, "init", "--quiet", bridge); err != nil {
-			return "", err
+	unset := []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"}
+	git := &gitx.Git{Dir: bridge, Unset: unset}
+	if err := createOnce(base, backup, "HEAD", func(tmp string) error {
+		_, err := (&gitx.Git{Dir: base, Unset: unset}).Run(ctx, "init", "--quiet", "--bare", tmp)
+		return err
+	}); err != nil {
+		return "", err
+	}
+	if err := createOnce(base, bridge, ".git", func(tmp string) error {
+		if _, err := (&gitx.Git{Dir: base, Unset: unset}).Run(ctx, "init", "--quiet", tmp); err != nil {
+			return err
 		}
-		if _, err := git.Run(ctx, "remote", "add", "origin", repo.Remote); err != nil {
-			return "", err
+		tg := &gitx.Git{Dir: tmp, Unset: unset}
+		if _, err := tg.Run(ctx, "remote", "add", "origin", repo.Remote); err != nil {
+			return err
 		}
+		_, err := tg.Run(ctx, "remote", "add", "backup", backup)
+		return err
+	}); err != nil {
+		return "", err
 	}
 	if err := checkRemoteURL(ctx, git, "origin", repo.Remote, "remote "+repo.Remote+" in "+RepoFile); err != nil {
 		return "", err
@@ -93,6 +110,62 @@ func ensureBridge(ctx context.Context, stateDir string, repo *Repo, ev *Everref)
 		}
 	}
 	return bridge, nil
+}
+
+// setupPrefix names the temporary directories of an unfinished setup.
+const setupPrefix = ".setup-"
+
+// createOnce makes sure dir exists and contains marker. If it doesn't, build
+// builds it in a temporary directory in base, which is then renamed to dir.
+// A dir without marker (left by a version that set up in place) must be
+// empty; anything else is refused rather than overwritten.
+func createOnce(base, dir, marker string, build func(tmp string) error) error {
+	if _, err := os.Stat(filepath.Join(dir, marker)); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if entries, err := os.ReadDir(dir); err == nil {
+		if len(entries) > 0 {
+			return fmt.Errorf("%s exists but is not a complete repository (no %s); move it away to set it up again", dir, marker)
+		}
+		if err := os.Remove(dir); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	tmp, err := os.MkdirTemp(base, setupPrefix+filepath.Base(dir)+"-")
+	if err != nil {
+		return err
+	}
+	if err := build(tmp); err != nil {
+		os.RemoveAll(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, dir); err != nil {
+		os.RemoveAll(tmp)
+		return err
+	}
+	return nil
+}
+
+// removeSetupLeftovers removes the temporary directories of setups that a
+// killed run didn't finish. They never hold backup data: the backup is only
+// written after its repository has been renamed into place.
+func removeSetupLeftovers(base string) error {
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), setupPrefix) {
+			if err := os.RemoveAll(filepath.Join(base, e.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func checkRemoteURL(ctx context.Context, git *gitx.Git, name, want, what string) error {
