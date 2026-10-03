@@ -16,10 +16,11 @@ The tracker is public. Never paste tokens, keys, credentials or real service res
 
 ## Build and test locally
 
-Requirements: Go 1.24 or newer and `git` 2.42 or newer. [gitleaks](https://github.com/gitleaks/gitleaks) 8.x on `PATH` is optional for the tests: without it, the secret-scan tests are skipped (a running Push Guard needs it, see [Requirements](README.md#requirements)). Nothing is downloaded for you; install these yourself. The tests are offline; they create temporary Git repositories and need no accounts, tokens or network.
+Requirements: Go 1.24 or newer and `git` 2.42 or newer. [gitleaks](https://github.com/gitleaks/gitleaks) 8.x on `PATH` is optional for the tests: without it, the secret-scan tests are skipped (a running Push Guard needs it, see [Requirements](README.md#requirements)). [git-everref](https://github.com/daojyun/git-everref) v1.0.0 on `PATH` is optional too: without it, the Pull Guard's end-to-end tests are skipped (a running Pull Guard needs it; `scripts/install-everref.sh` installs the pinned release). Nothing is downloaded for you; install these yourself. The tests are offline; they create temporary Git repositories and need no accounts, tokens or network.
 
 ```bash
 go vet ./...
 go test ./...
 go build -o push-guard ./cmd/push-guard
+go build -o pull-guard ./cmd/pull-guard
 ```

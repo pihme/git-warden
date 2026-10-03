@@ -2,7 +2,7 @@
 
 Git Warden itself is licensed under [PolyForm Noncommercial 1.0.0](LICENSE). This file lists the third-party software it contains or runs, with the notices their licenses ask for.
 
-## Compiled into the `push-guard` binary
+## Compiled into the `push-guard` and `pull-guard` binaries
 
 ### Go standard library and runtime
 
@@ -121,4 +121,4 @@ Git Warden doesn't contain, install or download these. It expects them on the ho
 | --- | --- | --- |
 | [Git](https://git-scm.com/) | GPL-2.0 | Push Guard: every Git operation, `git http-backend` for `serve` |
 | [gitleaks](https://github.com/gitleaks/gitleaks) | MIT | Push Guard: the secret scan (`CONTENT-SECRET`); its default rules are used through `[extend] useDefault = true` |
-| [git-everref](https://github.com/daojyun/git-everref) | MIT | The Pull Guard, a separate scheduled run on the backup host; Git Warden contains no everref code |
+| [git-everref](https://github.com/daojyun/git-everref) | MIT | Pull Guard: `pull-guard` runs it (`add`, `tags`, `run --all`) to record branches and tags in the backup. Pinned to v1.0.0; the optional `scripts/install-everref.sh` downloads that release from its project. Git Warden contains no everref code |

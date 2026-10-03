@@ -8,7 +8,7 @@ How agents and skills consume this repo's domain documentation.
 - **`GLOSSARY.md`** at the repo root, if it exists. If it does not, proceed silently; it is created lazily (for example by `/domain-modeling`) when terms actually get resolved.
 - **`AGENTS.md`**: working rules and the "Do not invent" list.
 
-Decisions live in `SPEC.md`, not in `docs/adr/`. The design itself is in `docs/design.md` and `docs/push-guard-rules.md`, the risk register (R1–R22) in `docs/risks.md`; `SPEC.md` records where the implementation settled, added or deviated. When a decision here changes the design, update the design document in the same commit. Risk IDs are stable: never renumber, only append.
+Decisions live in `SPEC.md`, not in `docs/adr/`. `SPEC.md` is the one authoritative document: the design of both guard posts, what the implementation settled, the risk register (R1–R22) and the coverage table. `docs/push-guard-rules.md` (reasoning per rule) and `docs/pull-guard.md` (Pull Guard operation) are reference; when a decision changes them, update them in the same commit. Risk IDs are stable: never renumber, only append.
 
 ## Use the project's vocabulary
 

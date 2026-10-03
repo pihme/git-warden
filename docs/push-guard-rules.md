@@ -1,6 +1,6 @@
 # Push Guard: rules and reasoning
 
-The reasoning behind every Push Guard rule. The user-facing summary (rule table, configuration, commands) is in the [README](../README.md); what the implementation settled or changed is in [SPEC.md](../SPEC.md). Related: [design.md](design.md) (both guard posts; the Push Guard is stage 1), [risks.md](risks.md) (risk IDs R1–R22).
+The reasoning behind every Push Guard rule. The user-facing summary (rule table, configuration, commands) is in the [README](../README.md); what the implementation settled or changed is in [SPEC.md](../SPEC.md). Design of both guard posts and the risk register (risk IDs R1–R22): [SPEC.md](../SPEC.md).
 
 Focus for now: only the Push Guard, only deterministic rules. **No AI at all:** the Push Guard has to decide fast, pass or fail, while the push is running, and the same input must always give the same answer. No LLM, no platform API, nothing but Git. Every rule below can be decided from the pushed objects and the remote's current refs alone, with the same result every time.
 
@@ -258,7 +258,7 @@ A human never confirms a rejection, they only overrule it by approving the SHA; 
 
 ## Not mechanical, so not here
 
-Checking new dependencies against the registry (exists? how old? downloads?, R17) needs network access and a registry; it comes later as its own rule source. Anything that needs judgement (does the commit message match the code? is this a backdoor?) is **not covered** by Git Warden; see [risks.md](risks.md#coverage-by-git-warden).
+Checking new dependencies against the registry (exists? how old? downloads?, R17) needs network access and a registry; it comes later as its own rule source. Anything that needs judgement (does the commit message match the code? is this a backdoor?) is **not covered** by Git Warden; see [Coverage by Git Warden](../SPEC.md#coverage-by-git-warden).
 
 ## Human actions
 
@@ -279,4 +279,4 @@ Warnings go out through `notify.command` in `defaults.yaml`: a command that gets
 
 ## Open questions
 
-None that block the Push Guard. Hosting and the notification channel are open in [design.md](design.md#open-questions).
+None that block the Push Guard. Hosting and the notification channel are open in [SPEC.md](../SPEC.md#open-questions).

@@ -1,12 +1,19 @@
 # Git Warden
 
-Git Warden puts guard posts between AI agents and their Git remote, whether that is GitHub, GitLab, Gitea/Forgejo or a bare repo over SSH. It has two guard posts. The **Push Guard**, built here: agents push to it instead of the remote, it checks every push with deterministic rules while the push is running, and only it holds a write credential for the remote. A clean push is forwarded with exactly the checked SHAs; a `yellow` finding goes back to the agent with a message it can act on; a `red` finding is rejected without details and waits for a human. The **Pull Guard** is a scheduled [git-everref](https://github.com/daojyun/git-everref) run that keeps every branch and tag in an append-only backup. Neither uses AI: every decision is a deterministic rule.
+Git Warden puts guard posts between AI agents and their Git remote: a **Push Guard** that checks every push with deterministic rules, and a **Pull Guard** that keeps an append-only backup of every branch and tag. The remote can be GitHub, GitLab, Gitea/Forgejo or a bare repo over SSH. Neither guard uses AI: every decision is a deterministic rule.
+
+- **Push Guard** (`push-guard`): agents push to it instead of the remote, it checks every push while the push is running, and only it holds a write credential for the remote. A clean push is forwarded with exactly the checked SHAs; a `yellow` finding goes back to the agent with a message it can act on; a `red` finding is rejected without details and waits for a human.
+- **Pull Guard** (`pull-guard`): on a timer on a separate backup host, it runs [git-everref](https://github.com/daojyun/git-everref) against each remote with a read-only credential. A force push, deletion or moved tag upstream becomes a new lineage or a tombstone in the backup; nothing that a run has seen is ever lost.
 
 ## Status
 
-The Push Guard (`push-guard`) is built. All rules of the spec, the pre-receive hook, the HTTP server, the human commands and `replay` are implemented and covered by offline tests against real temporary Git repositories, plus a live test in CI against GitHub over HTTPS and an SSH test against a local `sshd` (see [Limits](#limits)). It is **not in production use yet**. The Pull Guard needs no code here: it is a scheduled, pinned git-everref run on a backup host. Design: [docs/design.md](docs/design.md); threat model and what Git Warden does **not** cover: [docs/risks.md](docs/risks.md#coverage-by-git-warden); what the implementation settled: [SPEC.md](SPEC.md).
+Both guard posts are built. The Push Guard (`push-guard`): all rules of the spec, the pre-receive hook, the HTTP server, the human commands and `replay`, covered by offline tests against real temporary Git repositories, plus a live test in CI against GitHub over HTTPS and an SSH test against a local `sshd` (see [Limits](#limits)). The Pull Guard (`pull-guard`): preflight, bridge and backup setup, branch selection and the git-everref run, covered by tests with a stand-in everref and end to end with the real git-everref against a local remote (force push, deletion, moved tag, unreachable remote). Neither is **in production use yet**.
+
+Documentation: [SPEC.md](SPEC.md) is the one authoritative document (design of both guard posts, decisions, the risk register and [what Git Warden does **not** cover](SPEC.md#coverage-by-git-warden)). Reference: [docs/push-guard-rules.md](docs/push-guard-rules.md) (reasoning per Push Guard rule) and [docs/pull-guard.md](docs/pull-guard.md) (Pull Guard configuration and operation).
 
 ## How it works
+
+### Push Guard
 
 ```
 agent ── git push ──> push-guard (wall) ── checked SHAs only ──> remote
@@ -23,31 +30,49 @@ agent ── git push ──> push-guard (wall) ── checked SHAs only ──>
    - **red:** rejected with only `rejected: waiting for a human (push <id>)`. The new commits are kept as a bundle and `notify.command` warns the owner.
    - **internal error** (scanner missing, remote unreachable, object missing, timeout): rejected with `internal error, try again later`, logged, counted as red, but not warned as a violation.
 
+### Pull Guard
+
+```
+timer ──> pull-guard run (backup host) ── read-only ──> remote
+            │ preflight: git, git-everref (version), config
+            ├ repos/<name>/bridge      ls-remote, git-everref add, git-everref run --all
+            ├ repos/<name>/backup.git  append-only: lineages, tombstones, journals
+            └ pull.jsonl               one line per repo and run
+```
+
+1. **Preflight:** the configuration loads, `git` and `git-everref` are found and `git-everref --version` answers (and matches the pinned version if one is configured), at least one repo is configured. Otherwise the run fails closed before anything is touched.
+2. Per repo it lists the remote's branches, protects new ones with `git-everref add origin/<branch> --remote backup` (minus `exclude_branches`), and runs `git-everref run --all`, which fetches the remote and records every protected branch and all tags.
+3. A failed repo (remote unreachable, a branch everref refuses, a non-zero everref exit, a timeout) is logged in `pull.jsonl` and warned through `notify.command`; the other repos still run.
+
 ## Requirements
 
-Git Warden calls a few external programs. **It doesn't install or download any of them**: they must already be on the host, found on `PATH` or at the configured path, and each runs as its own process.
+Git Warden calls a few external programs. **It doesn't install or download any of them at runtime**: they must already be on the host, found on `PATH` or at the configured path, and each runs as its own process.
 
-| Program | Needed for | If it is missing |
-| --- | --- | --- |
-| [Git](https://git-scm.com/) 2.42 or newer | Push Guard at runtime: every Git operation, and `git http-backend` for `serve` | Nothing works |
-| [gitleaks](https://github.com/gitleaks/gitleaks) 8.x | Push Guard at runtime: the secret scan. Found on `PATH`, or at the path set as `scanner.gitleaks` | **Required** for the Push Guard: every push fails closed (`internal error`), and `check-config` reports it. Optional for the tests: the secret-scan tests are skipped |
-| [Go](https://go.dev/) 1.24 or newer | Building from source only | Use the release binary |
-| [git-everref](https://github.com/daojyun/git-everref) | The Pull Guard (later), a scheduled run on the backup host, separate from `push-guard` | No effect on the Push Guard |
+| Program | Version | License | Needed for | If it is missing |
+| --- | --- | --- | --- | --- |
+| [Git](https://git-scm.com/) | 2.42 or newer | GPL-2.0 | Both guards at runtime: every Git operation, and `git http-backend` for `push-guard serve` | Nothing works |
+| [gitleaks](https://github.com/gitleaks/gitleaks) | 8.x (CI pins 8.30.1) | MIT | Push Guard at runtime: the secret scan. Must be on `PATH`, or at the path set as `scanner.gitleaks` | **Required** for the Push Guard: every push fails closed (`internal error`), and `check-config` reports it. Optional for the tests: the secret-scan tests are skipped |
+| [git-everref](https://github.com/daojyun/git-everref) | v1.0.0 (pinned) | MIT | Pull Guard at runtime: records branches and tags in the backup. Must be on `PATH`, or at the path set as `everref.path` | **Required** for the Pull Guard: every run fails closed in its preflight, and `check-config` reports it. Optional for the tests: the end-to-end tests are skipped |
+| [Go](https://go.dev/) | 1.24 or newer | BSD-3-Clause | Building from source only | Use the release binaries |
 
-**Pinning is part of provisioning the host, not something Git Warden does at runtime.** Install gitleaks (and later git-everref) at a fixed version and check the download's SHA-256 against the project's published checksums when you set up the host, as CI does for gitleaks in [.github/workflows/ci.yml](.github/workflows/ci.yml); the [design](docs/design.md#pull-guard) names the pinned everref release. Licenses of these programs and of the code compiled into the binary: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+**Pinning is part of provisioning the host, not something Git Warden does at runtime.** Install gitleaks and git-everref at a fixed version and check the download's SHA-256 when you set up the host, as CI does. For git-everref there is an optional script that does exactly that: [scripts/install-everref.sh](scripts/install-everref.sh) installs v1.0.0 for Linux amd64/arm64 and checks the tarball against SHA-256 values pinned in the script ([details](SPEC.md#installing-git-everref)). Licenses of these programs and of the code compiled into the binaries: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Build and install
 
 ```bash
 go build -o push-guard ./cmd/push-guard
-go test ./...      # offline; secret-scan tests skip without gitleaks (CI pins one)
+go build -o pull-guard ./cmd/pull-guard
+scripts/install-everref.sh   # optional: pinned git-everref v1.0.0 into ~/.local/bin (SHA-256 checked)
+go test ./...      # offline; secret-scan tests skip without gitleaks, everref end-to-end tests without git-everref
 ```
+
+CI installs pinned gitleaks and git-everref and sets `GITLEAKS_REQUIRED=1` and `EVERREF_REQUIRED=1`, which turn those skips into failures.
 
 The live test (`TestLiveRemote`) runs only when `WARDEN_LIVE_REMOTE` (an `https://` URL) and `WARDEN_LIVE_TOKEN_FILE` are set. It pushes through a real guard to a fresh `testrun-<UTC timestamp>-<run>` branch on that remote: green create and fast-forward, red rewrite that leaves the remote alone, approval of that SHA going out with a lease, another writer moving the branch, and finally an allowed delete. CI runs it against this repository on pushes to `main` with the job's own token, and deletes leftover `testrun-*` branches older than a day. `TestSSHRemote` starts its own `sshd` (skipped if `sshd` or `ssh-keygen` is missing; CI installs it and sets `SSH_REQUIRED=1`).
 
-Releases attach a static `push-guard-linux-amd64` binary, `LICENSE` and `THIRD_PARTY_NOTICES.md`.
+Releases attach static `push-guard-linux-amd64` and `pull-guard-linux-amd64` binaries, `install-everref.sh`, `LICENSE` and `THIRD_PARTY_NOTICES.md`. Install a binary with `install -m 0755 push-guard-linux-amd64 /usr/local/bin/push-guard` (the same for `pull-guard`).
 
-## Configuration
+## Configuration (Push Guard)
 
 Everything lives on the wall, never in a repo. One folder:
 
@@ -114,7 +139,7 @@ The full reasoning per rule is in [docs/push-guard-rules.md](docs/push-guard-rul
 
 Check a configuration with `push-guard check-config --config /etc/warden` (add `--remote` to also run `ls-remote` against every remote with its credential).
 
-## Running it
+## Running the Push Guard
 
 **Over HTTP** (the usual setup):
 
@@ -135,7 +160,43 @@ git push origin agent/fix-typo
 
 The agent must not have any other write credential for the remote, otherwise the guard is decoration.
 
-## Human commands
+## Running the Pull Guard
+
+Its own configuration directory, usually on the backup host (see [examples/pull](examples/pull) and [docs/pull-guard.md](docs/pull-guard.md)):
+
+```
+warden-pull/
+  defaults.yaml          # optional: everref.path, everref.version, notify.command, state_dir, timeout
+  repos/
+    hermetarium/
+      pull.yaml          # remote, read-only credential, optional known_hosts and exclude_branches
+```
+
+```yaml
+# defaults.yaml
+everref:
+  version: v1.0.0                        # refuse any other installed version
+notify:
+  command: [/usr/local/bin/warden-notify]
+state_dir: /var/lib/warden-pull
+```
+
+```yaml
+# repos/hermetarium/pull.yaml
+remote: git@github.com:example/hermetarium.git
+credential: /etc/warden-pull/keys/hermetarium   # read-only deploy key
+exclude_branches: ['dependabot/.*']
+```
+
+```bash
+pull-guard check-config --config /etc/warden-pull [--remote]
+pull-guard run --config /etc/warden-pull [repo...]     # from a timer, e.g. every 15 minutes
+pull-guard version
+```
+
+Exit codes: `0` every repo backed up, `1` a repo or the preflight failed, `2` usage error. Example systemd units: [examples/pull/systemd](examples/pull/systemd). The backup of a repo is `state_dir/repos/<name>/backup.git`; look at it and restore with git-everref's own commands in `state_dir/repos/<name>/bridge` (`git-everref -C <bridge> status --all`, `log`, `restore`). Restoring to the remote is a human's step.
+
+## Human commands (Push Guard)
 
 Run on the wall host; being able to run them there is the authentication.
 
@@ -152,7 +213,7 @@ push-guard version
 
 A red push's commits are in `state_dir/pending/<repo>/<id>.bundle`; inspect them with `git fetch <bundle> 'refs/*:refs/pending/*'` in a scratch clone.
 
-## Files on the wall
+## Files on the wall (Push Guard)
 
 - `state_dir/push.jsonl`: one JSON line per push (time, id, agent, repo, updates with remote old, new and kind, findings, verdict, forwarded, remote message) and per approval, reset and streak. Append-only. A malformed line makes every push fail closed until a human fixes it.
 - `state_dir/pending/<repo>/<id>.bundle`: new commits of red pushes, kept for now.
@@ -163,6 +224,8 @@ A red push's commits are in `state_dir/pending/<repo>/<id>.bundle`; inspect them
 
 `notify.command` gets a JSON object on stdin for red pushes (`red_push`), the start of a yellow streak (`yellow_streak`), the first push of a rate-limited series (`rate_limited`) and pushes to an unknown repo (`unknown_repo`). Facts come first: updates, findings with rule IDs, the bundle path and the `approve` commands. The agent's commit messages only appear under `untrusted`, truncated and marked as an unverified quote.
 
+The Pull Guard sends `pull_failed` (repo, error, everref's exit code, the tail of its output) when a repo's run fails; see [docs/pull-guard.md](docs/pull-guard.md#warning).
+
 ## Limits
 
 - Tested live against GitHub over HTTPS, and over SSH against a local `sshd` the test starts itself (fresh host and user keys, wrong and unknown host key, unauthorized key). GitLab and Gitea are not tested yet.
@@ -170,7 +233,8 @@ A red push's commits are in `state_dir/pending/<repo>/<id>.bundle`; inspect them
 - `CONTENT-PAGES-SCRIPT` looks at one added line at a time, so a tag split across lines is missed, and a host counts as known if its name appears anywhere in the old tree.
 - `push.jsonl` is read in full on every push; fine for now, it will need rotation or an index later.
 - One Push Guard per agent: `agent.name` is per installation, and rate limits count all pushes of that installation.
-- No registry checks for new dependencies (slopsquatting, [R17](docs/risks.md#4-agent-specific-vectors)) and no AI: the Push Guard is rules only, with no semantic code review (see [what is not covered](docs/risks.md#coverage-by-git-warden)).
+- No registry checks for new dependencies (slopsquatting, [R17](SPEC.md#4-agent-specific-vectors)) and no AI: the Push Guard is rules only, with no semantic code review (see [what is not covered](SPEC.md#coverage-by-git-warden)).
+- The Pull Guard only sees the states present at its runs: a state that exists only between two runs, or history rewritten before the first run, is not in the backup. everref v1.0.0 runs one `ls-remote` per new branch and one push per recorded event, so very large, busy repos are too slow for it for now. LFS objects and submodule targets are not backed up.
 
 ## License
 
