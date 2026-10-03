@@ -4,7 +4,7 @@ Git Warden puts guard posts between AI agents and their Git remote, whether that
 
 ## Status
 
-First batch: the Push Guard only (`push-guard`). All rules of the spec, the pre-receive hook, the HTTP server, the human commands and `replay` are implemented and covered by offline tests against real temporary Git repositories. It has **not been run against a real remote yet**. The Merge Guard and Pull Guard come later as `cmd/merge-guard` and `cmd/pull-guard`. Design and decisions: [SPEC.md](SPEC.md).
+First batch: the Push Guard only (`push-guard`). All rules of the spec, the pre-receive hook, the HTTP server, the human commands and `replay` are implemented and covered by offline tests against real temporary Git repositories, plus a live test in CI against GitHub over HTTPS and an SSH test against a local `sshd` (see [Limits](#limits)). It is **not in production use yet**. The Merge Guard comes later as `cmd/merge-guard`. The Pull Guard needs no code here: it is a scheduled, pinned [git-everref](https://github.com/daojyun/git-everref) run that keeps every branch and tag of the remote in an append-only backup. Design and decisions: [SPEC.md](SPEC.md).
 
 ## How it works
 

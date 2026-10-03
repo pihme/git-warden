@@ -9,9 +9,10 @@ Those two pages are the source of truth. This file lists only what the implement
 
 ## Layout and naming
 
-- **Monorepo, one binary per guard post.** `cmd/push-guard` now; `cmd/merge-guard` and `cmd/pull-guard` later. The package name `git-warden` is taken on npm, PyPI and crates.io, so binaries are named per guard post. Each binary gets its own release tag (`push-guard/vX.Y.Z`).
+- **Monorepo, one binary per guard post.** `cmd/push-guard` now; `cmd/merge-guard` later. The package name `git-warden` is taken on npm, PyPI and crates.io, so binaries are named per guard post. Each binary gets its own release tag (`push-guard/vX.Y.Z`).
 - **Decision core is a library without platform knowledge:** `internal/rules` (delta normalisation, deterministic rules, verdict). Around it: `internal/config` (load and merge), `internal/gitx` (git as a subprocess with timeouts and credential handling), `internal/journal` (`push.jsonl`), `internal/pushguard` (hook, forwarding, approvals, rate limit, streak, serve, replay).
-- **The Push Guard has no AI judge.** Rules only.
+- **The Push Guard has no AI judge.** Rules only. The judge is used by the Merge Guard only.
+- **No Pull Guard binary.** The Pull Guard is a scheduled, pinned [git-everref](https://github.com/daojyun/git-everref) run (bridge mode, all branches and tags) into an append-only backup repo; it decides nothing. Missing everref features are contributed upstream rather than rebuilt here. Tooling to browse and restore the backup may come here later.
 
 ## Configuration
 
@@ -19,6 +20,7 @@ Those two pages are the source of truth. This file lists only what the implement
 - **Deny semantics:** a rule fires for a subject if `deny` matches, or if it is triggered and no `allow` matches. Which subjects a rule looks at: `REF-NAMESPACE` every pushed ref, `PATH-*` every changed path; every other rule only the subjects its trigger hits. So `deny` on `REF-NAMESPACE` protects a branch on every push, while `deny` on `REF-DELETE` only keeps a deletion red despite a broader `allow`.
 - **Subjects:** full ref name for `REF-*`; path for `PATH-*`, `MODE-*`, `CONTENT-*` and per-file `SIZE-*` limits; ref name for per-ref `SIZE-*` totals; branch name without `refs/heads/` for `META-*` (full ref name for tags). `REF-COUNT` and `RATE-*` have no subject; `allow`/`deny` don't apply.
 - **`credential` is optional only for a local path or `file://` remote.** For SSH remotes it is a private key (`GIT_SSH_COMMAND` with `-i` and `IdentitiesOnly=yes`), for `https://` a token file read by an inline credential helper. The credential never appears in YAML, logs or command lines; only its path does.
+- **SSH host keys:** optional per-repo `known_hosts` (SSH remotes only), otherwise the guard user's own; `StrictHostKeyChecking=yes`, and `ssh` runs with `-F none`, so no ssh_config on the wall host can change where or how the guard connects.
 - **Wall-only settings:** `agent` and `state_dir` may not appear in a repo file; `remote`, `credential`, `default_branch` may not appear in a defaults file.
 
 ## Hook and forwarding

@@ -20,7 +20,7 @@ Go 1.24 (`go.mod`), one dependency (`gopkg.in/yaml.v3`). At runtime: `git` 2.42+
 - `internal/pushguard/`: pre-receive hook, forwarding, pending bundles, notify, human commands, serve, replay.
 - `internal/testutil/`: helpers for tests with real temporary Git repos.
 - `examples/warden/`: example wall configuration (placeholder remote and credential).
-- Later: `cmd/merge-guard/`, `cmd/pull-guard/`, sharing `internal/rules`.
+- Later: `cmd/merge-guard/`, sharing `internal/rules`. The Pull Guard is a scheduled git-everref run, not a binary here.
 
 Invariants that must not break:
 
@@ -50,7 +50,7 @@ Tests cover the config merge, every rule against real temporary repos, the journ
 
 ### Versions and releases
 
-- SemVer, one tag per artifact: `push-guard/vX.Y.Z` (later `merge-guard/…`, `pull-guard/…`).
+- SemVer, one tag per artifact: `push-guard/vX.Y.Z` (later `merge-guard/…`).
 - `feat:` bumps minor, `fix:`/`perf:` patch, `feat!:`/`fix!:` or a `BREAKING CHANGE:` footer major. **Before 1.0.0 a breaking change bumps the minor version** (0.3.x to 0.4.0, never to 1.0.0). Reaching 1.0.0 is a deliberate decision by the maintainer, not a side effect.
 - `docs:`, `test:`, `refactor:`, `chore:`, `ci:`, `build:` never bump. A commit only counts when it touches a release path.
 - **Release 1.0** (or any chosen version): an empty commit with the footer `Release-As: 1.0.0`, e.g. `git commit --allow-empty -m "chore: release 1.0" -m "Release-As: 1.0.0"`. With several artifacts in `.github/release.json`, name one per footer line: `Release-As: <name>@1.0.0` (the bare form is then ignored). It releases by itself, regardless of type or paths; upwards only (at or below the current version it is ignored with a warning); several footers: the highest wins. Only use it when the maintainer decided the version.
@@ -78,7 +78,8 @@ No website yet (private repo).
 
 ## Do not invent
 
-- **No AI judge in the Push Guard.** Rules only; the judge belongs to the Merge Guard and Pull Guard.
+- **No AI judge in the Push Guard.** Rules only; the judge belongs to the Merge Guard only.
+- **No own Pull Guard backup format or binary.** The Pull Guard is git-everref (pinned); gaps go upstream as issues/PRs, not into a parallel implementation here.
 - **No platform API in the Push Guard or the core.** Plain Git only; no GitHub/GitLab clients, no rules for protected branches (the remote's job).
 - **No author/committer identity rules**; agent identity comes from the push credential.
 - **No signature verification on the wall** (`META-UNSIGNED` checks presence only).
