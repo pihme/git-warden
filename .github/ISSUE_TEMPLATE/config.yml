@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Report a vulnerability (private)
-    url: https://github.com/pihme/git-warden/security/advisories/new
+    url: https://github.com/pihme/git-warden/blob/main/SECURITY.md
     about: Please report security problems privately, not as a public issue.
