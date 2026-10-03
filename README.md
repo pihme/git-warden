@@ -23,9 +23,20 @@ agent ── git push ──> push-guard (wall) ── checked SHAs only ──>
    - **red:** rejected with only `rejected: waiting for a human (push <id>)`. The new commits are kept as a bundle and `notify.command` warns the owner.
    - **internal error** (scanner missing, remote unreachable, object missing, timeout): rejected with `internal error, try again later`, logged, counted as red, but not warned as a violation.
 
-## Build and install
+## Requirements
 
-Requirements on the wall host: Go 1.24+ to build, `git` (2.42 or newer), and [gitleaks](https://github.com/gitleaks/gitleaks) 8.x on `PATH` or configured as `scanner.gitleaks`. Without gitleaks every push fails closed.
+Git Warden calls a few external programs. **It doesn't install or download any of them**: they must already be on the host, found on `PATH` or at the configured path, and each runs as its own process.
+
+| Program | Needed for | If it is missing |
+| --- | --- | --- |
+| [Git](https://git-scm.com/) 2.42 or newer | Push Guard at runtime: every Git operation, and `git http-backend` for `serve` | Nothing works |
+| [gitleaks](https://github.com/gitleaks/gitleaks) 8.x | Push Guard at runtime: the secret scan. Found on `PATH`, or at the path set as `scanner.gitleaks` | **Required** for the Push Guard: every push fails closed (`internal error`), and `check-config` reports it. Optional for the tests: the secret-scan tests are skipped |
+| [Go](https://go.dev/) 1.24 or newer | Building from source only | Use the release binary |
+| [git-everref](https://github.com/daojyun/git-everref) | The Pull Guard (later), a scheduled run on the backup host, separate from `push-guard` | No effect on the Push Guard |
+
+**Pinning is part of provisioning the host, not something Git Warden does at runtime.** Install gitleaks (and later git-everref) at a fixed version and check the download's SHA-256 against the project's published checksums when you set up the host, as CI does for gitleaks in [.github/workflows/ci.yml](.github/workflows/ci.yml); the [design](docs/design.md#pull-guard) names the pinned everref release. Licenses of these programs and of the code compiled into the binary: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Build and install
 
 ```bash
 go build -o push-guard ./cmd/push-guard
@@ -163,4 +174,4 @@ A red push's commits are in `state_dir/pending/<repo>/<id>.bundle`; inspect them
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE). Source-available, not OSI Open Source.
+[PolyForm Noncommercial 1.0.0](LICENSE). Source-available, not OSI Open Source. Third-party software compiled in or run by Git Warden, and its licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
