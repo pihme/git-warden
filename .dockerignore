@@ -1,0 +1,9 @@
+# Only go.mod, go.sum, cmd/, internal/ and scripts/install-everref.sh go into
+# the build. Never send local configuration, state or secrets.
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/
+!scripts/install-everref.sh
+**/*_test.go

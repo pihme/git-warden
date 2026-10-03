@@ -31,3 +31,16 @@ updates:
     groups:
       actions-minor-and-patch:
         update-types: [minor, patch]
+
+  # Dockerfile base images (pinned by digest). The image is not published,
+  # so these are unshipped images: chore(deps), no release.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    commit-message:
+      prefix: chore
+      include: scope

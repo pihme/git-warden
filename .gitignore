@@ -16,3 +16,7 @@ bin/
 dist/
 *.test
 *.out
+
+# Nix build output
+result
+result-*
