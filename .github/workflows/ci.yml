@@ -43,8 +43,52 @@ jobs:
           # the secret-scan tests must run in CI, never skip silently
           GITLEAKS_REQUIRED: "1"
 
-  release:
+  # Push Guard against this repository on GitHub. Only this job can write, and
+  # the test only touches its own testrun-* branch, deleted at the end.
+  # Workflows only run on pushes to main, so testrun-* pushes start nothing.
+  live:
     needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: live
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Live test
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WARDEN_LIVE_REMOTE: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          export WARDEN_LIVE_TOKEN_FILE="$RUNNER_TEMP/warden-token"
+          (umask 077 && printf '%s\n' "$GH_TOKEN" > "$WARDEN_LIVE_TOKEN_FILE")
+          go test -run '^TestLiveRemote$' -v ./cmd/push-guard/
+      - name: Delete testrun branches older than a day
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cutoff=$(date -u -d '1 day ago' +%Y%m%dT%H%M%SZ)
+          gh api "repos/${{ github.repository }}/git/matching-refs/heads/testrun-" --jq '.[].ref' |
+          while read -r ref; do
+            stamp=${ref#refs/heads/testrun-}; stamp=${stamp%%-*}
+            if [[ "$stamp" < "$cutoff" ]]; then
+              echo "deleting $ref"
+              gh api -X DELETE "repos/${{ github.repository }}/git/$ref"
+            fi
+          done
+
+  release:
+    needs: [test, live]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore(release):')
     runs-on: ubuntu-24.04
     permissions:

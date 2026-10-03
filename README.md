@@ -32,6 +32,8 @@ go build -o push-guard ./cmd/push-guard
 go test ./...      # offline; secret-scan tests skip without gitleaks (CI pins one)
 ```
 
+The live test (`TestLiveRemote`) runs only when `WARDEN_LIVE_REMOTE` (an `https://` URL) and `WARDEN_LIVE_TOKEN_FILE` are set. It pushes through a real guard to a fresh `testrun-<UTC timestamp>-<run>` branch on that remote: green create and fast-forward, red rewrite that leaves the remote alone, approval of that SHA going out with a lease, another writer moving the branch, and finally an allowed delete. CI runs it against this repository on pushes to `main` with the job's own token, and deletes leftover `testrun-*` branches older than a day.
+
 Releases attach a static `push-guard-linux-amd64` binary.
 
 ## Configuration
@@ -151,7 +153,7 @@ A red push's commits are in `state_dir/pending/<repo>/<id>.bundle`; inspect them
 
 ## Limits
 
-- Not run against a real remote yet; GitHub, GitLab and SSH remotes are only covered by unit tests of the credential plumbing.
+- Tested live against GitHub over HTTPS only; GitLab and SSH remotes are covered by unit tests of the credential plumbing.
 - `META-UNSIGNED` checks only that a signature is present (`gpgsig` header). The wall has no keyring, so it doesn't verify signatures; with fewer than `lookback` commits of history the rule stays quiet.
 - `CONTENT-PAGES-SCRIPT` looks at one added line at a time, so a tag split across lines is missed, and a host counts as known if its name appears anywhere in the old tree.
 - `push.jsonl` is read in full on every push; fine for now, it will need rotation or an index later.

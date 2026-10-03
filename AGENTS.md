@@ -32,9 +32,9 @@ Invariants that must not break:
 - **Credentials stay file references:** never in YAML, logs, journal, command lines or agent output.
 - Patterns are anchored (`^(?:…)$`); lists are appended across layers, removed only by exact `*_remove`.
 
-Tests cover the config merge, every rule against real temporary repos, the journal queries, and end to end: a bare remote, the guard repo with the compiled binary as hook, an agent clone pushing by file path and over HTTP (`serve`). The secret-scan tests skip without `gitleaks` on `PATH`; CI installs a pinned, checksum-verified gitleaks and sets `GITLEAKS_REQUIRED=1`, which turns that skip into a failure.
+Tests cover the config merge, every rule against real temporary repos, the journal queries, and end to end: a bare remote, the guard repo with the compiled binary as hook, an agent clone pushing by file path and over HTTP (`serve`). The secret-scan tests skip without `gitleaks` on `PATH`; CI installs a pinned, checksum-verified gitleaks and sets `GITLEAKS_REQUIRED=1`, which turns that skip into a failure. `TestLiveRemote` pushes to a real HTTPS remote and only runs in CI's `live` job (or with `WARDEN_LIVE_REMOTE` and `WARDEN_LIVE_TOKEN_FILE` set); it must only ever touch its own `testrun-*` branch.
 
-- Tests: `go test ./...` must pass before anything lands on `main`. Tests stay offline: no real accounts, tokens or live services.
+- Tests: `go test ./...` must pass before anything lands on `main`. Tests stay offline: no real accounts, tokens or live services, except the env-gated `TestLiveRemote`.
 - Release paths (only commits touching them can cut a release) are listed in `.github/release.json`.
 
 ## Shared rules
