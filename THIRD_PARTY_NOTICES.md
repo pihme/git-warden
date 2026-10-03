@@ -2,7 +2,7 @@
 
 Git Warden itself is licensed under [PolyForm Noncommercial 1.0.0](LICENSE). This file lists the third-party software it contains or runs, with the notices their licenses ask for.
 
-## Compiled into the `push-guard` and `pull-guard` binaries
+## Compiled into the `push-guard` and `backup-guard` binaries
 
 ### Go standard library and runtime
 
@@ -121,6 +121,6 @@ Git Warden doesn't contain, install or download these. It expects them on the ho
 | --- | --- | --- |
 | [Git](https://git-scm.com/) | GPL-2.0 | Push Guard: every Git operation, `git http-backend` for `serve` |
 | [gitleaks](https://github.com/gitleaks/gitleaks) | MIT | Push Guard: the secret scan (`CONTENT-SECRET`); its default rules are used through `[extend] useDefault = true` |
-| [git-everref](https://github.com/daojyun/git-everref) | MIT | Pull Guard: `pull-guard` runs it (`add`, `tags`, `run --all`) to record branches and tags in the backup. Pinned to v1.0.0; the optional `scripts/install-everref.sh` downloads that release from its project. Git Warden contains no everref code |
+| [git-everref](https://github.com/daojyun/git-everref) | MIT | Backup Guard: `backup-guard` runs it (`add`, `tags`, `run --all`) to record branches and tags in the backup. Pinned to v1.0.0; the optional `scripts/install-everref.sh` downloads that release from its project. Git Warden contains no everref code |
 
 **Container image and Nix flake.** When you build the [Dockerfile](Dockerfile) or [flake.nix](flake.nix), they download gitleaks 8.30.1 and git-everref v1.0.0 from their projects' releases (SHA-256 checked), and the Dockerfile installs Git, OpenSSH and their dependencies from Debian. The image you build then contains these programs, each under its own license (the Debian packages' licenses are in the image under `/usr/share/doc/*/copyright`). This project doesn't publish an image; if you distribute one, its obligations (for example GPL-2.0 source availability for Git) are yours.

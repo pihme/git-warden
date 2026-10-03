@@ -1,6 +1,6 @@
 # Push Guard: rules and reasoning
 
-The reasoning behind every Push Guard rule. The user-facing summary (rule table, configuration, commands) is in the [README](../README.md); what the implementation settled or changed is in [SPEC.md](../SPEC.md). Design of both guard posts and the risk register (risk IDs R1–R22): [SPEC.md](../SPEC.md).
+The reasoning behind every Push Guard rule. Configuration and operation (rule table, configuration, commands including `replay`) are in [docs/push-guard.md](push-guard.md), the overview for both guards in the [README](../README.md#configuration-and-operation); what the implementation settled or changed is in [SPEC.md](../SPEC.md). Design of both guard posts and the risk register (risk IDs R1–R22): [SPEC.md](../SPEC.md).
 
 Focus for now: only the Push Guard, only deterministic rules. **No AI at all:** the Push Guard has to decide fast, pass or fail, while the push is running, and the same input must always give the same answer. No LLM, no platform API, nothing but Git. Every rule below can be decided from the pushed objects and the remote's current refs alone, with the same result every time.
 

@@ -4,13 +4,13 @@ This file is for the coding agent working in this repo. Read it at the start of 
 
 ## What this repo is
 
-**Git Warden** puts guard posts between AI agents and their Git remote. This monorepo holds both guard posts: the **Push Guard** (`cmd/push-guard`): agents push to it, it checks every push with deterministic rules and forwards only green pushes to the real remote; and the **Pull Guard** (`cmd/pull-guard`): on a timer it runs git-everref to keep an append-only backup of every branch and tag. `SPEC.md` is the one authoritative document: design, decisions, risks R1–R22 and coverage. Reference: `docs/push-guard-rules.md` (rule reasoning), `docs/pull-guard.md` (Pull Guard configuration and operation). User docs: `README.md`.
+**Git Warden** puts guard posts between AI agents and their Git remote. This monorepo holds both guard posts: the **Push Guard** (`cmd/push-guard`): agents push to it, it checks every push with deterministic rules and forwards only green pushes to the real remote; and the **Backup Guard** (`cmd/backup-guard`): on a timer it runs git-everref to keep an append-only backup of every branch and tag. `SPEC.md` is the one authoritative document: design, decisions, risks R1–R22 and coverage. Reference, the same structure for both guards: `docs/push-guard.md` (Push Guard configuration and operation), `docs/push-guard-rules.md` (rule reasoning), `docs/backup-guard.md` (Backup Guard configuration and operation). User docs: `README.md`.
 
 License: **PolyForm Noncommercial 1.0.0** (`LICENSE`). Source-available, not OSI Open Source. Do not relicense to Apache/MIT/GPL.
 
 ## How to work here
 
-Go 1.24 (`go.mod`), one dependency (`gopkg.in/yaml.v3`). At runtime: `git` 2.42+, `gitleaks` 8.x (Push Guard) and `git-everref` v1.0.0 (Pull Guard). Both external programs are prerequisites on the host; nothing in Git Warden downloads them at runtime (`scripts/install-everref.sh` is an optional, pinned installer).
+Go 1.24 (`go.mod`), one dependency (`gopkg.in/yaml.v3`). At runtime: `git` 2.42+, `gitleaks` 8.x (Push Guard) and `git-everref` v1.0.0 (Backup Guard). Both external programs are prerequisites on the host; nothing in Git Warden downloads them at runtime (`scripts/install-everref.sh` is an optional, pinned installer).
 
 - `cmd/push-guard/`: the binary (subcommands `serve`, `pre-receive`, `init-repo`, `approve`, `reset-streak`, `check-config`, `replay`, `version`) and the end-to-end tests.
 - `internal/config/`: three config layers and merge; `defaults.yaml` holds the built-in rule defaults (embedded).
@@ -18,18 +18,18 @@ Go 1.24 (`go.mod`), one dependency (`gopkg.in/yaml.v3`). At runtime: `git` 2.42+
 - `internal/rules/`: the decision core: delta normalisation, all deterministic rules, verdict. No platform knowledge.
 - `internal/journal/`: append-only `push.jsonl` and the queries on it (approvals, streak, rate).
 - `internal/pushguard/`: pre-receive hook, forwarding, pending bundles, notify, human commands, serve, replay.
-- `cmd/pull-guard/`: the Pull Guard binary (subcommands `run`, `check-config`, `version`).
-- `internal/pullguard/`: Pull Guard configuration, preflight, bridge and backup setup, branch selection, everref runner, `pull.jsonl`, notify.
+- `cmd/backup-guard/`: the Backup Guard binary (subcommands `run`, `check-config`, `version`).
+- `internal/backupguard/`: Backup Guard configuration, preflight, bridge and backup setup, branch selection, everref runner, `backup.jsonl`, notify.
 - `internal/testutil/`: helpers for tests with real temporary Git repos.
-- `examples/warden/`: example wall configuration (placeholder remote and credential); `examples/pull/`: example Pull Guard configuration and systemd units.
+- `examples/warden/`: example wall configuration (placeholder remote and credential); `examples/backup/`: example Backup Guard configuration and systemd units.
 - `scripts/install-everref.sh`: optional installer for the pinned git-everref release (SHA-256 checked).
 - `Dockerfile` (+ `.dockerignore`): one image with both binaries and git, gitleaks 8.30.1 and git-everref v1.0.0, pinned and SHA-256 checked at build time. `flake.nix` (+ `flake.lock`): package (both binaries, runs `go test ./...`) and dev shell with the same pinned gitleaks and git-everref. Keep the gitleaks and everref pins equal in CI, the Dockerfile, `flake.nix` and `scripts/install-everref.sh`.
-- `docs/`: Push Guard rule reasoning, Pull Guard operation; `docs/agents/` holds the agent working docs.
+- `docs/`: configuration and operation of each guard (`push-guard.md`, `backup-guard.md`, same structure), Push Guard rule reasoning; `docs/agents/` holds the agent working docs.
 - There are exactly two guard posts.
 
 Invariants that must not break:
 
-- **Fail closed.** Any error, timeout or missing input (scanner, remote, object) rejects the push with `internal error, try again later`. Never forward on doubt. `serve` and `init-repo` run the preflight (configuration, repos, an enabled rule, git 2.42+, gitleaks 8.x where `CONTENT-SECRET` is on) and refuse to start on any problem; the hook repeats its per-repo part on every push. The Pull Guard fails its run (exit 1, warning) when git-everref is missing or any step fails; it never reports a backup that didn't happen.
+- **Fail closed.** Any error, timeout or missing input (scanner, remote, object) rejects the push with `internal error, try again later`. Never forward on doubt. `serve` and `init-repo` run the preflight (configuration, repos, an enabled rule, git 2.42+, gitleaks 8.x where `CONTENT-SECRET` is on) and refuse to start on any problem; the hook repeats its per-repo part on every push. The Backup Guard fails its run (exit 1, warning) when git-everref is missing or any step fails; it never reports a backup that didn't happen.
 - **Red stays silent.** A red rejection says only `rejected: waiting for a human (push <id>)`; no rule IDs, paths or reasons reach the agent. Yellow names rule, ref, path, line and why.
 - **Forward exactly the checked SHAs**, never `--force`; `--force-with-lease` only for refs whose `REF-NON-FF` / `REF-TAG-MOVE` / `REF-DELETE` was explicitly allowed or whose SHA a human approved.
 - **The remote's state is read fresh** for every push; the agent's old-oid is never trusted.
@@ -37,9 +37,9 @@ Invariants that must not break:
 - **Credentials stay file references:** never in YAML, logs, journal, command lines or agent output.
 - Patterns are anchored (`^(?:…)$`); lists are appended across layers, removed only by exact `*_remove`.
 - **No runtime downloads.** gitleaks and git-everref are found on `PATH` or at the configured path, never fetched, updated or built by a guard. Pinned provisioning (CI, the Dockerfile, the flake, the install script) is the only place they are downloaded.
-- **The Pull Guard never removes a protection or writes to the backup itself;** only everref writes there, and only creates and fast-forwards. It never passes `--trigger` or `--schedule` to everref.
+- **The Backup Guard never removes a protection or writes to the backup itself;** only everref writes there, and only creates and fast-forwards. It never passes `--trigger` or `--schedule` to everref.
 
-Tests cover the config merge, every rule against real temporary repos, the journal queries, and end to end: a bare remote, the guard repo with the compiled binary as hook, an agent clone pushing by file path and over HTTP (`serve`). The secret-scan tests skip without `gitleaks` on `PATH`; CI installs a pinned, checksum-verified gitleaks and sets `GITLEAKS_REQUIRED=1`, which turns that skip into a failure. `TestLiveRemote` pushes to a real HTTPS remote and only runs in CI's `live` job (or with `WARDEN_LIVE_REMOTE` and `WARDEN_LIVE_TOKEN_FILE` set); it must only ever touch its own `testrun-*` branch. `TestSSHRemote` starts a throwaway `sshd` as the current user on a free local port; CI sets `SSH_REQUIRED=1`. The Pull Guard tests use a stand-in everref script, and its end-to-end tests run the real `git-everref` against a local remote; they skip without it, and CI installs it with `scripts/install-everref.sh` and sets `EVERREF_REQUIRED=1`.
+Tests cover the config merge, every rule against real temporary repos, the journal queries, and end to end: a bare remote, the guard repo with the compiled binary as hook, an agent clone pushing by file path and over HTTP (`serve`). The secret-scan tests skip without `gitleaks` on `PATH`; CI installs a pinned, checksum-verified gitleaks and sets `GITLEAKS_REQUIRED=1`, which turns that skip into a failure. `TestLiveRemote` pushes to a real HTTPS remote and only runs in CI's `live` job (or with `WARDEN_LIVE_REMOTE` and `WARDEN_LIVE_TOKEN_FILE` set); it must only ever touch its own `testrun-*` branch. `TestSSHRemote` starts a throwaway `sshd` as the current user on a free local port; CI sets `SSH_REQUIRED=1`. The Backup Guard tests use a stand-in everref script, and its end-to-end tests run the real `git-everref` against a local remote; they skip without it, and CI installs it with `scripts/install-everref.sh` and sets `EVERREF_REQUIRED=1`.
 
 - Tests: `go test ./...` must pass before anything lands on `main`. Tests stay offline: no real accounts, tokens or live services, except the env-gated `TestLiveRemote`.
 - Release paths (only commits touching them can cut a release) are listed in `.github/release.json`.
@@ -57,7 +57,7 @@ Tests cover the config merge, every rule against real temporary repos, the journ
 
 ### Versions and releases
 
-- SemVer, **one umbrella version for all of Git Warden**: tag `vX.Y.Z`, one GitHub Release that carries every binary (`push-guard` and `pull-guard`). No per-binary tags.
+- SemVer, **one umbrella version for all of Git Warden**: tag `vX.Y.Z`, one GitHub Release that carries every binary (`push-guard` and `backup-guard`). No per-binary tags.
 - `feat:` bumps minor, `fix:`/`perf:` patch, `feat!:`/`fix!:` or a `BREAKING CHANGE:` footer major. **Before 1.0.0 a breaking change bumps the minor version** (0.3.x to 0.4.0, never to 1.0.0). Reaching 1.0.0 is a deliberate decision by the maintainer, not a side effect.
 - `docs:`, `test:`, `refactor:`, `chore:`, `ci:`, `build:` never bump. A commit only counts when it touches a release path.
 - **Release 1.0** (or any chosen version): an empty commit with the footer `Release-As: 1.0.0`, e.g. `git commit --allow-empty -m "chore: release 1.0" -m "Release-As: 1.0.0"`. It releases by itself, regardless of type or paths; upwards only (at or below the current version it is ignored with a warning); several footers: the highest wins. Only use it when the maintainer decided the version.
@@ -87,13 +87,13 @@ No website yet.
 ## Do not invent
 
 - **No AI anywhere.** No AI judge, reviewer or LLM call in any guard post; decisions are deterministic rules. No third guard post (no PR or merge check).
-- **No own Pull Guard backup format.** Recording, the ref layout and restore are git-everref's (pinned); `pull-guard` only prepares and drives it. Gaps go upstream as issues/PRs (only when the maintainer asks for it), not into a parallel implementation here.
+- **No own Backup Guard backup format.** Recording, the ref layout and restore are git-everref's (pinned); `backup-guard` only prepares and drives it. Gaps go upstream as issues/PRs (only when the maintainer asks for it), not into a parallel implementation here.
 - **No platform API in the Push Guard or the core.** Plain Git only; no GitHub/GitLab clients, no rules for protected branches (the remote's job).
 - **No author/committer identity rules**; agent identity comes from the push credential.
 - **No signature verification on the wall** (`META-UNSIGNED` checks presence only).
 - **No `refs/warden/pending`**: red pushes are stored as bundles (quarantine objects vanish, refs can't be written there).
 - **No registry or network checks** during a push (R17, slopsquatting, comes later as its own rule source), and no trufflehog for now.
-- **No database:** the Push Guard has `push.jsonl` plus Git, the Pull Guard `pull.jsonl` plus the backup repos.
+- **No database:** the Push Guard has `push.jsonl` plus Git, the Backup Guard `backup.jsonl` plus the backup repos.
 - **No approvals through GitHub issues or the agent's channel**; humans act on the wall host.
 - Don't rename the binaries to `git-warden` (the name is taken on npm, PyPI and crates.io).
 
