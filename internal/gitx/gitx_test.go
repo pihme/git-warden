@@ -60,7 +60,7 @@ func TestSSHCommand(t *testing.T) {
 			cmd = v
 		}
 	}
-	if cmd != `ssh -i '/keys/it'\''s' -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes` {
+	if cmd != `ssh -F none -i '/keys/it'\''s' -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes` {
 		t.Fatalf("GIT_SSH_COMMAND=%s", cmd)
 	}
 	r, err = NewRemote(&Git{}, "ssh://git@example.invalid/o/r.git", "/keys/k", "/etc/warden/known_hosts")

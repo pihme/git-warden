@@ -37,7 +37,7 @@ func NewRemote(g *Git, url, credential, knownHosts string) (*Remote, error) {
 		if credential == "" {
 			return nil, fmt.Errorf("remote %s needs a credential (SSH key)", url)
 		}
-		cmd := "ssh -i " + ShellQuote(credential) + " -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes"
+		cmd := "ssh -F none -i " + ShellQuote(credential) + " -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes"
 		if knownHosts != "" {
 			cmd += " -o UserKnownHostsFile=" + ShellQuote(knownHosts) + " -o GlobalKnownHostsFile=/dev/null"
 		}
