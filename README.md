@@ -45,7 +45,7 @@ go test ./...      # offline; secret-scan tests skip without gitleaks (CI pins o
 
 The live test (`TestLiveRemote`) runs only when `WARDEN_LIVE_REMOTE` (an `https://` URL) and `WARDEN_LIVE_TOKEN_FILE` are set. It pushes through a real guard to a fresh `testrun-<UTC timestamp>-<run>` branch on that remote: green create and fast-forward, red rewrite that leaves the remote alone, approval of that SHA going out with a lease, another writer moving the branch, and finally an allowed delete. CI runs it against this repository on pushes to `main` with the job's own token, and deletes leftover `testrun-*` branches older than a day. `TestSSHRemote` starts its own `sshd` (skipped if `sshd` or `ssh-keygen` is missing; CI installs it and sets `SSH_REQUIRED=1`).
 
-Releases attach a static `push-guard-linux-amd64` binary.
+Releases attach a static `push-guard-linux-amd64` binary, `LICENSE` and `THIRD_PARTY_NOTICES.md`.
 
 ## Configuration
 
@@ -77,7 +77,7 @@ rules:
 
 **Layers.** The built-in defaults ([internal/config/defaults.yaml](internal/config/defaults.yaml), compiled in) come first, then the wall's `defaults.yaml`, then the repo's `warden.yaml`. Scalars and limits override. The lists `match`, `allow` and `deny` are appended to, so a default can't vanish unnoticed; `match_remove`, `allow_remove` and `deny_remove` remove an exact entry from the layers below (an entry that isn't there is an error). Unknown keys and rule IDs are errors.
 
-**Repo settings.** `remote` is required and `credential` too, except for a local path or `file://` remote. Both only come from the repo's file. The credential is a file path, never a value: for `ssh://` and `user@host:path` remotes an SSH private key (used with `-i` and `IdentitiesOnly=yes`; the host must be in the guard user's `known_hosts`), for `https://` a file holding a token (sent as password with the user name `x-access-token`). Optional `known_hosts` (SSH remotes only) points to a known_hosts file for this remote instead of the guard user's own; either way an unknown or changed host key is refused (`StrictHostKeyChecking=yes`). `ssh` runs with `-F none`, so no ssh_config on the wall host (`ProxyCommand`, `HostName`, other keys) can change where or how the guard connects.
+**Repo settings.** `remote` is required and `credential` too, except for a local path or `file://` remote. Both only come from the repo's file. The credential is a file path, never a value: for `ssh://` and `user@host:path` remotes an SSH private key (used with `-i` and `IdentitiesOnly=yes`; the host must be in the guard user's `known_hosts`), for `https://` a file holding a token (sent as password with the user name `x-access-token`). Optional `known_hosts` (SSH remotes only) points to a known_hosts file for this remote instead of the guard user's own (the system-wide file is then ignored as well); either way an unknown or changed host key is refused (`StrictHostKeyChecking=yes`). `ssh` runs with `-F none`, so no ssh_config on the wall host (`ProxyCommand`, `HostName`, other keys) can change where or how the guard connects.
 
 **Wall settings** (`defaults.yaml` only): `agent.name` (required; in every log entry and warning), `agent.token_file` (password for `serve`), `notify.command` (argv list; gets the warning JSON on stdin), `state_dir` (default `<config>/state`), `pages_branch` (default `gh-pages`), `scanner.gitleaks`, `timeout` (per push, default `60s`), `forward.atomic` (default `true`).
 
