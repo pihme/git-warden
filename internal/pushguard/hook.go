@@ -161,7 +161,7 @@ func (r *run) main() (int, error) {
 		return 1, err
 	}
 
-	remote, err := gitx.NewRemote(r.g, r.cfg.Remote, r.cfg.Credential)
+	remote, err := gitx.NewRemote(r.g, r.cfg.Remote, r.cfg.Credential, r.cfg.KnownHosts)
 	if err != nil {
 		return 1, err
 	}

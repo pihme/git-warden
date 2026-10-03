@@ -2,6 +2,7 @@
 # <push guard>/hermetarium.git
 remote: git@github.com:example/hermetarium.git  # any Git URL or a local path
 credential: /etc/warden/keys/hermetarium        # SSH deploy key (or token file for https://)
+known_hosts: /etc/warden/known_hosts           # optional, SSH only; default: the guard user's own
 default_branch: main                            # optional; otherwise ls-remote --symref HEAD
 rules:
   PATH-YELLOW:

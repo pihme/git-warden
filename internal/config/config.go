@@ -75,6 +75,7 @@ type Config struct {
 
 	Remote        string
 	Credential    string
+	KnownHosts    string // optional known_hosts file for SSH remotes
 	DefaultBranch string
 
 	Rules map[string]*Rule
@@ -210,6 +211,7 @@ type rawLayer struct {
 
 	Remote        *string `yaml:"remote"`
 	Credential    *string `yaml:"credential"`
+	KnownHosts    *string `yaml:"known_hosts"`
 	DefaultBranch *string `yaml:"default_branch"`
 
 	Rules map[string]*rawRule `yaml:"rules"`
@@ -226,7 +228,7 @@ type merged struct {
 	agentName, tokenFile, stateDir, pagesBranch, gitleaks, timeout string
 	notify                                                         []string
 	atomic                                                         bool
-	remote, credential, defaultBranch                              string
+	remote, credential, knownHosts, defaultBranch                  string
 	rules                                                          map[string]*mergedRule
 	order                                                          []string
 }
@@ -242,8 +244,8 @@ func parseLayer(name string, data []byte) (*rawLayer, error) {
 }
 
 func (m *merged) apply(name string, l *rawLayer, repoLayer, builtin bool) error {
-	if !repoLayer && (l.Remote != nil || l.Credential != nil || l.DefaultBranch != nil) {
-		return fmt.Errorf("%s: remote, credential and default_branch belong in a repo's warden.yaml", name)
+	if !repoLayer && (l.Remote != nil || l.Credential != nil || l.KnownHosts != nil || l.DefaultBranch != nil) {
+		return fmt.Errorf("%s: remote, credential, known_hosts and default_branch belong in a repo's warden.yaml", name)
 	}
 	if repoLayer && (l.Agent != nil || l.StateDir != nil) {
 		return fmt.Errorf("%s: agent and state_dir belong in the wall's defaults.yaml", name)
@@ -271,6 +273,7 @@ func (m *merged) apply(name string, l *rawLayer, repoLayer, builtin bool) error 
 	}
 	set(&m.remote, l.Remote)
 	set(&m.credential, l.Credential)
+	set(&m.knownHosts, l.KnownHosts)
 	set(&m.defaultBranch, l.DefaultBranch)
 
 	ids := make([]string, 0, len(l.Rules))
@@ -429,6 +432,7 @@ func (m *merged) build(dir, repo string) (*Config, error) {
 		ForwardAtomic:  m.atomic,
 		Remote:         m.remote,
 		Credential:     resolve(dir, m.credential),
+		KnownHosts:     resolve(dir, m.knownHosts),
 		DefaultBranch:  strings.TrimPrefix(m.defaultBranch, "refs/heads/"),
 		Rules:          map[string]*Rule{},
 	}
@@ -456,6 +460,9 @@ func (m *merged) build(dir, repo string) (*Config, error) {
 		}
 		if m.credential == "" && kind != KindLocal {
 			return nil, fmt.Errorf("repos/%s/warden.yaml: credential is required for remote %s (only a local path may omit it)", repo, m.remote)
+		}
+		if m.knownHosts != "" && kind != KindSSH {
+			return nil, fmt.Errorf("repos/%s/warden.yaml: known_hosts only applies to SSH remotes", repo)
 		}
 	}
 	for _, id := range m.order {

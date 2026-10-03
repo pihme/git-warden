@@ -20,20 +20,28 @@ type Remote struct {
 }
 
 // NewRemote prepares git for remote. The credential is a file reference only;
-// its content is never put on a command line or in a log.
-func NewRemote(g *Git, url, credential string) (*Remote, error) {
+// its content is never put on a command line or in a log. knownHosts is an
+// optional known_hosts file for SSH remotes; without it ssh uses the guard
+// user's own. Unknown or changed host keys are always refused.
+func NewRemote(g *Git, url, credential, knownHosts string) (*Remote, error) {
 	kind, err := config.RemoteKind(url)
 	if err != nil {
 		return nil, err
 	}
 	rg := g.Without(QuarantineEnv...).With("GIT_TERMINAL_PROMPT=0")
+	if knownHosts != "" && kind != config.KindSSH {
+		return nil, fmt.Errorf("remote %s: known_hosts only applies to SSH remotes", url)
+	}
 	switch kind {
 	case config.KindSSH:
 		if credential == "" {
 			return nil, fmt.Errorf("remote %s needs a credential (SSH key)", url)
 		}
-		rg = rg.With("GIT_SSH_COMMAND=ssh -i " + ShellQuote(credential) +
-			" -o IdentitiesOnly=yes -o BatchMode=yes")
+		cmd := "ssh -i " + ShellQuote(credential) + " -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes"
+		if knownHosts != "" {
+			cmd += " -o UserKnownHostsFile=" + ShellQuote(knownHosts) + " -o GlobalKnownHostsFile=/dev/null"
+		}
+		rg = rg.With("GIT_SSH_COMMAND=" + cmd)
 	case config.KindHTTPS:
 		if credential == "" {
 			return nil, fmt.Errorf("remote %s needs a credential (token file)", url)

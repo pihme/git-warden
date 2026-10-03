@@ -32,7 +32,7 @@ go build -o push-guard ./cmd/push-guard
 go test ./...      # offline; secret-scan tests skip without gitleaks (CI pins one)
 ```
 
-The live test (`TestLiveRemote`) runs only when `WARDEN_LIVE_REMOTE` (an `https://` URL) and `WARDEN_LIVE_TOKEN_FILE` are set. It pushes through a real guard to a fresh `testrun-<UTC timestamp>-<run>` branch on that remote: green create and fast-forward, red rewrite that leaves the remote alone, approval of that SHA going out with a lease, another writer moving the branch, and finally an allowed delete. CI runs it against this repository on pushes to `main` with the job's own token, and deletes leftover `testrun-*` branches older than a day.
+The live test (`TestLiveRemote`) runs only when `WARDEN_LIVE_REMOTE` (an `https://` URL) and `WARDEN_LIVE_TOKEN_FILE` are set. It pushes through a real guard to a fresh `testrun-<UTC timestamp>-<run>` branch on that remote: green create and fast-forward, red rewrite that leaves the remote alone, approval of that SHA going out with a lease, another writer moving the branch, and finally an allowed delete. CI runs it against this repository on pushes to `main` with the job's own token, and deletes leftover `testrun-*` branches older than a day. `TestSSHRemote` starts its own `sshd` (skipped if `sshd` or `ssh-keygen` is missing; CI installs it and sets `SSH_REQUIRED=1`).
 
 Releases attach a static `push-guard-linux-amd64` binary.
 
@@ -57,6 +57,7 @@ See [examples/warden](examples/warden). A repo file:
 ```yaml
 remote: git@github.com:example/hermetarium.git  # any Git URL or a local path
 credential: /etc/warden/keys/hermetarium        # SSH key, or token file for https://
+known_hosts: /etc/warden/known_hosts           # optional, SSH only; default: the guard user's own
 default_branch: main                            # optional; otherwise ls-remote --symref HEAD
 rules:
   PATH-YELLOW:
@@ -65,7 +66,7 @@ rules:
 
 **Layers.** The built-in defaults ([internal/config/defaults.yaml](internal/config/defaults.yaml), compiled in) come first, then the wall's `defaults.yaml`, then the repo's `warden.yaml`. Scalars and limits override. The lists `match`, `allow` and `deny` are appended to, so a default can't vanish unnoticed; `match_remove`, `allow_remove` and `deny_remove` remove an exact entry from the layers below (an entry that isn't there is an error). Unknown keys and rule IDs are errors.
 
-**Repo settings.** `remote` is required and `credential` too, except for a local path or `file://` remote. Both only come from the repo's file. The credential is a file path, never a value: for `ssh://` and `user@host:path` remotes an SSH private key (used with `-i` and `IdentitiesOnly=yes`; the host must be in the guard user's `known_hosts`), for `https://` a file holding a token (sent as password with the user name `x-access-token`).
+**Repo settings.** `remote` is required and `credential` too, except for a local path or `file://` remote. Both only come from the repo's file. The credential is a file path, never a value: for `ssh://` and `user@host:path` remotes an SSH private key (used with `-i` and `IdentitiesOnly=yes`; the host must be in the guard user's `known_hosts`), for `https://` a file holding a token (sent as password with the user name `x-access-token`). Optional `known_hosts` (SSH remotes only) points to a known_hosts file for this remote instead of the guard user's own; either way an unknown or changed host key is refused (`StrictHostKeyChecking=yes`).
 
 **Wall settings** (`defaults.yaml` only): `agent.name` (required; in every log entry and warning), `agent.token_file` (password for `serve`), `notify.command` (argv list; gets the warning JSON on stdin), `state_dir` (default `<config>/state`), `pages_branch` (default `gh-pages`), `scanner.gitleaks`, `timeout` (per push, default `60s`), `forward.atomic` (default `true`).
 
@@ -153,7 +154,7 @@ A red push's commits are in `state_dir/pending/<repo>/<id>.bundle`; inspect them
 
 ## Limits
 
-- Tested live against GitHub over HTTPS only; GitLab and SSH remotes are covered by unit tests of the credential plumbing.
+- Tested live against GitHub over HTTPS, and over SSH against a local `sshd` the test starts itself (fresh host and user keys, wrong and unknown host key, unauthorized key). GitLab and Gitea are not tested yet.
 - `META-UNSIGNED` checks only that a signature is present (`gpgsig` header). The wall has no keyring, so it doesn't verify signatures; with fewer than `lookback` commits of history the rule stays quiet.
 - `CONTENT-PAGES-SCRIPT` looks at one added line at a time, so a tag split across lines is missed, and a host counts as known if its name appears anywhere in the old tree.
 - `push.jsonl` is read in full on every push; fine for now, it will need rotation or an index later.

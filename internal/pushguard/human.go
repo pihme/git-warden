@@ -152,6 +152,7 @@ func CheckConfig(ctx context.Context, configDir string, out io.Writer) error {
 			continue
 		}
 		exists("repos/"+name+": credential", cfg.Credential)
+		exists("repos/"+name+": known_hosts", cfg.KnownHosts)
 		if cfg.Credential != "" {
 			if st, err := os.Stat(cfg.Credential); err == nil && st.Mode().Perm()&0o077 != 0 {
 				fmt.Fprintf(out, "note: repos/%s: credential %s is readable by group or others\n", name, cfg.Credential)
@@ -177,7 +178,7 @@ func CheckConfig(ctx context.Context, configDir string, out io.Writer) error {
 
 // CheckRemote runs ls-remote against a repo's remote with its credential.
 func CheckRemote(ctx context.Context, cfg *config.Config) error {
-	remote, err := gitx.NewRemote(&gitx.Git{}, cfg.Remote, cfg.Credential)
+	remote, err := gitx.NewRemote(&gitx.Git{}, cfg.Remote, cfg.Credential, cfg.KnownHosts)
 	if err != nil {
 		return err
 	}

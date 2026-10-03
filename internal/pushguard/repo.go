@@ -74,7 +74,7 @@ func EnsureRepo(ctx context.Context, cfg *config.Config, binary string) (string,
 // agents fetch the remote's state through the guard and pushes start from it.
 func Sync(ctx context.Context, cfg *config.Config, path string) error {
 	g := &gitx.Git{Unset: []string{"GIT_DIR", "GIT_WORK_TREE"}}
-	remote, err := gitx.NewRemote(g.With("GIT_DIR="+path), cfg.Remote, cfg.Credential)
+	remote, err := gitx.NewRemote(g.With("GIT_DIR="+path), cfg.Remote, cfg.Credential, cfg.KnownHosts)
 	if err != nil {
 		return err
 	}
