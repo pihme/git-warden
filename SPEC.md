@@ -10,7 +10,7 @@ This file lists only what the implementation settled, added or changed relative 
 
 ## Layout and naming
 
-- **Monorepo, one binary per guard post.** `cmd/push-guard` now; `cmd/merge-guard` later. The package name `git-warden` is taken on npm, PyPI and crates.io, so binaries are named per guard post. Each binary gets its own release tag (`push-guard/vX.Y.Z`).
+- **Monorepo, one umbrella version.** `cmd/push-guard` is the only binary (the Pull Guard is git-everref). The package name `git-warden` is taken on npm, PyPI and crates.io, so the binary is named after its guard post. All of Git Warden shares one version and one tag, `vX.Y.Z`; the earlier `push-guard/vX.Y.Z` tags were replaced by `v0.1.0`.
 - **Decision core is a library without platform knowledge:** `internal/rules` (delta normalisation, deterministic rules, verdict). Around it: `internal/config` (load and merge), `internal/gitx` (git as a subprocess with timeouts and credential handling), `internal/journal` (`push.jsonl`), `internal/pushguard` (hook, forwarding, approvals, rate limit, streak, serve, replay).
 - **Two guard posts, no AI.** Push Guard and Pull Guard only; every decision is a deterministic rule.
 - **No Pull Guard binary.** The Pull Guard is a scheduled, pinned [git-everref](https://github.com/daojyun/git-everref) run (bridge mode, all branches and tags) into an append-only backup repo; it decides nothing. Missing everref features are contributed upstream rather than rebuilt here. Tooling to browse and restore the backup may come here later.

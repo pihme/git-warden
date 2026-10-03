@@ -1,12 +1,13 @@
 {
-  "_note": "Read by .github/scripts/release.py. One entry per released artifact (add more for extra binaries with their own tag). paths: only commits touching them count. build/assets: {name} and {ver} are replaced. The binary should expose the version via -X main.version.",
+  "_note": "Read by .github/scripts/release.py. Git Warden is one umbrella release with one version for all guard posts: a single component, tag vX.Y.Z. A new binary is added as another build command and asset of this component, not as a component of its own. paths: only commits touching them count. build/assets: {name} and {ver} are replaced. The binary should expose the version via -X main.version.",
   "components": [
     {
-      "name": "push-guard",
-      "paths": ["cmd/push-guard/", "internal/", "go.mod", "go.sum"],
-      "build": [["env", "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "go", "build", "-trimpath", "-ldflags", "-s -w -X main.version={ver}", "-o", "release-out/{name}-linux-amd64", "./cmd/push-guard"]],
-      "assets": ["release-out/{name}-linux-amd64", "LICENSE", "THIRD_PARTY_NOTICES.md"],
-      "notes": "### Install\n\nDownload `{name}-linux-amd64` below (`chmod +x`), or build from source as described in the README. The binary doesn't install anything: the wall host also needs `git` and `gitleaks` (see Requirements in the README). `LICENSE` and `THIRD_PARTY_NOTICES.md` are attached for the license notices."
+      "name": "git-warden",
+      "tag_prefix": "v",
+      "paths": ["cmd/", "internal/", "go.mod", "go.sum"],
+      "build": [["env", "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "go", "build", "-trimpath", "-ldflags", "-s -w -X main.version={ver}", "-o", "release-out/push-guard-linux-amd64", "./cmd/push-guard"]],
+      "assets": ["release-out/push-guard-linux-amd64", "LICENSE", "THIRD_PARTY_NOTICES.md"],
+      "notes": "### Install\n\nDownload `push-guard-linux-amd64` below (`chmod +x`), or build from source as described in the README. The binary doesn't install anything: the wall host also needs `git` and `gitleaks` (see Requirements in the README). The Pull Guard is a git-everref run and has no binary here. `LICENSE` and `THIRD_PARTY_NOTICES.md` are attached for the license notices."
     }
   ]
 }
