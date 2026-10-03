@@ -138,8 +138,10 @@ func CheckConfig(ctx context.Context, configDir string, out io.Writer) error {
 	} else if _, err := exec.LookPath(wall.NotifyCommand[0]); err != nil {
 		problems = append(problems, fmt.Sprintf("notify.command: %v", err))
 	}
-	if _, err := exec.LookPath(wall.Gitleaks); err != nil {
-		problems = append(problems, fmt.Sprintf("scanner.gitleaks: %v (every push would fail closed)", err))
+	if ready, err := Preflight(ctx, configDir, nil); err != nil {
+		problems = append(problems, err.Error())
+	} else {
+		fmt.Fprintf(out, "preflight ok: git %s, %d repo(s)%s\n", ready.Git, len(ready.Repos), describeGitleaks(ready.Gitleaks))
 	}
 	repos, err := config.Repos(configDir)
 	if err != nil {
@@ -148,7 +150,9 @@ func CheckConfig(ctx context.Context, configDir string, out io.Writer) error {
 	for _, name := range repos {
 		cfg, err := config.LoadRepo(configDir, name)
 		if err != nil {
-			problems = append(problems, err.Error())
+			if errors.Is(err, config.ErrUnknownRepo) { // other load errors are in the preflight's list
+				problems = append(problems, fmt.Sprintf("repos/%s: %v (no warden.yaml)", name, err))
+			}
 			continue
 		}
 		exists("repos/"+name+": credential", cfg.Credential)
@@ -158,13 +162,7 @@ func CheckConfig(ctx context.Context, configDir string, out io.Writer) error {
 				fmt.Fprintf(out, "note: repos/%s: credential %s is readable by group or others\n", name, cfg.Credential)
 			}
 		}
-		if _, err := exec.LookPath(cfg.Gitleaks); err != nil && cfg.Gitleaks != wall.Gitleaks {
-			problems = append(problems, fmt.Sprintf("repos/%s: scanner.gitleaks: %v", name, err))
-		}
 		fmt.Fprintf(out, "repo %s: remote %s\n", name, cfg.Remote)
-	}
-	if len(repos) == 0 {
-		fmt.Fprintln(out, "note: no repos configured (repos/<name>/warden.yaml)")
 	}
 	for _, p := range problems {
 		fmt.Fprintln(out, "problem: "+p)

@@ -151,6 +151,9 @@ func (r *run) main() (int, error) {
 	if err != nil {
 		return 1, err
 	}
+	if err := HookCheck(r.cfg); err != nil {
+		return 1, err
+	}
 	ctx, cancel := context.WithTimeout(r.ctx, r.cfg.Timeout)
 	defer cancel()
 	r.ctx = ctx

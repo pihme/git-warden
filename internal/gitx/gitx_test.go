@@ -77,3 +77,19 @@ func TestSSHCommand(t *testing.T) {
 		t.Fatal("known_hosts accepted for https")
 	}
 }
+
+func TestParseGitVersion(t *testing.T) {
+	for in, want := range map[string][2]int{
+		"git version 2.47.3\n":               {2, 47},
+		"git version 2.42.0.windows.1":       {2, 42},
+		"git version 2.39.5 (Apple Git-154)": {2, 39},
+	} {
+		major, minor, ok := ParseGitVersion(in)
+		if !ok || major != want[0] || minor != want[1] {
+			t.Errorf("ParseGitVersion(%q) = %d.%d %v", in, major, minor, ok)
+		}
+	}
+	if _, _, ok := ParseGitVersion("hello"); ok {
+		t.Error("parsed garbage")
+	}
+}

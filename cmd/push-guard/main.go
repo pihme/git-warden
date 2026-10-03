@@ -161,6 +161,9 @@ func initRepo(ctx context.Context, configDir, repo string, out io.Writer) error 
 	if err != nil {
 		return err
 	}
+	if _, err := pushguard.Preflight(ctx, configDir, []string{repo}); err != nil {
+		return err
+	}
 	exe, err := self()
 	if err != nil {
 		return err
@@ -225,7 +228,7 @@ func serve(ctx context.Context, configDir, listen string, logw io.Writer) error 
 	srv := &http.Server{Addr: listen, Handler: s, ReadHeaderTimeout: 30 * time.Second}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	fmt.Fprintf(logw, "push-guard %s serving on %s\n", version, listen)
+	fmt.Fprintf(logw, "push-guard %s: preflight ok (%s); serving on %s\n", version, s.Summary, listen)
 	select {
 	case err := <-errc:
 		return err

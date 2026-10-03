@@ -51,15 +51,15 @@ type Guard struct {
 }
 
 // Preflight checks everything a run needs before anything is touched:
-// git, the everref binary (and its version, if pinned in defaults.yaml) and
-// at least one configured repo. Any failure is fatal: the Pull Guard fails
+// git (2.42 or newer), the everref binary (and its version, if pinned in
+// defaults.yaml) and at least one configured repo. Any failure is fatal: the Pull Guard fails
 // closed rather than pretending a backup happened.
 func Preflight(ctx context.Context, configDir string, out io.Writer) (*Guard, []string, error) {
 	d, err := LoadDefaults(configDir)
 	if err != nil {
 		return nil, nil, err
 	}
-	if _, err := lookGit(); err != nil {
+	if _, _, err := gitx.CheckGit(ctx); err != nil { // the same git check as the Push Guard's
 		return nil, nil, err
 	}
 	bin, version, err := FindEverref(ctx, d.Everref, d.EverrefVersion)

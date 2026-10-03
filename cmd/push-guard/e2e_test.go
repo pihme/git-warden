@@ -339,10 +339,10 @@ func TestSecretIsRed(t *testing.T) {
 }
 
 func TestMissingScannerFailsClosed(t *testing.T) {
-	e := setup(t, "CONTENT-SECRET: {enabled: true}")
+	e := setup(t, "")
+	// gitleaks disappears (or is misconfigured) after the guard repo was set up
 	cfg := filepath.Join(e.config, "repos", repoName, "warden.yaml")
-	data, _ := os.ReadFile(cfg)
-	os.WriteFile(cfg, append(data, []byte("scanner: {gitleaks: /nonexistent/gitleaks}\n")...), 0o644)
+	os.WriteFile(cfg, []byte("remote: "+e.remote.Dir+"\nscanner: {gitleaks: /nonexistent/gitleaks}\nrules:\n  CONTENT-SECRET: {enabled: true}\n"), 0o644)
 	e.agent.Commit("docs", map[string]string{"README.md": "x\n"})
 	out := e.mustReject("origin", "main")
 	assertContains(t, out, "internal error, try again later")
@@ -352,6 +352,17 @@ func TestMissingScannerFailsClosed(t *testing.T) {
 	}
 	if len(e.warnings()) != 0 {
 		t.Fatal("internal error warned as a violation")
+	}
+	if !strings.Contains(p.Error, "preflight: gitleaks not found") {
+		t.Fatalf("hook did not fail in its preflight: %s", p.Error)
+	}
+	// init-repo and serve refuse to start at all
+	if out, err := exec.Command(binary, "init-repo", "--config", e.config, repoName).CombinedOutput(); err == nil ||
+		!strings.Contains(string(out), "gitleaks not found") {
+		t.Fatalf("init-repo without gitleaks: %v\n%s", err, out)
+	}
+	if _, err := pushguard.NewServer(e.config, binary); err == nil || !strings.Contains(err.Error(), "gitleaks not found") {
+		t.Fatalf("serve without gitleaks: %v", err)
 	}
 }
 

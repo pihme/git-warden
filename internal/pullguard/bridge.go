@@ -36,14 +36,6 @@ func BridgePath(stateDir, name string) string {
 	return bridge
 }
 
-func lookGit() (string, error) {
-	p, err := exec.LookPath("git")
-	if err != nil {
-		return "", fmt.Errorf("git not found: %w", err)
-	}
-	return p, nil
-}
-
 // ensureBridge creates or checks the bridge clone (remote origin = the
 // repo's remote, remote backup = the local backup repo) and enables bridged
 // tags. A bridge whose origin points elsewhere than the configuration is an

@@ -1,6 +1,7 @@
 package pushguard
 
 import (
+	"context"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -21,14 +22,17 @@ type Server struct {
 	ConfigDir  string
 	HookBinary string // absolute path of push-guard, written into the hooks
 	Log        *log.Logger
+	Summary    string // what the preflight found, for the start-up log
 }
 
-// NewServer checks the wall configuration and prepares a server.
+// NewServer runs the Preflight (wall configuration, repos and their rules,
+// git, gitleaks) and prepares a server; any problem stops serve from starting.
 func NewServer(configDir, hookBinary string) (*Server, error) {
-	wall, err := config.Load(configDir)
+	ready, err := Preflight(context.Background(), configDir, nil)
 	if err != nil {
 		return nil, err
 	}
+	wall := ready.Wall
 	if wall.AgentTokenFile == "" {
 		return nil, errors.New("serve needs agent.token_file in defaults.yaml")
 	}
@@ -39,7 +43,8 @@ func NewServer(configDir, hookBinary string) (*Server, error) {
 		return nil, fmt.Errorf("hook binary must be an absolute path: %s", hookBinary)
 	}
 	abs, _ := filepath.Abs(configDir)
-	return &Server{ConfigDir: abs, HookBinary: hookBinary, Log: log.New(os.Stderr, "push-guard: ", log.LstdFlags)}, nil
+	return &Server{ConfigDir: abs, HookBinary: hookBinary, Log: log.New(os.Stderr, "push-guard: ", log.LstdFlags),
+		Summary: fmt.Sprintf("git %s, %d repo(s)%s", ready.Git, len(ready.Repos), describeGitleaks(ready.Gitleaks))}, nil
 }
 
 func readToken(path string) (string, error) {
