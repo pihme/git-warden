@@ -320,6 +320,9 @@ func TestYellowStreakBecomesRed(t *testing.T) {
 
 func TestSecretIsRed(t *testing.T) {
 	if _, err := exec.LookPath("gitleaks"); err != nil {
+		if os.Getenv("GITLEAKS_REQUIRED") != "" {
+			t.Fatal("gitleaks not on PATH but GITLEAKS_REQUIRED is set")
+		}
 		t.Skip("gitleaks not on PATH")
 	}
 	e := setup(t, "CONTENT-SECRET: {enabled: true}")

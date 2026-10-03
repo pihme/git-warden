@@ -29,7 +29,7 @@ Requirements on the wall host: Go 1.24+ to build, `git` (2.42 or newer), and [gi
 
 ```bash
 go build -o push-guard ./cmd/push-guard
-go test ./...      # offline; the secret-scan tests are skipped without gitleaks
+go test ./...      # offline; secret-scan tests skip without gitleaks (CI pins one)
 ```
 
 Releases attach a static `push-guard-linux-amd64` binary.

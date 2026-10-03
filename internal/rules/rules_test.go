@@ -425,6 +425,9 @@ func TestMissingScannerFailsClosed(t *testing.T) {
 
 func TestContentSecret(t *testing.T) {
 	if _, err := exec.LookPath("gitleaks"); err != nil {
+		if os.Getenv("GITLEAKS_REQUIRED") != "" {
+			t.Fatal("gitleaks not on PATH but GITLEAKS_REQUIRED is set")
+		}
 		t.Skip("gitleaks not on PATH")
 	}
 	f := newFixture(t, "")
