@@ -1,0 +1,33 @@
+# Commit prefixes follow the release rules in AGENTS.md (.github/scripts/release.py):
+#   runtime deps and shipped Docker base images -> fix(deps): patch release
+#   dev deps -> chore(deps-dev), GitHub Actions -> ci(deps), unshipped images -> chore(deps): no release
+# Never reword a Dependabot title into feat! (see AGENTS.md).
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    commit-message:
+      prefix: fix
+      include: scope
+    groups:
+      go-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]
