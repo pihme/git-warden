@@ -1,8 +1,8 @@
 # Push Guard: rules and reasoning
 
-The reasoning behind every Push Guard rule. The user-facing summary (rule table, configuration, commands) is in the [README](../README.md); what the implementation settled or changed is in [SPEC.md](../SPEC.md). Related: [design.md](design.md) (all three guard posts; the Push Guard is stage 1), [risks.md](risks.md) (risk IDs R1–R22).
+The reasoning behind every Push Guard rule. The user-facing summary (rule table, configuration, commands) is in the [README](../README.md); what the implementation settled or changed is in [SPEC.md](../SPEC.md). Related: [design.md](design.md) (both guard posts; the Push Guard is stage 1), [risks.md](risks.md) (risk IDs R1–R22).
 
-Focus for now: only the Push Guard, only deterministic rules. **The Push Guard has no AI judge at all:** it has to decide fast, pass or fail, while the push is running. The judge only comes in with the Merge Guard, which has more time and more context; the Pull Guard has no judge either. No LLM, no platform API, nothing but Git. Every rule below can be decided from the pushed objects and the remote's current refs alone, with the same result every time.
+Focus for now: only the Push Guard, only deterministic rules. **No AI at all:** the Push Guard has to decide fast, pass or fail, while the push is running, and the same input must always give the same answer. No LLM, no platform API, nothing but Git. Every rule below can be decided from the pushed objects and the remote's current refs alone, with the same result every time.
 
 ## Assumption: one Push Guard per agent
 
@@ -258,7 +258,7 @@ A human never confirms a rejection, they only overrule it by approving the SHA; 
 
 ## Not mechanical, so not here
 
-Checking new dependencies against the registry (exists? how old? downloads?, R17) needs network access and a registry; it comes later as its own rule source. Anything that needs judgement (does the commit message match the code? is this a backdoor?) belongs to the judge in the Merge Guard.
+Checking new dependencies against the registry (exists? how old? downloads?, R17) needs network access and a registry; it comes later as its own rule source. Anything that needs judgement (does the commit message match the code? is this a backdoor?) is **not covered** by Git Warden; see [risks.md](risks.md#coverage-by-git-warden).
 
 ## Human actions
 

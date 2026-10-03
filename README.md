@@ -1,10 +1,10 @@
 # Git Warden
 
-Git Warden puts guard posts between AI agents and their Git remote, whether that is GitHub, GitLab, Gitea/Forgejo or a bare repo over SSH. This monorepo will hold all parts; the first one is the **Push Guard**: agents push to it instead of the remote, it checks every push with deterministic rules while the push is running, and only it holds a write credential for the remote. A clean push is forwarded with exactly the checked SHAs; a `yellow` finding goes back to the agent with a message it can act on; a `red` finding is rejected without details and waits for a human.
+Git Warden puts guard posts between AI agents and their Git remote, whether that is GitHub, GitLab, Gitea/Forgejo or a bare repo over SSH. It has two guard posts. The **Push Guard**, built here: agents push to it instead of the remote, it checks every push with deterministic rules while the push is running, and only it holds a write credential for the remote. A clean push is forwarded with exactly the checked SHAs; a `yellow` finding goes back to the agent with a message it can act on; a `red` finding is rejected without details and waits for a human. The **Pull Guard** is a scheduled [git-everref](https://github.com/daojyun/git-everref) run that keeps every branch and tag in an append-only backup. Neither uses AI: every decision is a deterministic rule.
 
 ## Status
 
-First batch: the Push Guard only (`push-guard`). All rules of the spec, the pre-receive hook, the HTTP server, the human commands and `replay` are implemented and covered by offline tests against real temporary Git repositories, plus a live test in CI against GitHub over HTTPS and an SSH test against a local `sshd` (see [Limits](#limits)). It is **not in production use yet**. The Merge Guard comes later as `cmd/merge-guard`. The Pull Guard needs no code here: it is a scheduled, pinned [git-everref](https://github.com/daojyun/git-everref) run that keeps every branch and tag of the remote in an append-only backup. Design: [docs/design.md](docs/design.md) (threat model: [docs/risks.md](docs/risks.md)); what the implementation settled: [SPEC.md](SPEC.md).
+The Push Guard (`push-guard`) is built. All rules of the spec, the pre-receive hook, the HTTP server, the human commands and `replay` are implemented and covered by offline tests against real temporary Git repositories, plus a live test in CI against GitHub over HTTPS and an SSH test against a local `sshd` (see [Limits](#limits)). It is **not in production use yet**. The Pull Guard needs no code here: it is a scheduled, pinned git-everref run on a backup host. Design: [docs/design.md](docs/design.md); threat model and what Git Warden does **not** cover: [docs/risks.md](docs/risks.md#coverage-by-git-warden); what the implementation settled: [SPEC.md](SPEC.md).
 
 ## How it works
 
@@ -170,7 +170,7 @@ A red push's commits are in `state_dir/pending/<repo>/<id>.bundle`; inspect them
 - `CONTENT-PAGES-SCRIPT` looks at one added line at a time, so a tag split across lines is missed, and a host counts as known if its name appears anywhere in the old tree.
 - `push.jsonl` is read in full on every push; fine for now, it will need rotation or an index later.
 - One Push Guard per agent: `agent.name` is per installation, and rate limits count all pushes of that installation.
-- No registry checks for new dependencies (slopsquatting, [R17](docs/risks.md#4-agent-specific-vectors)) and no AI judge: the Push Guard is rules only.
+- No registry checks for new dependencies (slopsquatting, [R17](docs/risks.md#4-agent-specific-vectors)) and no AI: the Push Guard is rules only, with no semantic code review (see [what is not covered](docs/risks.md#coverage-by-git-warden)).
 
 ## License
 

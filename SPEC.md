@@ -2,9 +2,9 @@
 
 The design is in `docs/`:
 
-- [docs/design.md](docs/design.md): the three guard posts (Push Guard, Merge Guard, Pull Guard), the shared decision core, the policy (`red` goes to a human, `yellow` is the agent's job) and the risk coverage per guard post.
+- [docs/design.md](docs/design.md): the two guard posts (Push Guard, Pull Guard), the decision core, the policy (`red` goes to a human, `yellow` is the agent's job) .
 - [docs/push-guard-rules.md](docs/push-guard-rules.md): the Push Guard's rules with their reasoning, verdicts, configuration, repos, layout on the wall, human actions, statistics.
-- [docs/risks.md](docs/risks.md): the risk register R1–R22 the other documents refer to.
+- [docs/risks.md](docs/risks.md): the risk register R1–R22 the other documents refer to, and per risk what Git Warden covers and what it doesn't.
 
 This file lists only what the implementation settled, added or changed relative to that design; where they differ, this file wins. Decisions here are settled; reopen them only with a reason (see `docs/agents/domain.md`).
 
@@ -12,7 +12,7 @@ This file lists only what the implementation settled, added or changed relative 
 
 - **Monorepo, one binary per guard post.** `cmd/push-guard` now; `cmd/merge-guard` later. The package name `git-warden` is taken on npm, PyPI and crates.io, so binaries are named per guard post. Each binary gets its own release tag (`push-guard/vX.Y.Z`).
 - **Decision core is a library without platform knowledge:** `internal/rules` (delta normalisation, deterministic rules, verdict). Around it: `internal/config` (load and merge), `internal/gitx` (git as a subprocess with timeouts and credential handling), `internal/journal` (`push.jsonl`), `internal/pushguard` (hook, forwarding, approvals, rate limit, streak, serve, replay).
-- **The Push Guard has no AI judge.** Rules only. The judge is used by the Merge Guard only.
+- **Two guard posts, no AI.** Push Guard and Pull Guard only; every decision is a deterministic rule.
 - **No Pull Guard binary.** The Pull Guard is a scheduled, pinned [git-everref](https://github.com/daojyun/git-everref) run (bridge mode, all branches and tags) into an append-only backup repo; it decides nothing. Missing everref features are contributed upstream rather than rebuilt here. Tooling to browse and restore the backup may come here later.
 
 ## Configuration

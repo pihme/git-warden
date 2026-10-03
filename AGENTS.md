@@ -21,7 +21,7 @@ Go 1.24 (`go.mod`), one dependency (`gopkg.in/yaml.v3`). At runtime: `git` 2.42+
 - `internal/testutil/`: helpers for tests with real temporary Git repos.
 - `examples/warden/`: example wall configuration (placeholder remote and credential).
 - `docs/`: design, Push Guard rule reasoning, risk register; `docs/agents/` holds the agent working docs.
-- Later: `cmd/merge-guard/`, sharing `internal/rules`. The Pull Guard is a scheduled git-everref run, not a binary here.
+- The Pull Guard is a scheduled git-everref run, not a binary here. There are exactly two guard posts.
 
 Invariants that must not break:
 
@@ -79,7 +79,7 @@ No website yet.
 
 ## Do not invent
 
-- **No AI judge in the Push Guard.** Rules only; the judge belongs to the Merge Guard only.
+- **No AI anywhere.** No AI judge, reviewer or LLM call in any guard post; decisions are deterministic rules. No third guard post (no PR or merge check).
 - **No own Pull Guard backup format or binary.** The Pull Guard is git-everref (pinned); gaps go upstream as issues/PRs, not into a parallel implementation here.
 - **No platform API in the Push Guard or the core.** Plain Git only; no GitHub/GitLab clients, no rules for protected branches (the remote's job).
 - **No author/committer identity rules**; agent identity comes from the push credential.

@@ -1,6 +1,6 @@
 # Risks: an AI agent with push access
 
-What can an AI agent that may push to a repository break, and which of that can be repaired? This is the threat model behind Git Warden. The guard posts and how far each one covers each risk are in [design.md](design.md#risk-coverage-per-guard-post).
+What can an AI agent that may push to a repository break, and which of that can be repaired? This is the threat model behind Git Warden. How far Git Warden's two guard posts (Push Guard, Pull Guard) cover each risk, including what they **don't** cover, is in [Coverage by Git Warden](#coverage-by-git-warden).
 
 **Risk IDs** (R1–R22) are stable: they are never renumbered, new risks are only appended at the end. The rest of the docs refer to them by ID. Overview: [Risk register](#risk-register). Research as of October 2026.
 
@@ -60,44 +60,44 @@ This gives three risks:
 
 - **R19 – Naive mirrors mirror the destruction.** A pull mirror takes over force updates and deletes refs that were deleted upstream; Forgejo explicitly processes force updates and ref deletions on sync ([Forgejo repository mirrors](https://forgejo.org/docs/latest/user/repo-mirror/)). Gitea Mirror writes that after a force push the old history in Gitea is replaced "with no way to get it back" unless the protection is active ([Gitea Mirror: Force-Push Protection](https://gitea-mirror.raylabs.io/docs/force-push-protection/)). A backup that syncs blindly is worthless for R1/R2.
 - **R20 – Compromised review/bot service with write access.** Kudelski Security got code execution on CodeRabbit's servers via a prepared `.rubocop.yml` in a PR, and with it the GitHub App's private key – write access to around 1 million repos, including private ones ([Kudelski](https://kudelskisecurity.com/research/how-we-exploited-coderabbit-from-a-simple-pr-to-rce-and-write-access-on-1m-repositories), [CodeRabbit statement](https://www.coderabbit.ai/blog/our-response-to-the-january-2025-kudelski-security-vulnerability-disclosure-action-and-continuous-improvement)). Every guard that holds write access is itself a target.
-- **R21 – AI gatekeepers can be persuaded.** With iteratively refined PR metadata, re-introducing known vulnerabilities against Claude Code and CodeRabbit review pipelines succeeded in 32 of 33 cases (97 %; 17/17 Claude Code, 15/16 CodeRabbit); attackers can practise locally against a copy of the pipeline, defenders get only one try ([arXiv:2603.18740](https://arxiv.org/abs/2603.18740)). SEVRA-Bench showed 8 review agents to be susceptible to social engineering narratives, much more so for weaker models ([arXiv:2606.13757](https://arxiv.org/abs/2606.13757)); GitInject found all four tested AI providers vulnerable to at least one attack class in default workflows ([arXiv:2606.09935](https://arxiv.org/abs/2606.09935)). Anthropic itself warns that `claude-code-security-review` is not hardened against prompt injection ([README](https://github.com/anthropics/claude-code-security-review)). Details and countermeasures: [R21 in detail](#r21-in-detail-how-ai-gatekeepers-were-persuaded).
+- **R21 – AI gatekeepers can be persuaded.** With iteratively refined PR metadata, re-introducing known vulnerabilities against Claude Code and CodeRabbit review pipelines succeeded in 32 of 33 cases (97 %; 17/17 Claude Code, 15/16 CodeRabbit); attackers can practise locally against a copy of the pipeline, defenders get only one try ([arXiv:2603.18740](https://arxiv.org/abs/2603.18740)). SEVRA-Bench showed 8 review agents to be susceptible to social engineering narratives, much more so for weaker models ([arXiv:2606.13757](https://arxiv.org/abs/2606.13757)); GitInject found all four tested AI providers vulnerable to at least one attack class in default workflows ([arXiv:2606.09935](https://arxiv.org/abs/2606.09935)). Anthropic itself warns that `claude-code-security-review` is not hardened against prompt injection ([README](https://github.com/anthropics/claude-code-security-review)). Details, and what Git Warden does about each technique: [R21 in detail](#r21-in-detail-how-ai-gatekeepers-were-persuaded).
 - **R22 – Non-Git data.** Issues, PR discussions, releases with assets, wiki settings and repo settings are not in the Git object store. `git clone --mirror` doesn't back them up; that needs API exports such as [python-github-backup](https://github.com/josegonzalez/python-github-backup), and according to its README even those can't be restored faithfully.
 
 ### R21 in detail: how AI gatekeepers were persuaded
 
-Documented cases only. "Countermeasure" refers to the [shared decision core](design.md#shared-decision-core) of Git Warden (judge in the Merge Guard only).
+Documented cases only. These are attacks on **AI** reviewers and gatekeepers. Git Warden uses no AI to decide anything, so most of them have no target in Git Warden itself, but they hit any AI reviewer you run next to it unchanged. Under each technique, "Git Warden" says what its deterministic rules do about it, or **Not covered**.
 
 **T1 – Plausible technical justification, refined offline.** Alexopoulos et al. ([arXiv:2603.18740](https://arxiv.org/abs/2603.18740), v4 of 2026-09-23) revert fixes for 33 real CVEs in 20 projects and submit them as PRs – against Claude Code and CodeRabbit review pipelines rebuilt in isolation. Two strategies:
 - **Templates** (after Moon et al.: *authority* "written by an expert", *self-correctness* "correct", *misleading* false purpose) almost never worked: across 264 combinations, a template helped only once, not reproducibly; sometimes it **backfired** because the contradiction between claim and diff stood out.
 - **LLM-assisted refinement:** a coding agent writes a factual-sounding PR description (explicitly *without* appeals to authority), adapts comments/commit message to the repo's guidelines and revises them up to ten times based on the review feedback of a local copy of the pipeline. Result: 17/17 against Claude Code, 15/16 against CodeRabbit (32/33 = 97 %). Example strapi: a false "proof" that authorisation applies regardless of query parameters – exactly the property the removed code ensured.
 - **Cross-check:** removing the PR description recovered 16 of the 32 cases; additionally removing commit message and comments recovered 12 of the remaining 16; the rest already failed without any text. For CodeRabbit, commit message and code comments had the most effect.
-- *Countermeasure:* pass A without metadata and without newly added comments, pass B with narrative; disagreement → `hold`. *Limit:* cases the model misses even without text; the attacker can practise against a publicly known setup.
+- *Git Warden:* PR and commit texts never change a verdict. **Not covered:** whether the code itself reintroduces a vulnerability; that needs a semantic review Git Warden doesn't do.
 
 **T2 – Unverifiable external context and social engineering.** [SEVRA-Bench](https://arxiv.org/abs/2606.13757) (1,062 adversarial PRs from real fixes of the MITRE top 10 CWEs, 15 framings, 8 review agents in an isolated Gitea): most effective were justifications the reviewer can't check – "Dependency Compatibility Claim", "Prior Approval Signal" (supposedly already approved), "Review Bias"; repo-related explanations produced "unverified deference". Directly checkable contradictions were often caught. Weaker agents fell below a 35 % rejection rate; the strongest (including Claude Opus 4.7, GPT-5.5, GLM-5) mostly rejected.
-- *Countermeasure:* approvals only count from the warden's own authenticated log; the core checks compatibility/dependency claims deterministically (lockfile diff, registry); instruction "unverifiable claims weigh zero"; strong model. *Limit:* model choice and budget.
+- *Git Warden:* approvals only count from the warden's own log on the wall host; lockfile and manifest changes are `yellow`. **Not covered:** judging whether a claimed justification is true.
 
 **T3 – Direct instructions in PR, issue or commit text.** [GitInject](https://arxiv.org/abs/2606.09935) (real GitHub workflows, four providers): a fake "internal audit note" in the PR text, instructing the reviewer to approve and not to report comparison operators, worked against `codex-pr-review` and `gemini-assistant`; `claude-pr-review` resisted. Aikido's [PromptPwnd](https://www.aikido.dev/blog/promptpwnd-github-actions-ai-agents) (Dec 2025): issue texts, PR descriptions and commit messages end up in prompts of agents with tools like `gh issue edit`; affected were, among others, Google's Gemini CLI repo (patched within four days) and, according to Aikido, at least five Fortune 500 companies.
-- *Countermeasure:* the judge has no tools and no token – there is nothing to abuse; output only as fixed JSON; the judge treats text addressed to reviewers/AI as a reason for `hold`. *Limit:* detecting "addressed to the AI" is heuristic.
+- *Git Warden:* no model reads the texts, so there is nothing to instruct. **Not covered:** instructions aimed at other AI tools that read the repo later.
 
 **T4 – Configuration files as operator instructions.** GitInject: a PR adds `CLAUDE.md`, `AGENTS.md` or `GEMINI.md`; the CLI loads it before the review as operator instructions. Example: a CSRF module compares tokens with `==` instead of `hmac.compare_digest` (timing oracle), and an included `CLAUDE.md` says not to report comparison operators in security utilities, "a separate security team checks that" – Claude followed exactly that. According to the paper there is no cheap workflow fix (path filters can be bypassed); author filters or a human are needed. Related: Pillar's ["Rules File Backdoor"](https://www.pillar.security/blog/new-vulnerability-in-github-copilot-and-cursor-how-hackers-can-weaponize-code-agents) (March 2025) hides instructions in Cursor/Copilot rule files.
-- *Countermeasure:* the judge never runs in a repo checkout and loads no repo configuration; changes to agent configurations are `red`. *Limit:* trade-off with repos where agents maintain `AGENTS.md` (see [design.md](design.md#rules-excerpt)).
+- *Git Warden:* changes to agent configurations (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.cursor/rules/`, Copilot instructions) are `red` by default. *Limit:* a repo where agents maintain `AGENTS.md` may move these paths to `yellow` (see [design.md](design.md#rules-excerpt)).
 
 **T5 – Invisible or hidden content.** [CamoLeak](https://www.legitsecurity.com/blog/camoleak-critical-github-copilot-vulnerability-leaks-private-source-code) (Legit Security, CVSS 9.6): instructions in invisible Markdown comments of a PR; Copilot Chat followed them with the user's permissions and exfiltrated via an "alphabet" of pre-signed Camo image URLs; GitHub switched off image rendering in Copilot Chat on 2025-08-14 ([The Register](https://www.theregister.com/special-features/2025/10/09/github-patches-copilot-chat-flaw-that-could-leak-secrets/880245)). Pillar: zero-width joiners and bidi markers hide instructions; since 2025-05-01 GitHub shows a warning for hidden Unicode. [Trail of Bits](https://blog.trailofbits.com/2025/08/06/prompt-injection-engineering-for-attackers-exploiting-github-copilot/): payload in an HTML tag, invisible in the GitHub UI. AWS confirmed "invisible prompt injection" in Amazon Q ([AWS-2025-019](https://aws.amazon.com/security/security-bulletins/AWS-2025-019/)).
-- *Countermeasure:* normalisation before the LLM: invisible/bidi characters → `red`; HTML comments made visible and marked; judge output without links/images, no rendering, no network except the LLM origin. *Limit:* steganography in normal-looking text.
+- *Git Warden:* invisible and bidi characters are `red` (`CONTENT-INVISIBLE`). **Not covered:** instructions hidden in HTML comments or in normal-looking text.
 
 **T6 – Using the reviewer as an exfiltration channel.** Invariant Labs ([GitHub MCP](https://invariantlabs.ai/blog/mcp-github-vulnerability)) and CamoLeak: the tool had more permissions than the task needed. GitInject: token exfiltration via configuration files plus shell tools (minimum protection according to the paper: `persist-credentials: false` + tool restriction).
-- *Countermeasure:* the judge has no permissions and only sees the delta package. *Limit:* for private repos, the delta flows to the LLM provider.
+- *Git Warden:* no reviewer with permissions exists in Git Warden, and nothing is sent to a model provider. **Not covered:** AI reviewers you run elsewhere.
 
 **T7 – Availability / denial of wallet.** GitInject: a PR text at GitHub's limit (65,536 characters) yields ≈ 22,100 input tokens and costs the victim about $1.11 per PR, a two-hour campaign $32–111. As a *hypothesis* (not confirmed), the paper mentions getting the API key suspended by provoking policy violations, which would silently switch off the gate.
-- *Countermeasure:* size limit before the LLM, budget; both lead to `hold`, never to "wave through". *Limit:* a flood of `hold`s tires the human.
+- *Git Warden:* no LLM cost. Size and rate limits (`SIZE-*`, `RATE-*`) bound what a push can make the guard do; a flood of `red` pushes can still tire the human.
 
 **T8 – Splitting and hiding outside the checked surface.** So far documented only against **human** reviewers: in xz-utils (CVE-2024-3094), part of the backdoor was "solely in the distributed tarballs", not in the Git repo, the rest obfuscated in test files ([oss-security, A. Freund](https://www.openwall.com/lists/oss-security/2024/03/29/4)). We did **not find** a study that specifically tests splitting across many commits against AI reviewers – plausible, but unproven.
-- *Countermeasure:* the core judges the cumulative diff since the last state confirmed by a human; binary files (also in test directories) are `yellow`. *Limit:* the warden doesn't see release artefacts that differ from the tag (reproducible builds would be needed).
+- *Git Warden:* path and content rules run over the cumulative diff, so splitting across commits doesn't help; binary files (also in test directories) are `yellow`. **Not covered:** release artefacts that differ from the tag (reproducible builds would be needed).
 
 **T9 – Code obfuscation.** Base64 payloads, `eval`, renamings. We did **not find** a solid study specifically on the effect on AI reviewers – marked as unproven.
-- *Countermeasure:* deterministic heuristics (long literals, `eval`/`exec`, network in install scripts) → `yellow`.
+- *Git Warden:* long base64/hex literals are `yellow` (`CONTENT-BLOB`). **Not covered:** `eval`/`exec` and other obfuscation in normal-looking code.
 
-**Common lesson:** all sources see the problem as structural, not as a weakness of one particular model. An AI gatekeeper must therefore not be the last instance for `red` cases; it is an additional source of alarms.
+**Common lesson:** all sources see the problem as structural, not as a weakness of one particular model. An AI gatekeeper must not be the last instance for anything that matters. Git Warden therefore has none: its rules are deterministic and a human decides on `red`.
 
 ## 5. What can be recovered – and what can't
 
@@ -154,3 +154,36 @@ Documented cases only. "Countermeasure" refers to the [shared decision core](des
 | R20 | Compromised review/bot service with write access | 4a |
 | R21 | AI gatekeepers can be persuaded | 4a |
 | R22 | Non-Git data (issues, PRs, releases, settings) | 4a |
+
+## Coverage by Git Warden
+
+Git Warden has two guard posts: the **Push Guard** (deterministic rules on every agent push) and the **Pull Guard** (a scheduled git-everref backup that preserves, but decides nothing). Neither uses AI, and nothing checks pull requests, CI results or changes by writers who don't go through the Push Guard.
+
+Legend: **✅** prevents (Push) or preserves (Pull) · **◐** partly · **–** no. Status: **Covered**, **Partly** or **Not covered**. Push Guard values apply **only if agents have no other write credential for the remote**.
+
+| ID | Risk | Push | Pull | Status | Reasoning |
+| --- | --- | --- | --- | --- | --- |
+| R1 | Destroying history | ✅ | ✅ | Covered | Non-FF and delete are `red` for agents; the Pull Guard preserves against other writers and stolen tokens. |
+| R2 | Deleting or damaging code | ◐ | ✅ | Covered | Preserved by the backup; prevented only for mass deletion. |
+| R3 | Subtle bugs and backdoors | ◐ | – | Partly | Only what rules see: lockfiles, manifests, build files, binaries, long literals. **Not covered:** semantic review of the code, and changes by other writers or through PRs. |
+| R4 | Secrets in commits | ◐ | – | Partly | gitleaks over every new commit before forwarding: recognisable formats never reach the remote; scanner gaps remain. |
+| R5 | Licence | ◐ | – | Partly | A `LICENSE` change is `red`. **Not covered:** copied-in third-party code. |
+| R6 | Spam | ✅ | – | Covered | Rate limit per agent; the agents' PR-only token allows no issues. PR texts and comments are out of scope. |
+| R7 | CI/CD workflows | ✅ | – | Partly | Workflow changes are `red` for agents, plus an App without `workflows` permission. **Not covered:** workflow changes by other writers or in PRs from forks. |
+| R8 | Moving tags | ✅ | ✅ | Covered | Tag moves are `red`; the Pull Guard keeps old tags. |
+| R9 | Releases and packages | ◐ | – | Partly | The agents' PR-only token can't create releases. **Not covered:** package registries. |
+| R10 | Dependency confusion | ◐ | – | Partly | Registry configuration and manifest changes are `yellow`. **Not covered:** resolution at build time. |
+| R11 | GitHub Pages | ◐ | – | Partly | Pages pushes are checked (new external scripts are `yellow`). **Not covered:** subtle phishing content. |
+| R12 | Token reach | ✅ | – | Covered | By architecture: an agent only pushes to repos assigned to it, the write credential stays on the wall. |
+| R13 | Settings, visibility, access | ✅ | – | Covered | By architecture: the agents' token can only open PRs. Settings themselves are out of scope. |
+| R14 | Exfiltration | ◐ | – | Partly | No gists or repos without a token. **Not covered:** network exfiltration (the wall's job) and data in PR texts. |
+| R15 | Prompt injection of the working agent | ◐ | – | Partly | The cause lies outside; its consequences in the repo go through the rules. |
+| R16 | Local CLIs, token theft | ◐ | – | Partly | No write token left on the agents' machine. **Not covered:** malware on that machine. |
+| R17 | Slopsquatting | ◐ | – | Partly | Manifest and lockfile changes are `yellow`. **Not covered:** a registry check of new dependencies (not built). |
+| R18 | Mistakes without an attacker | ✅ | ✅ | Covered | Prevented or preserved for Git. **Not covered:** databases and cloud resources. |
+| R19 | Naive mirrors | – | ✅ | Covered | The Pull Guard's purpose. |
+| R20 | Compromised bot with write access | ◐ | ✅ | Partly | The Push Guard holds a write credential and is itself a target (per repo, contents only); the Pull Guard is read-only. |
+| R21 | AI gatekeepers can be persuaded | – | – | Not covered | Git Warden has no AI gatekeeper, so there is none to persuade; AI reviewers you run next to it stay exposed. See [R21 in detail](#r21-in-detail-how-ai-gatekeepers-were-persuaded). |
+| R22 | Non-Git data | ◐ | – | Partly | The agents' PR-only token can't touch issues or releases. **Not covered:** a backup of issues, PRs and releases. |
+
+**Honestly:** the Push Guard lifts R1, R7, R8, R12 and R13 from "detect" to "prevent" only because agents no longer have their own write credential for the remote. That is half architecture and only half verdict.
