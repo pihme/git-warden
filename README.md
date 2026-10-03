@@ -196,6 +196,18 @@ backup-guard run --config /etc/warden-backup [repo...]     # from a timer, e.g. 
 - No registry checks for new dependencies (slopsquatting, [R17](SPEC.md#4-agent-specific-vectors)) and no AI: the Push Guard is rules only, with no semantic code review (see [what is not covered](SPEC.md#coverage-by-git-warden)).
 - The Backup Guard only sees the states present at its runs: a state that exists only between two runs, or history rewritten before the first run, is not in the backup. everref v1.0.0 runs one `ls-remote` per new branch and one push per recorded event, so very large, busy repos are too slow for it for now. LFS objects and submodule targets are not backed up.
 
+## How this project is built
+
+git-warden is developed agent-first. AI coding agents write all code,
+tests, and documentation, and review each other's changes, under human
+direction: specs, design decisions, and acceptance based on observed
+behaviour and test results. No human reads the code line by line. This
+is a deliberate choice. Quality rests on automated tests, CI, and
+independent agent review.
+
+Evaluate the code against your own requirements before you depend on it.
+Found a problem? Open an issue.
+
 ## License
 
 [PolyForm Noncommercial 1.0.0](LICENSE). Source-available, not OSI Open Source. Third-party software compiled in or run by Git Warden, and its licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
