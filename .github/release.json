@@ -5,8 +5,8 @@
       "name": "push-guard",
       "paths": ["cmd/push-guard/", "internal/", "go.mod", "go.sum"],
       "build": [["env", "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "go", "build", "-trimpath", "-ldflags", "-s -w -X main.version={ver}", "-o", "release-out/{name}-linux-amd64", "./cmd/push-guard"]],
-      "assets": ["release-out/{name}-linux-amd64"],
-      "notes": "### Install\n\nDownload `{name}-linux-amd64` below (`chmod +x`), or build from source as described in the README. The wall host also needs `git` and `gitleaks`."
+      "assets": ["release-out/{name}-linux-amd64", "LICENSE", "THIRD_PARTY_NOTICES.md"],
+      "notes": "### Install\n\nDownload `{name}-linux-amd64` below (`chmod +x`), or build from source as described in the README. The binary doesn't install anything: the wall host also needs `git` and `gitleaks` (see Requirements in the README). `LICENSE` and `THIRD_PARTY_NOTICES.md` are attached for the license notices."
     }
   ]
 }
