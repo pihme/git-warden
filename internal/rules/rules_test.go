@@ -410,7 +410,7 @@ func TestMissingObjectFailsClosed(t *testing.T) {
 }
 
 func TestMissingScannerFailsClosed(t *testing.T) {
-	f := newFixture(t, "scanner: {gitleaks: /nonexistent/gitleaks}\n")
+	f := newFixture(t, "gitleaks: {path: /nonexistent/gitleaks}\n")
 	base := f.repo.Commit("base", nil)
 	head := f.repo.Commit("x", map[string]string{"x.txt": "x\n"})
 	sc, err := NewScanner(f.cfg, f.repo.Dir)

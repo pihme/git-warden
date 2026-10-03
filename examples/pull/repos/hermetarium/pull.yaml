@@ -1,6 +1,0 @@
-# One repo of the Pull Guard. Read access is enough: use a read-only deploy
-# key (SSH) or a read-only token file (HTTPS), never the Push Guard's write key.
-remote: git@github.com:example/hermetarium.git
-credential: /etc/warden-pull/keys/hermetarium   # read-only deploy key
-known_hosts: /etc/warden-pull/known_hosts       # optional; else the user's own
-exclude_branches: ['dependabot/.*']             # anchored; tags are always backed up

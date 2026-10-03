@@ -176,7 +176,7 @@ func CheckConfig(ctx context.Context, configDir string, out io.Writer) error {
 
 // CheckRemote runs ls-remote against a repo's remote with its credential.
 func CheckRemote(ctx context.Context, cfg *config.Config) error {
-	remote, err := gitx.NewRemote(&gitx.Git{}, cfg.Remote, cfg.Credential, cfg.KnownHosts)
+	remote, err := gitx.NewRemote(&gitx.Git{}, cfg.Remote, cfg.Credential, cfg.CredentialUsername, cfg.KnownHosts)
 	if err != nil {
 		return err
 	}

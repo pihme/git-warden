@@ -3,8 +3,8 @@
 # *_remove removes exact entries, scalars and limits override).
 pages_branch: gh-pages
 timeout: 60s
-scanner:
-  gitleaks: gitleaks
+gitleaks:
+  path: gitleaks
 forward:
   atomic: true
 rules:

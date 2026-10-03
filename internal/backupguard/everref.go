@@ -1,4 +1,4 @@
-package pullguard
+package backupguard
 
 import (
 	"bytes"
@@ -26,7 +26,7 @@ const (
 
 // FindEverref resolves the configured binary and, if want is set, checks that
 // everref --version reports exactly that version. Any problem is an error:
-// without everref there is no backup, so the Pull Guard fails closed.
+// without everref there is no backup, so the Backup Guard fails closed.
 func FindEverref(ctx context.Context, bin, want string) (path, version string, err error) {
 	path, err = exec.LookPath(bin)
 	if err != nil {

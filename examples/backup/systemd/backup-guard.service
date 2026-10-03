@@ -1,0 +1,9 @@
+[Unit]
+Description=Git Warden Backup Guard: append-only backup of every branch and tag
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=warden-backup
+ExecStart=/usr/local/bin/backup-guard run --config /etc/warden-backup

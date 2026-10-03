@@ -33,7 +33,7 @@ func wallWith(t *testing.T, files map[string]string) string {
 func TestPreflight(t *testing.T) {
 	ctx := context.Background()
 	good := fakeGitleaks(t, "8.30.1")
-	defaults := "agent: {name: t}\nscanner: {gitleaks: " + good + "}\n"
+	defaults := "agent: {name: t}\ngitleaks: {path: " + good + "}\n"
 	repo := "remote: /srv/git/r.git\n"
 
 	ready, err := Preflight(ctx, wallWith(t, map[string]string{"defaults.yaml": defaults, "repos/r/warden.yaml": repo}), nil)
@@ -46,7 +46,7 @@ func TestPreflight(t *testing.T) {
 
 	// CONTENT-SECRET disabled: gitleaks is not needed
 	ready, err = Preflight(ctx, wallWith(t, map[string]string{
-		"defaults.yaml":       "agent: {name: t}\nscanner: {gitleaks: /nonexistent/gitleaks}\nrules:\n  CONTENT-SECRET: {enabled: false}\n",
+		"defaults.yaml":       "agent: {name: t}\ngitleaks: {path: /nonexistent/gitleaks}\nrules:\n  CONTENT-SECRET: {enabled: false}\n",
 		"repos/r/warden.yaml": repo,
 	}), nil)
 	if err != nil || len(ready.Gitleaks) != 0 {
@@ -61,10 +61,10 @@ func TestPreflight(t *testing.T) {
 		"no defaults.yaml": {map[string]string{"repos/r/warden.yaml": repo}, "no wall configuration"},
 		"no repos":         {map[string]string{"defaults.yaml": defaults}, "no repos configured"},
 		"broken repo":      {map[string]string{"defaults.yaml": defaults, "repos/r/warden.yaml": "rules: {NO-SUCH-RULE: {}}\n"}, "NO-SUCH-RULE"},
-		"gitleaks missing": {map[string]string{"defaults.yaml": "agent: {name: t}\nscanner: {gitleaks: /nonexistent/gitleaks}\n", "repos/r/warden.yaml": repo}, "gitleaks not found"},
-		"gitleaks 7":       {map[string]string{"defaults.yaml": "agent: {name: t}\nscanner: {gitleaks: " + fakeGitleaks(t, "7.6.1") + "}\n", "repos/r/warden.yaml": repo}, "needs gitleaks 8.x"},
+		"gitleaks missing": {map[string]string{"defaults.yaml": "agent: {name: t}\ngitleaks: {path: /nonexistent/gitleaks}\n", "repos/r/warden.yaml": repo}, "gitleaks not found"},
+		"gitleaks 7":       {map[string]string{"defaults.yaml": "agent: {name: t}\ngitleaks: {path: " + fakeGitleaks(t, "7.6.1") + "}\n", "repos/r/warden.yaml": repo}, "needs gitleaks 8.x"},
 		"gitleaks per repo": {map[string]string{"defaults.yaml": defaults, "repos/a/warden.yaml": repo,
-			"repos/b/warden.yaml": repo + "scanner: {gitleaks: /nonexistent/gl-b}\n"}, "CONTENT-SECRET is enabled for b"},
+			"repos/b/warden.yaml": repo + "gitleaks: {path: /nonexistent/gl-b}\n"}, "CONTENT-SECRET is enabled for b"},
 		"no rule enabled": {map[string]string{"defaults.yaml": defaults, "repos/r/warden.yaml": repo + allOff}, "no rule is enabled"},
 	} {
 		_, err := Preflight(ctx, wallWith(t, tc.files), nil)
@@ -75,7 +75,7 @@ func TestPreflight(t *testing.T) {
 
 	// several problems come in one error
 	_, err = Preflight(ctx, wallWith(t, map[string]string{
-		"defaults.yaml":       "agent: {name: t}\nscanner: {gitleaks: /nonexistent/gitleaks}\n",
+		"defaults.yaml":       "agent: {name: t}\ngitleaks: {path: /nonexistent/gitleaks}\n",
 		"repos/a/warden.yaml": repo + allOff,
 		"repos/b/warden.yaml": repo,
 	}), nil)
@@ -94,7 +94,7 @@ func TestHookCheck(t *testing.T) {
 	dir := wallWith(t, map[string]string{
 		"defaults.yaml":         "agent: {name: t}\n",
 		"repos/ok/warden.yaml":  "remote: /srv/git/r.git\nrules:\n  CONTENT-SECRET: {enabled: false}\n",
-		"repos/gl/warden.yaml":  "remote: /srv/git/r.git\nscanner: {gitleaks: /nonexistent/gitleaks}\n",
+		"repos/gl/warden.yaml":  "remote: /srv/git/r.git\ngitleaks: {path: /nonexistent/gitleaks}\n",
 		"repos/off/warden.yaml": "remote: /srv/git/r.git\n" + allRulesOff(t),
 	})
 	for name, want := range map[string]string{"ok": "", "gl": "gitleaks not found", "off": "no rule is enabled"} {

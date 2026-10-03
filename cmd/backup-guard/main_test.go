@@ -37,7 +37,7 @@ func TestUsageAndVersion(t *testing.T) {
 	if code, out := pg("run"); code != 2 || !strings.Contains(out, "--config is required") {
 		t.Errorf("run without --config: exit %d: %s", code, out)
 	}
-	if code, out := pg("version"); code != 0 || !strings.HasPrefix(out, "pull-guard ") {
+	if code, out := pg("version"); code != 0 || !strings.HasPrefix(out, "backup-guard ") {
 		t.Errorf("version: exit %d: %s", code, out)
 	}
 }
@@ -45,8 +45,8 @@ func TestUsageAndVersion(t *testing.T) {
 func TestRunFailsClosedWithoutEverref(t *testing.T) {
 	dir := t.TempDir()
 	testutil.WriteFiles(t, dir, map[string]string{
-		"defaults.yaml":     "everref:\n  path: " + filepath.Join(dir, "missing", "git-everref") + "\n",
-		"repos/r/pull.yaml": "remote: /srv/git/r.git\n",
+		"defaults.yaml":       "everref:\n  path: " + filepath.Join(dir, "missing", "git-everref") + "\n",
+		"repos/r/backup.yaml": "remote: /srv/git/r.git\n",
 	})
 	code, out := pg("run", "--config", dir)
 	if code != 1 || !strings.Contains(out, "preflight: everref not found") {
@@ -69,7 +69,7 @@ func TestRunAndCheckConfig(t *testing.T) {
 	w.Commit("one", map[string]string{"a.txt": "1\n"})
 	w.Git("push", "-q", bare.Dir, "main")
 	dir := t.TempDir()
-	testutil.WriteFiles(t, dir, map[string]string{"repos/r/pull.yaml": "remote: " + bare.Dir + "\n"})
+	testutil.WriteFiles(t, dir, map[string]string{"repos/r/backup.yaml": "remote: " + bare.Dir + "\n"})
 	if code, out := pg("check-config", "--config", dir, "--remote"); code != 0 || !strings.Contains(out, "configuration ok") {
 		t.Fatalf("check-config: exit %d: %s", code, out)
 	}

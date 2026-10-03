@@ -19,11 +19,19 @@ type Remote struct {
 	git        *Git
 }
 
+// DefaultTokenUser is the user name sent with an HTTPS token unless
+// credential_username sets another one.
+const DefaultTokenUser = "x-access-token"
+
 // NewRemote prepares git for remote. The credential is a file reference only;
-// its content is never put on a command line or in a log. knownHosts is an
+// its content is never put on a command line, in a URL or in a log: for HTTPS
+// an inline credential helper reads the token file when git asks, configured
+// through the environment (GIT_CONFIG_COUNT), so every git process started
+// with this environment, git-everref's included, authenticates the same way.
+// user is the HTTPS user name (empty: DefaultTokenUser). knownHosts is an
 // optional known_hosts file for SSH remotes; without it ssh uses the guard
 // user's own. Unknown or changed host keys are always refused.
-func NewRemote(g *Git, url, credential, knownHosts string) (*Remote, error) {
+func NewRemote(g *Git, url, credential, user, knownHosts string) (*Remote, error) {
 	kind, err := config.RemoteKind(url)
 	if err != nil {
 		return nil, err
@@ -31,6 +39,12 @@ func NewRemote(g *Git, url, credential, knownHosts string) (*Remote, error) {
 	rg := g.Without(QuarantineEnv...).With("GIT_TERMINAL_PROMPT=0")
 	if knownHosts != "" && kind != config.KindSSH {
 		return nil, fmt.Errorf("remote %s: known_hosts only applies to SSH remotes", url)
+	}
+	if user != "" && kind != config.KindHTTPS {
+		return nil, fmt.Errorf("remote %s: a credential user name only applies to HTTPS remotes", url)
+	}
+	if user == "" {
+		user = DefaultTokenUser
 	}
 	switch kind {
 	case config.KindSSH:
@@ -46,7 +60,7 @@ func NewRemote(g *Git, url, credential, knownHosts string) (*Remote, error) {
 		if credential == "" {
 			return nil, fmt.Errorf("remote %s needs a credential (token file)", url)
 		}
-		helper := `!f() { test "$1" = get || exit 0; echo username=x-access-token; ` +
+		helper := `!f() { test "$1" = get || exit 0; printf 'username=%s\n' ` + ShellQuote(user) + `; ` +
 			`printf 'password=%s\n' "$(cat ` + ShellQuote(credential) + `)"; }; f`
 		rg = rg.With(
 			"GIT_CONFIG_COUNT=2",

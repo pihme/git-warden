@@ -1,9 +1,14 @@
 # One repo of the Push Guard. The folder name is the repo name agents push to:
 # <push guard>/hermetarium.git
-remote: git@github.com:example/hermetarium.git  # any Git URL or a local path
+remote: git@github.com:example/hermetarium.git  # SSH, HTTPS or an absolute local path
 credential: /etc/warden/keys/hermetarium        # SSH deploy key (or token file for https://)
-known_hosts: /etc/warden/known_hosts           # optional, SSH only; default: the guard user's own
+known_hosts: /etc/warden/known_hosts            # optional, SSH only; default: the guard user's own
 default_branch: main                            # optional; otherwise ls-remote --symref HEAD
+# For an HTTPS remote: a file holding a token with write access to the contents,
+# and the user name the platform expects with it (default x-access-token).
+#   remote: https://github.com/example/hermetarium.git
+#   credential: /etc/warden/keys/hermetarium.token
+#   credential_username: x-access-token
 rules:
   PATH-YELLOW:
     allow: ['package-lock\.json']    # lockfile updates are fine in this repo

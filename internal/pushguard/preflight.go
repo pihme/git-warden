@@ -33,7 +33,7 @@ type Ready struct {
 //     (repos/<name>/warden.yaml), each loads, and each has at least one
 //     enabled rule;
 //   - gitleaks for every repo with CONTENT-SECRET enabled (the default): the
-//     binary from scanner.gitleaks is found (on PATH or as a path) and
+//     binary from gitleaks.path is found (on PATH or as a path) and
 //     `gitleaks version` reports 8.x.
 //
 // The hook runs the cheap part of the same checks on every push (HookCheck).
@@ -108,7 +108,7 @@ func HookCheck(cfg *config.Config) error {
 	}
 	if cfg.Rule("CONTENT-SECRET").Enabled {
 		if _, err := exec.LookPath(gitleaksBin(cfg)); err != nil {
-			return fmt.Errorf("preflight: gitleaks not found (%s): %w; install gitleaks 8.x or set scanner.gitleaks", gitleaksBin(cfg), err)
+			return fmt.Errorf("preflight: gitleaks not found (%s): %w; install gitleaks 8.x or set gitleaks.path", gitleaksBin(cfg), err)
 		}
 	}
 	return nil
@@ -118,7 +118,7 @@ func HookCheck(cfg *config.Config) error {
 func CheckGitleaks(ctx context.Context, bin string) (string, error) {
 	path, err := exec.LookPath(bin)
 	if err != nil {
-		return "", fmt.Errorf("gitleaks not found (%s): %w; install gitleaks 8.x or set scanner.gitleaks", bin, err)
+		return "", fmt.Errorf("gitleaks not found (%s): %w; install gitleaks 8.x or set gitleaks.path", bin, err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

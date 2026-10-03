@@ -1,8 +1,8 @@
-// Package pullguard is the Pull Guard of Git Warden: it keeps an append-only
+// Package backupguard is the Backup Guard of Git Warden: it keeps an append-only
 // backup of every branch and tag of a remote by running git-everref.
 // Git Warden contains no everref code; everref is an external program that
 // must be installed on the host (like gitleaks for the Push Guard).
-package pullguard
+package backupguard
 
 import (
 	"bytes"
@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -26,29 +25,30 @@ const (
 	DefaultEverref = "git-everref"
 	DefaultTimeout = 30 * time.Minute
 	DefaultsFile   = "defaults.yaml"
-	RepoFile       = "pull.yaml"
+	RepoFile       = "backup.yaml"
 )
 
-// ErrUnknownRepo is returned for a repo without repos/<name>/pull.yaml.
+// ErrUnknownRepo is returned for a repo without repos/<name>/backup.yaml.
 var ErrUnknownRepo = errors.New("unknown repo")
 
-// Defaults is defaults.yaml of a Pull Guard configuration directory.
+// Defaults is defaults.yaml of a Backup Guard configuration directory.
 type Defaults struct {
 	Dir            string        // configuration directory
 	Everref        string        // everref binary: a path or a name looked up on PATH
 	EverrefVersion string        // if set, everref --version must report exactly this
 	NotifyCommand  []string      // gets a warning as JSON on stdin when a run fails
-	StateDir       string        // bridge clones, backup repositories, pull.jsonl
+	StateDir       string        // bridge clones, backup repositories, backup.jsonl
 	Timeout        time.Duration // per repo and run
 }
 
-// Repo is repos/<name>/pull.yaml.
+// Repo is repos/<name>/backup.yaml.
 type Repo struct {
-	Name            string
-	Remote          string           // the remote to back up (read access is enough)
-	Credential      string           // read-only SSH key or token file; none for local remotes
-	KnownHosts      string           // SSH only
-	ExcludeBranches []*regexp.Regexp // anchored; matched against the branch name without refs/heads/
+	Name               string
+	Remote             string           // the remote to back up (read access is enough)
+	Credential         string           // read-only SSH key or token file; none for local remotes
+	CredentialUsername string           // HTTPS user name sent with the token; empty: x-access-token
+	KnownHosts         string           // SSH only
+	ExcludeBranches    []*regexp.Regexp // anchored; matched against the branch name without refs/heads/
 }
 
 type rawDefaults struct {
@@ -64,10 +64,11 @@ type rawDefaults struct {
 }
 
 type rawRepo struct {
-	Remote          string   `yaml:"remote"`
-	Credential      string   `yaml:"credential"`
-	KnownHosts      string   `yaml:"known_hosts"`
-	ExcludeBranches []string `yaml:"exclude_branches"`
+	Remote             string   `yaml:"remote"`
+	Credential         string   `yaml:"credential"`
+	CredentialUsername string   `yaml:"credential_username"`
+	KnownHosts         string   `yaml:"known_hosts"`
+	ExcludeBranches    []string `yaml:"exclude_branches"`
 }
 
 func decodeStrict(name string, data []byte, v any) error {
@@ -111,10 +112,7 @@ func LoadDefaults(dir string) (*Defaults, error) {
 		if *p == "" {
 			return nil, fmt.Errorf("%s: everref.path is empty", path)
 		}
-		d.Everref = *p
-		if filepath.Base(*p) != *p { // a path, not a name on PATH
-			d.Everref = resolve(abs, *p)
-		}
+		d.Everref = config.ResolveProgram(abs, *p)
 	}
 	if v := raw.Everref.Version; v != nil {
 		d.EverrefVersion = *v
@@ -158,7 +156,7 @@ func Repos(dir string) ([]string, error) {
 	return names, nil
 }
 
-// LoadRepo reads dir/repos/<name>/pull.yaml.
+// LoadRepo reads dir/repos/<name>/backup.yaml.
 func LoadRepo(dir, name string) (*Repo, error) {
 	if !config.ValidRepoName(name) {
 		return nil, fmt.Errorf("invalid repo name %q", name)
@@ -183,24 +181,13 @@ func LoadRepo(dir, name string) (*Repo, error) {
 	if raw.Remote == "" {
 		return nil, fmt.Errorf("%s: remote is required", path)
 	}
-	kind, err := config.RemoteKind(raw.Remote)
-	if err != nil {
+	if err := config.CheckRemote(raw.Remote, raw.Credential, raw.CredentialUsername, raw.KnownHosts); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	r := &Repo{Name: name, Remote: raw.Remote, Credential: resolve(repoDir, raw.Credential), KnownHosts: resolve(repoDir, raw.KnownHosts)}
-	if kind == config.KindLocal && !filepath.IsAbs(raw.Remote) && !strings.HasPrefix(raw.Remote, "file://") {
-		return nil, fmt.Errorf("%s: a local remote must be an absolute path or a file:// URL", path)
-	}
-	switch {
-	case kind == config.KindSSH && r.Credential == "":
-		return nil, fmt.Errorf("%s: an SSH remote needs a credential (read-only deploy key)", path)
-	case kind == config.KindHTTPS && r.Credential == "":
-		return nil, fmt.Errorf("%s: an HTTPS remote needs a credential (read-only token file)", path)
-	case kind != config.KindSSH && r.KnownHosts != "":
-		return nil, fmt.Errorf("%s: known_hosts only applies to SSH remotes", path)
-	case kind == config.KindLocal && r.Credential != "":
-		return nil, fmt.Errorf("%s: a local remote takes no credential", path)
-	}
+	// Relative file paths are relative to the configuration directory, as in
+	// the Push Guard.
+	r := &Repo{Name: name, Remote: raw.Remote, Credential: resolve(abs, raw.Credential),
+		CredentialUsername: raw.CredentialUsername, KnownHosts: resolve(abs, raw.KnownHosts)}
 	for _, p := range raw.ExcludeBranches {
 		re, err := config.Compile(p)
 		if err != nil {

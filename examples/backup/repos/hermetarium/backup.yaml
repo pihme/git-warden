@@ -1,0 +1,12 @@
+# One repo of the Backup Guard. Read access is enough: use a read-only deploy
+# key (SSH) or a read-only token file (HTTPS), never the Push Guard's write key.
+remote: git@github.com:example/hermetarium.git
+credential: /etc/warden-backup/keys/hermetarium  # read-only deploy key (relative: to this config dir)
+known_hosts: /etc/warden-backup/known_hosts      # optional, SSH only; default: the guard user's own
+exclude_branches: ['dependabot/.*']              # anchored; tags are always backed up
+# For an HTTPS remote: a file holding a read-only token, and the user name the
+# platform expects with it (default x-access-token; a GitLab deploy token needs
+# its own, e.g. gitlab+deploy-token-1).
+#   remote: https://gitlab.com/example/hermetarium.git
+#   credential: /etc/warden-backup/keys/hermetarium.token
+#   credential_username: gitlab+deploy-token-1

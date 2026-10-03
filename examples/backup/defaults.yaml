@@ -1,4 +1,4 @@
-# Pull Guard defaults (see docs/pull-guard.md). This is its own configuration
+# Backup Guard defaults (see docs/backup-guard.md). This is its own configuration
 # directory, separate from the Push Guard's; it usually lives on the backup host.
 everref:
   path: /usr/local/bin/git-everref   # default: git-everref on PATH
@@ -6,5 +6,5 @@ everref:
 notify:
   # Gets a warning as JSON on stdin when a run fails. Any channel: mail, ntfy, Signal, ...
   command: [/usr/local/bin/warden-notify]
-state_dir: /var/lib/warden-pull      # bridge clones, backup repositories, pull.jsonl
+state_dir: /var/lib/warden-backup    # bridge clones, backup repositories, backup.jsonl
 timeout: 30m                         # per repo and run

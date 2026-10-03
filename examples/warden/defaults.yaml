@@ -8,8 +8,8 @@ notify:
   command: [/usr/local/bin/warden-notify]
 state_dir: /var/lib/warden           # push.jsonl, pending bundles, guard repositories
 timeout: 60s
-scanner:
-  gitleaks: /usr/local/bin/gitleaks
+gitleaks:
+  path: /usr/local/bin/gitleaks
 rules:
   REF-DELETE:
     allow: ['refs/heads/agent/.*']   # agents may delete their own agent/* branches

@@ -1,4 +1,4 @@
-package pullguard
+package backupguard
 
 import (
 	"bufio"
@@ -67,18 +67,18 @@ func TestLoadDefaults(t *testing.T) {
 	if d.Everref != DefaultEverref || d.Timeout != DefaultTimeout || d.EverrefVersion != "" || filepath.Base(d.StateDir) != "state" {
 		t.Fatalf("built-in defaults: %+v", d)
 	}
-	dir := writeConfig(t, "everref:\n  path: bin/git-everref\n  version: v1.0.0\nnotify:\n  command: [notify-me, --pull]\nstate_dir: /var/lib/pull\ntimeout: 5m\n", nil)
+	dir := writeConfig(t, "everref:\n  path: bin/git-everref\n  version: v1.0.0\nnotify:\n  command: [notify-me, --backup]\nstate_dir: /var/lib/backup\ntimeout: 5m\n", nil)
 	d, err = LoadDefaults(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Everref != filepath.Join(dir, "bin/git-everref") || d.EverrefVersion != "v1.0.0" || d.StateDir != "/var/lib/pull" ||
-		d.Timeout != 5*time.Minute || strings.Join(d.NotifyCommand, " ") != "notify-me --pull" {
+	if d.Everref != filepath.Join(dir, "bin/git-everref") || d.EverrefVersion != "v1.0.0" || d.StateDir != "/var/lib/backup" ||
+		d.Timeout != 5*time.Minute || strings.Join(d.NotifyCommand, " ") != "notify-me --backup" {
 		t.Fatalf("defaults: %+v", d)
 	}
 	for _, bad := range []string{
-		"everref:\n  pth: x\n",      // unknown key
-		"scanner:\n  gitleaks: x\n", // a Push Guard key
+		"everref:\n  pth: x\n",   // unknown key
+		"gitleaks:\n  path: x\n", // a Push Guard key
 		"timeout: soon\n",
 		"timeout: -1s\n",
 		"everref:\n  path: \"\"\n",
@@ -98,6 +98,8 @@ func TestLoadRepo(t *testing.T) {
 		"local":     "remote: /srv/git/r.git\n",
 		"nocred":    "remote: git@example.com:o/r.git\n",
 		"https":     "remote: https://example.com/o/r.git\n",
+		"httpsuser": "remote: https://example.com/o/r.git\ncredential: t\ncredential_username: gitlab+deploy-token-1\n",
+		"sshuser":   "remote: git@example.com:o/r.git\ncredential: k\ncredential_username: u\n",
 		"khttps":    "remote: https://example.com/o/r.git\ncredential: t\nknown_hosts: kh\n",
 		"relative":  "remote: ../r.git\n",
 		"localcred": "remote: /srv/git/r.git\ncredential: k\n",
@@ -109,7 +111,7 @@ func TestLoadRepo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Credential != filepath.Join(dir, "repos/ok/deploy-key") || r.KnownHosts != "/etc/kh" {
+	if r.Credential != filepath.Join(dir, "deploy-key") || r.KnownHosts != "/etc/kh" {
 		t.Fatalf("paths: %+v", r)
 	}
 	for b, want := range map[string]bool{"dependabot/npm/x": true, "tmp": true, "tmp2": false, "main": false, "x/tmp": false} {
@@ -120,7 +122,10 @@ func TestLoadRepo(t *testing.T) {
 	if _, err := LoadRepo(dir, "local"); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"nocred", "https", "khttps", "relative", "localcred", "unknown", "noremote", "badre"} {
+	if r, err := LoadRepo(dir, "httpsuser"); err != nil || r.CredentialUsername != "gitlab+deploy-token-1" || r.Credential != filepath.Join(dir, "t") {
+		t.Fatalf("httpsuser: %+v, %v", r, err)
+	}
+	for _, name := range []string{"nocred", "https", "khttps", "relative", "localcred", "unknown", "noremote", "badre", "sshuser"} {
 		if _, err := LoadRepo(dir, name); err == nil {
 			t.Errorf("repo %s accepted", name)
 		}
@@ -132,7 +137,7 @@ func TestLoadRepo(t *testing.T) {
 		t.Error("accepted an invalid repo name")
 	}
 	repos, err := Repos(dir)
-	if err != nil || len(repos) != 10 || repos[0] != "badre" {
+	if err != nil || len(repos) != 12 || repos[0] != "badre" {
 		t.Fatalf("Repos = %v, %v", repos, err)
 	}
 }
@@ -229,7 +234,7 @@ func remoteWith(t *testing.T, branches ...string) (bare string, work *testutil.R
 
 func readJournal(t *testing.T, stateDir string) []Result {
 	t.Helper()
-	f, err := os.Open(filepath.Join(stateDir, "pull.jsonl"))
+	f, err := os.Open(filepath.Join(stateDir, "backup.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +280,7 @@ func TestAddRetriesSinglyAndRunFailureNotifies(t *testing.T) {
 		t.Fatal(err)
 	}
 	var w Warning
-	if err := json.Unmarshal(data, &w); err != nil || w.Kind != "pull_failed" || w.Repo != "r" || w.EverrefExit != 1 {
+	if err := json.Unmarshal(data, &w); err != nil || w.Kind != "backup_failed" || w.Repo != "r" || w.EverrefExit != 1 {
 		t.Fatalf("warning: %s %v", data, err)
 	}
 	calls, _ := os.ReadFile(log)
@@ -309,7 +314,7 @@ func TestBridgeRefusesChangedRemote(t *testing.T) {
 	if res := g.RunRepo(ctx, "r"); !res.OK {
 		t.Fatalf("first run: %+v", res)
 	}
-	testutil.WriteFiles(t, dir, map[string]string{"repos/r/pull.yaml": "remote: " + other + "\n"})
+	testutil.WriteFiles(t, dir, map[string]string{"repos/r/backup.yaml": "remote: " + other + "\n"})
 	res := g.RunRepo(ctx, "r")
 	if res.OK || !strings.Contains(res.Error, "refusing to continue this backup with another remote") {
 		t.Fatalf("changed remote: %+v", res)
@@ -442,7 +447,7 @@ func TestEndToEndWithEverref(t *testing.T) {
 }
 
 func TestExamplesLoad(t *testing.T) {
-	dir := filepath.Join("..", "..", "examples", "pull")
+	dir := filepath.Join("..", "..", "examples", "backup")
 	d, err := LoadDefaults(dir)
 	if err != nil {
 		t.Fatal(err)

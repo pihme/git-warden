@@ -31,7 +31,7 @@ func TestHTTPSCredentialHelper(t *testing.T) {
 	if err := os.WriteFile(tok, []byte("synthetic-token\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	r, err := NewRemote(&Git{Env: []string{"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"}}, "https://example.invalid/o/r.git", tok, "")
+	r, err := NewRemote(&Git{Env: []string{"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"}}, "https://example.invalid/o/r.git", tok, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,6 +42,20 @@ func TestHTTPSCredentialHelper(t *testing.T) {
 	if !strings.Contains(string(out), "password=synthetic-token\n") {
 		t.Fatalf("credential fill: %q", out)
 	}
+	if !strings.Contains(string(out), "username="+DefaultTokenUser+"\n") {
+		t.Fatalf("default user name: %q", out)
+	}
+	ru, err := NewRemote(&Git{Env: []string{"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"}}, "https://example.invalid/o/r.git", tok, "gitlab+deploy-token-7", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err = ru.Git().RunInput(context.Background(), strings.NewReader("protocol=https\nhost=example.invalid\n\n"), "credential", "fill")
+	if err != nil || !strings.Contains(string(out), "username=gitlab+deploy-token-7\n") || !strings.Contains(string(out), "password=synthetic-token\n") {
+		t.Fatalf("credential fill with credential_username: %q %v", out, err)
+	}
+	if _, err := NewRemote(&Git{}, "git@example.invalid:o/r.git", "/k", "someone", ""); err == nil {
+		t.Fatal("a user name for an SSH remote was accepted")
+	}
 	for _, kv := range r.Git().Env {
 		if strings.Contains(kv, "synthetic-token") {
 			t.Fatal("token content in the environment")
@@ -50,7 +64,7 @@ func TestHTTPSCredentialHelper(t *testing.T) {
 }
 
 func TestSSHCommand(t *testing.T) {
-	r, err := NewRemote(&Git{}, "git@example.invalid:o/r.git", "/keys/it's", "")
+	r, err := NewRemote(&Git{}, "git@example.invalid:o/r.git", "/keys/it's", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,17 +77,17 @@ func TestSSHCommand(t *testing.T) {
 	if cmd != `ssh -F none -i '/keys/it'\''s' -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes` {
 		t.Fatalf("GIT_SSH_COMMAND=%s", cmd)
 	}
-	r, err = NewRemote(&Git{}, "ssh://git@example.invalid/o/r.git", "/keys/k", "/etc/warden/known_hosts")
+	r, err = NewRemote(&Git{}, "ssh://git@example.invalid/o/r.git", "/keys/k", "", "/etc/warden/known_hosts")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(strings.Join(r.Git().Env, "\n"), "-o UserKnownHostsFile='/etc/warden/known_hosts' -o GlobalKnownHostsFile=/dev/null") {
 		t.Fatalf("known_hosts not used: %v", r.Git().Env)
 	}
-	if _, err := NewRemote(&Git{}, "git@example.invalid:o/r.git", "", ""); err == nil {
+	if _, err := NewRemote(&Git{}, "git@example.invalid:o/r.git", "", "", ""); err == nil {
 		t.Fatal("ssh remote without credential accepted")
 	}
-	if _, err := NewRemote(&Git{}, "https://example.invalid/o/r.git", "/t", "/k"); err == nil {
+	if _, err := NewRemote(&Git{}, "https://example.invalid/o/r.git", "/t", "", "/k"); err == nil {
 		t.Fatal("known_hosts accepted for https")
 	}
 }

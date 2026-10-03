@@ -73,10 +73,11 @@ type Config struct {
 	Timeout        time.Duration
 	ForwardAtomic  bool
 
-	Remote        string
-	Credential    string
-	KnownHosts    string // optional known_hosts file for SSH remotes
-	DefaultBranch string
+	Remote             string
+	Credential         string
+	CredentialUsername string // user name sent with an HTTPS token; empty: gitx.DefaultTokenUser
+	KnownHosts         string // optional known_hosts file for SSH remotes
+	DefaultBranch      string
 
 	Rules map[string]*Rule
 }
@@ -201,18 +202,19 @@ type rawLayer struct {
 	} `yaml:"notify"`
 	StateDir    *string `yaml:"state_dir"`
 	PagesBranch *string `yaml:"pages_branch"`
-	Scanner     *struct {
-		Gitleaks *string `yaml:"gitleaks"`
-	} `yaml:"scanner"`
+	Gitleaks    *struct {
+		Path *string `yaml:"path"`
+	} `yaml:"gitleaks"`
 	Timeout *string `yaml:"timeout"`
 	Forward *struct {
 		Atomic *bool `yaml:"atomic"`
 	} `yaml:"forward"`
 
-	Remote        *string `yaml:"remote"`
-	Credential    *string `yaml:"credential"`
-	KnownHosts    *string `yaml:"known_hosts"`
-	DefaultBranch *string `yaml:"default_branch"`
+	Remote             *string `yaml:"remote"`
+	Credential         *string `yaml:"credential"`
+	CredentialUsername *string `yaml:"credential_username"`
+	KnownHosts         *string `yaml:"known_hosts"`
+	DefaultBranch      *string `yaml:"default_branch"`
 
 	Rules map[string]*rawRule `yaml:"rules"`
 }
@@ -228,7 +230,7 @@ type merged struct {
 	agentName, tokenFile, stateDir, pagesBranch, gitleaks, timeout string
 	notify                                                         []string
 	atomic                                                         bool
-	remote, credential, knownHosts, defaultBranch                  string
+	remote, credential, credentialUser, knownHosts, defaultBranch  string
 	rules                                                          map[string]*mergedRule
 	order                                                          []string
 }
@@ -244,8 +246,8 @@ func parseLayer(name string, data []byte) (*rawLayer, error) {
 }
 
 func (m *merged) apply(name string, l *rawLayer, repoLayer, builtin bool) error {
-	if !repoLayer && (l.Remote != nil || l.Credential != nil || l.KnownHosts != nil || l.DefaultBranch != nil) {
-		return fmt.Errorf("%s: remote, credential, known_hosts and default_branch belong in a repo's warden.yaml", name)
+	if !repoLayer && (l.Remote != nil || l.Credential != nil || l.CredentialUsername != nil || l.KnownHosts != nil || l.DefaultBranch != nil) {
+		return fmt.Errorf("%s: remote, credential, credential_username, known_hosts and default_branch belong in a repo's warden.yaml", name)
 	}
 	if repoLayer && (l.Agent != nil || l.StateDir != nil) {
 		return fmt.Errorf("%s: agent and state_dir belong in the wall's defaults.yaml", name)
@@ -264,8 +266,8 @@ func (m *merged) apply(name string, l *rawLayer, repoLayer, builtin bool) error 
 	}
 	set(&m.stateDir, l.StateDir)
 	set(&m.pagesBranch, l.PagesBranch)
-	if l.Scanner != nil {
-		set(&m.gitleaks, l.Scanner.Gitleaks)
+	if l.Gitleaks != nil {
+		set(&m.gitleaks, l.Gitleaks.Path)
 	}
 	set(&m.timeout, l.Timeout)
 	if l.Forward != nil && l.Forward.Atomic != nil {
@@ -273,6 +275,7 @@ func (m *merged) apply(name string, l *rawLayer, repoLayer, builtin bool) error 
 	}
 	set(&m.remote, l.Remote)
 	set(&m.credential, l.Credential)
+	set(&m.credentialUser, l.CredentialUsername)
 	set(&m.knownHosts, l.KnownHosts)
 	set(&m.defaultBranch, l.DefaultBranch)
 
@@ -421,20 +424,21 @@ func load(dir, repo string) (*Config, error) {
 
 func (m *merged) build(dir, repo string) (*Config, error) {
 	c := &Config{
-		Dir:            dir,
-		RepoName:       repo,
-		AgentName:      m.agentName,
-		AgentTokenFile: resolve(dir, m.tokenFile),
-		NotifyCommand:  m.notify,
-		StateDir:       resolve(dir, m.stateDir),
-		PagesBranch:    m.pagesBranch,
-		Gitleaks:       m.gitleaks,
-		ForwardAtomic:  m.atomic,
-		Remote:         m.remote,
-		Credential:     resolve(dir, m.credential),
-		KnownHosts:     resolve(dir, m.knownHosts),
-		DefaultBranch:  strings.TrimPrefix(m.defaultBranch, "refs/heads/"),
-		Rules:          map[string]*Rule{},
+		Dir:                dir,
+		RepoName:           repo,
+		AgentName:          m.agentName,
+		AgentTokenFile:     resolve(dir, m.tokenFile),
+		NotifyCommand:      m.notify,
+		StateDir:           resolve(dir, m.stateDir),
+		PagesBranch:        m.pagesBranch,
+		Gitleaks:           ResolveProgram(dir, m.gitleaks),
+		ForwardAtomic:      m.atomic,
+		Remote:             m.remote,
+		Credential:         resolve(dir, m.credential),
+		CredentialUsername: m.credentialUser,
+		KnownHosts:         resolve(dir, m.knownHosts),
+		DefaultBranch:      strings.TrimPrefix(m.defaultBranch, "refs/heads/"),
+		Rules:              map[string]*Rule{},
 	}
 	if c.AgentName == "" {
 		return nil, errors.New("agent.name is required in defaults.yaml")
@@ -454,15 +458,8 @@ func (m *merged) build(dir, repo string) (*Config, error) {
 		if m.remote == "" {
 			return nil, fmt.Errorf("repos/%s/warden.yaml: remote is required", repo)
 		}
-		kind, err := RemoteKind(m.remote)
-		if err != nil {
+		if err := CheckRemote(m.remote, m.credential, m.credentialUser, m.knownHosts); err != nil {
 			return nil, fmt.Errorf("repos/%s/warden.yaml: %w", repo, err)
-		}
-		if m.credential == "" && kind != KindLocal {
-			return nil, fmt.Errorf("repos/%s/warden.yaml: credential is required for remote %s (only a local path may omit it)", repo, m.remote)
-		}
-		if m.knownHosts != "" && kind != KindSSH {
-			return nil, fmt.Errorf("repos/%s/warden.yaml: known_hosts only applies to SSH remotes", repo)
 		}
 	}
 	for _, id := range m.order {
@@ -514,6 +511,52 @@ func resolve(dir, p string) string {
 	}
 	return filepath.Join(dir, p)
 }
+
+// ResolveProgram resolves an external program setting (gitleaks.path,
+// everref.path): a bare name is looked up on PATH later, anything with a
+// slash is a path, relative to the configuration directory.
+func ResolveProgram(dir, p string) string {
+	if p == "" || filepath.Base(p) == p {
+		return p
+	}
+	return resolve(dir, p)
+}
+
+// CheckRemote applies the rules both guards share for a repo's remote and
+// its credential settings:
+//
+//   - remote: an SSH remote (ssh:// or user@host:path), an https:// or
+//     http:// URL, or a local repository as an absolute path or file:// URL;
+//   - credential: required for SSH (a private key) and HTTPS (a token file),
+//     not allowed for a local remote;
+//   - credential_username: HTTPS only;
+//   - known_hosts: SSH only.
+func CheckRemote(remote, credential, credentialUser, knownHosts string) error {
+	kind, err := RemoteKind(remote)
+	if err != nil {
+		return err
+	}
+	switch {
+	case kind == KindLocal && !filepath.IsAbs(remote) && !strings.HasPrefix(remote, "file://"):
+		return fmt.Errorf("a local remote must be an absolute path or a file:// URL, not %s", remote)
+	case kind == KindSSH && credential == "":
+		return fmt.Errorf("remote %s needs a credential (an SSH private key file)", remote)
+	case kind == KindHTTPS && credential == "":
+		return fmt.Errorf("remote %s needs a credential (a token file)", remote)
+	case kind == KindLocal && credential != "":
+		return fmt.Errorf("a local remote takes no credential")
+	case credentialUser != "" && kind != KindHTTPS:
+		return fmt.Errorf("credential_username only applies to https:// and http:// remotes")
+	case knownHosts != "" && kind != KindSSH:
+		return fmt.Errorf("known_hosts only applies to SSH remotes")
+	}
+	if credentialUser != "" && !validUser.MatchString(credentialUser) {
+		return fmt.Errorf("credential_username %q: only letters, digits and . _ + @ - are allowed", credentialUser)
+	}
+	return nil
+}
+
+var validUser = regexp.MustCompile(`^[A-Za-z0-9._+@-]{1,128}$`)
 
 // Kind classifies a remote by how the guard authenticates to it.
 type Kind int

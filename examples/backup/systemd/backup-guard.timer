@@ -1,5 +1,5 @@
 [Unit]
-Description=Run the Git Warden Pull Guard every 15 minutes
+Description=Run the Git Warden Backup Guard every 15 minutes
 
 [Timer]
 OnBootSec=5min

@@ -1,12 +1,12 @@
 #!/bin/sh
-# Install git-everref, the external program the Pull Guard runs, at a pinned
+# Install git-everref, the external program the Backup Guard runs, at a pinned
 # version with a pinned SHA-256. Optional: any other way of putting
-# git-everref on PATH works too. pull-guard itself never downloads anything.
+# git-everref on PATH works too. backup-guard itself never downloads anything.
 #
 #   scripts/install-everref.sh [PREFIX]     default PREFIX: $HOME/.local/bin
 #
 # To move to another version, update VERSION and both checksums from the
-# release's checksums.txt, and everref.version in the Pull Guard's
+# release's checksums.txt, and everref.version in the Backup Guard's
 # defaults.yaml.
 set -eu
 

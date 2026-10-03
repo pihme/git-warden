@@ -1,14 +1,14 @@
 {
   # Reproducible build and development environment for Git Warden.
   #
-  #   nix build                  # push-guard and pull-guard in ./result/bin
+  #   nix build                  # push-guard and backup-guard in ./result/bin
   #   nix develop                # shell with Go, git, gitleaks, git-everref
   #   nix flake check            # builds and runs go test ./... in the sandbox
   #
   # gitleaks and git-everref are the same pinned releases as in CI and the
   # Dockerfile (static Linux binaries, SHA-256 fixed below), so the dev shell
   # and the hosts agree on versions. The guards never fetch them at runtime.
-  description = "Git Warden: Push Guard and Pull Guard between AI agents and their Git remote";
+  description = "Git Warden: Push Guard and Backup Guard between AI agents and their Git remote";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
@@ -142,7 +142,7 @@
             vendorHash = "sha256-g+yaVIx4jxpAQ/+WrGKxhVeliYx7nLQe/zsGpxV4Fn4=";
             subPackages = [
               "cmd/push-guard"
-              "cmd/pull-guard"
+              "cmd/backup-guard"
             ];
             env.CGO_ENABLED = 0;
             ldflags = [
@@ -164,7 +164,7 @@
               runHook postCheck
             '';
             meta = {
-              description = "Push Guard and Pull Guard between AI agents and their Git remote";
+              description = "Push Guard and Backup Guard between AI agents and their Git remote";
               license = {
                 fullName = "PolyForm Noncommercial License 1.0.0";
                 url = "https://polyformproject.org/licenses/noncommercial/1.0.0/";

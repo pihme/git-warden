@@ -1,4 +1,4 @@
-// Command pull-guard is the Pull Guard of Git Warden: on every run it backs up
+// Command backup-guard is the Backup Guard of Git Warden: on every run it backs up
 // every branch and tag of each configured remote into an append-only backup
 // repository by running git-everref, which must be installed on the host.
 package main
@@ -13,17 +13,17 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/pihme/git-warden/internal/pullguard"
+	"github.com/pihme/git-warden/internal/backupguard"
 )
 
 var version = "dev"
 
-const usage = `pull-guard keeps an append-only backup of every branch and tag (via git-everref).
+const usage = `backup-guard keeps an append-only backup of every branch and tag (via git-everref).
 
 Usage:
-  pull-guard run          --config DIR [repo...]   (from a timer; all repos if none given)
-  pull-guard check-config --config DIR [--remote]
-  pull-guard version
+  backup-guard run          --config DIR [repo...]   (from a timer; all repos if none given)
+  backup-guard check-config --config DIR [--remote]
+  backup-guard version
 
 Exit codes: 0 every repo backed up, 1 a repo failed or the preflight failed
 (e.g. git-everref missing), 2 usage error.
@@ -41,13 +41,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	cmd, args := args[0], args[1:]
-	fs := flag.NewFlagSet("pull-guard "+cmd, flag.ContinueOnError)
+	fs := flag.NewFlagSet("backup-guard "+cmd, flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	configDir := fs.String("config", "", "Pull Guard configuration directory")
+	configDir := fs.String("config", "", "Backup Guard configuration directory")
 	var err error
 	switch cmd {
 	case "version", "--version", "-v":
-		fmt.Fprintln(stdout, "pull-guard", version)
+		fmt.Fprintln(stdout, "backup-guard", version)
 		return 0
 	case "help", "--help", "-h":
 		fmt.Fprint(stdout, usage)
@@ -67,13 +67,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if len(pos) > 0 {
 			return usageError(stderr, errors.New("check-config takes no arguments"))
 		}
-		err = pullguard.CheckConfig(ctx, *configDir, *remote, stdout)
+		err = backupguard.CheckConfig(ctx, *configDir, *remote, stdout)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", cmd, usage)
 		return 2
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, "pull-guard:", err)
+		fmt.Fprintln(stderr, "backup-guard:", err)
 		return 1
 	}
 	return 0
@@ -83,7 +83,7 @@ func usageError(stderr io.Writer, err error) int {
 	if errors.Is(err, flag.ErrHelp) {
 		return 0
 	}
-	fmt.Fprintln(stderr, "pull-guard:", err)
+	fmt.Fprintln(stderr, "backup-guard:", err)
 	return 2
 }
 
@@ -108,7 +108,7 @@ func parse(fs *flag.FlagSet, args []string, configDir *string) ([]string, error)
 }
 
 func runRepos(ctx context.Context, configDir string, only []string, out io.Writer) error {
-	g, repos, err := pullguard.Preflight(ctx, configDir, out)
+	g, repos, err := backupguard.Preflight(ctx, configDir, out)
 	if err != nil {
 		return fmt.Errorf("preflight: %w", err)
 	}
@@ -119,7 +119,7 @@ func runRepos(ctx context.Context, configDir string, only []string, out io.Write
 		}
 		for _, r := range only {
 			if !known[r] {
-				return fmt.Errorf("unknown repo %q (no repos/%s/%s)", r, r, pullguard.RepoFile)
+				return fmt.Errorf("unknown repo %q (no repos/%s/%s)", r, r, backupguard.RepoFile)
 			}
 		}
 		repos = only

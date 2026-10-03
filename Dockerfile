@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# Git Warden in a container: push-guard and pull-guard, plus the programs they
+# Git Warden in a container: push-guard and backup-guard, plus the programs they
 # call, provisioned here at pinned versions. The guards themselves still never
 # download anything at runtime; the image is the host.
 #
@@ -23,7 +23,7 @@ RUN go mod download && go mod verify
 COPY cmd ./cmd
 COPY internal ./internal
 ARG VERSION=dev
-RUN for bin in push-guard pull-guard; do \
+RUN for bin in push-guard backup-guard; do \
       CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/$bin ./cmd/$bin || exit 1; \
     done
 
@@ -62,16 +62,16 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && git version | awk '{ split($3, v, "."); if (v[1] < 2 || (v[1] == 2 && v[2] < 42)) { print "git " $3 " is older than 2.42"; exit 1 } }'
 COPY --from=tools /out/gitleaks /out/git-everref /usr/local/bin/
-COPY --from=build /out/push-guard /out/pull-guard /usr/local/bin/
+COPY --from=build /out/push-guard /out/backup-guard /usr/local/bin/
 # Unprivileged guard user. Configuration is mounted read-only at /etc/warden
-# (Push Guard) or /etc/warden-pull (Pull Guard); state goes to a volume at
-# /var/lib/warden or /var/lib/warden-pull (state_dir in defaults.yaml).
+# (Push Guard) or /etc/warden-backup (Backup Guard); state goes to a volume at
+# /var/lib/warden or /var/lib/warden-backup (state_dir in defaults.yaml).
 RUN useradd --uid 10001 --user-group --no-log-init --create-home --home-dir /home/warden --shell /usr/sbin/nologin warden \
- && install -d -o warden -g warden -m 0750 /var/lib/warden /var/lib/warden-pull
+ && install -d -o warden -g warden -m 0750 /var/lib/warden /var/lib/warden-backup
 USER warden
 WORKDIR /home/warden
 EXPOSE 8418
-# The default command is the Push Guard over HTTP; run the Pull Guard (or any
+# The default command is the Push Guard over HTTP; run the Backup Guard (or any
 # other subcommand) by passing it as the command, e.g.
-#   docker run … git-warden pull-guard run --config /etc/warden-pull
+#   docker run … git-warden backup-guard run --config /etc/warden-backup
 CMD ["push-guard", "serve", "--config", "/etc/warden", "--listen", "0.0.0.0:8418"]

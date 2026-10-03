@@ -1,4 +1,4 @@
-package pullguard
+package backupguard
 
 import (
 	"context"
@@ -14,15 +14,15 @@ import (
 
 // Identity of the journal commits everref writes in the bridge clone.
 const (
-	committerName  = "git-warden pull-guard"
-	committerEmail = "pull-guard@localhost"
+	committerName  = "git-warden backup-guard"
+	committerEmail = "backup-guard@localhost"
 	addChunk       = 100 // branches per everref add call
 )
 
-// Result is one repo's run; it is also the line appended to pull.jsonl.
+// Result is one repo's run; it is also the line appended to backup.jsonl.
 type Result struct {
 	Time        time.Time         `json:"time"`
-	Guard       string            `json:"guard"` // always "pull"
+	Guard       string            `json:"guard"` // always "backup"
 	Repo        string            `json:"repo"`
 	OK          bool              `json:"ok"`
 	Everref     string            `json:"everref,omitempty"` // version
@@ -42,7 +42,7 @@ type Result struct {
 	Notify      string            `json:"notify,omitempty"` // notify.command error
 }
 
-// Guard runs the Pull Guard for one configuration directory.
+// Guard runs the Backup Guard for one configuration directory.
 type Guard struct {
 	Defaults *Defaults
 	Everref  string // resolved binary from Preflight
@@ -52,7 +52,7 @@ type Guard struct {
 
 // Preflight checks everything a run needs before anything is touched:
 // git (2.42 or newer), the everref binary (and its version, if pinned in
-// defaults.yaml) and at least one configured repo. Any failure is fatal: the Pull Guard fails
+// defaults.yaml) and at least one configured repo. Any failure is fatal: the Backup Guard fails
 // closed rather than pretending a backup happened.
 func Preflight(ctx context.Context, configDir string, out io.Writer) (*Guard, []string, error) {
 	d, err := LoadDefaults(configDir)
@@ -94,16 +94,16 @@ func (g *Guard) RunAll(ctx context.Context, repos []string) error {
 		}
 	}
 	if len(failed) > 0 {
-		return fmt.Errorf("pull failed for %s", strings.Join(failed, ", "))
+		return fmt.Errorf("backup failed for %s", strings.Join(failed, ", "))
 	}
 	return nil
 }
 
-// RunRepo backs up one repo, records the run in pull.jsonl and warns
+// RunRepo backs up one repo, records the run in backup.jsonl and warns
 // through notify.command when it failed.
 func (g *Guard) RunRepo(ctx context.Context, name string) *Result {
 	start := time.Now()
-	res := &Result{Time: start.UTC(), Guard: "pull", Repo: name, Everref: g.Version, EverrefExit: -1}
+	res := &Result{Time: start.UTC(), Guard: "backup", Repo: name, Everref: g.Version, EverrefExit: -1}
 	err := g.runRepo(ctx, name, res)
 	res.DurationMS = time.Since(start).Milliseconds()
 	if err == nil && len(res.AddFailed) > 0 {
@@ -128,7 +128,7 @@ func (g *Guard) RunRepo(ctx context.Context, name string) *Result {
 	}
 	if jerr := g.appendJournal(res); jerr != nil {
 		res.OK = false
-		res.Error = strings.TrimPrefix(res.Error+"; ", "; ") + "pull.jsonl: " + jerr.Error()
+		res.Error = strings.TrimPrefix(res.Error+"; ", "; ") + "backup.jsonl: " + jerr.Error()
 	}
 	return res
 }
@@ -205,5 +205,5 @@ func (g *Guard) runRepo(ctx context.Context, name string, res *Result) error {
 }
 
 func newRemote(repo *Repo) (*gitx.Remote, error) {
-	return gitx.NewRemote(&gitx.Git{}, repo.Remote, repo.Credential, repo.KnownHosts)
+	return gitx.NewRemote(&gitx.Git{}, repo.Remote, repo.Credential, repo.CredentialUsername, repo.KnownHosts)
 }

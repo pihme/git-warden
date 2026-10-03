@@ -1,4 +1,4 @@
-package pullguard
+package backupguard
 
 import (
 	"bytes"
@@ -203,8 +203,8 @@ func lock(stateDir, repo string) (func(), error) {
 
 // Warning is what notify.command gets as JSON on stdin.
 type Warning struct {
-	Kind        string    `json:"kind"`  // "pull_failed"
-	Guard       string    `json:"guard"` // "pull"
+	Kind        string    `json:"kind"`  // "backup_failed"
+	Guard       string    `json:"guard"` // "backup"
 	Time        time.Time `json:"time"`
 	Repo        string    `json:"repo"`
 	Error       string    `json:"error"`
@@ -217,7 +217,7 @@ func (g *Guard) notify(ctx context.Context, res *Result) error {
 	if len(cmdline) == 0 {
 		return nil
 	}
-	w := Warning{Kind: "pull_failed", Guard: "pull", Time: res.Time, Repo: res.Repo, Error: res.Error, EverrefExit: res.EverrefExit, Output: res.Output}
+	w := Warning{Kind: "backup_failed", Guard: "backup", Time: res.Time, Repo: res.Repo, Error: res.Error, EverrefExit: res.EverrefExit, Output: res.Output}
 	data, err := json.MarshalIndent(w, "", "  ")
 	if err != nil {
 		return err
@@ -235,7 +235,7 @@ func (g *Guard) notify(ctx context.Context, res *Result) error {
 	return nil
 }
 
-// appendJournal appends res as one line to stateDir/pull.jsonl.
+// appendJournal appends res as one line to stateDir/backup.jsonl.
 func (g *Guard) appendJournal(res *Result) error {
 	if err := os.MkdirAll(g.Defaults.StateDir, 0o700); err != nil {
 		return err
@@ -244,7 +244,7 @@ func (g *Guard) appendJournal(res *Result) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(g.Defaults.StateDir, "pull.jsonl"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+	f, err := os.OpenFile(filepath.Join(g.Defaults.StateDir, "backup.jsonl"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
 	if err != nil {
 		return err
 	}

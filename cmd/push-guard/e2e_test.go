@@ -342,7 +342,7 @@ func TestMissingScannerFailsClosed(t *testing.T) {
 	e := setup(t, "")
 	// gitleaks disappears (or is misconfigured) after the guard repo was set up
 	cfg := filepath.Join(e.config, "repos", repoName, "warden.yaml")
-	os.WriteFile(cfg, []byte("remote: "+e.remote.Dir+"\nscanner: {gitleaks: /nonexistent/gitleaks}\nrules:\n  CONTENT-SECRET: {enabled: true}\n"), 0o644)
+	os.WriteFile(cfg, []byte("remote: "+e.remote.Dir+"\ngitleaks: {path: /nonexistent/gitleaks}\nrules:\n  CONTENT-SECRET: {enabled: true}\n"), 0o644)
 	e.agent.Commit("docs", map[string]string{"README.md": "x\n"})
 	out := e.mustReject("origin", "main")
 	assertContains(t, out, "internal error, try again later")

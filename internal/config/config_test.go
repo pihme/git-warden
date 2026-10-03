@@ -157,8 +157,13 @@ func TestErrors(t *testing.T) {
 		"unknown repo":       {map[string]string{"defaults.yaml": wall}, "unknown repo"},
 		"missing agent":      {map[string]string{"repos/demo/warden.yaml": "remote: /x.git\n"}, "agent.name"},
 		"missing remote":     {map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": "rules: {}\n"}, "remote is required"},
-		"ssh needs cred":     {map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": "remote: git@example.invalid:o/r.git\n"}, "credential is required"},
-		"https needs cred":   {map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": "remote: https://example.invalid/o/r.git\n"}, "credential is required"},
+		"ssh needs cred":     {map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": "remote: git@example.invalid:o/r.git\n"}, "needs a credential (an SSH private key file)"},
+		"https needs cred":   {map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": "remote: https://example.invalid/o/r.git\n"}, "needs a credential (a token file)"},
+		"relative local":     {map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": "remote: ../x.git\n"}, "absolute path or a file:// URL"},
+		"local with cred":    {map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": "remote: /srv/git/x.git\ncredential: k\n"}, "takes no credential"},
+		"user for ssh":       {map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": "remote: git@example.invalid:o/r.git\ncredential: k\ncredential_username: u\n"}, "credential_username only applies"},
+		"bad user":           {map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": "remote: https://example.invalid/o/r.git\ncredential: t\ncredential_username: \"a b\"\n"}, "only letters"},
+		"user in defaults":   {map[string]string{"defaults.yaml": wall + "credential_username: u\n", "repos/demo/warden.yaml": "remote: /srv/git/x.git\n"}, "belong in a repo"},
 		"remote in defaults": {map[string]string{"defaults.yaml": wall + "remote: /x.git\n", "repos/demo/warden.yaml": "remote: /x.git\n"}, "belong in a repo"},
 		"agent in repo":      {map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": "remote: /x.git\nagent: {name: x}\n"}, "belong in the wall"},
 		"unknown rule":       {map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": "remote: /x.git\nrules:\n  REF-TYPO: {}\n"}, "unknown rule"},
@@ -180,7 +185,7 @@ func TestErrors(t *testing.T) {
 }
 
 func TestLocalRemoteWithoutCredential(t *testing.T) {
-	for _, remote := range []string{"/srv/git/x.git", "file:///srv/git/x.git", "../x.git"} {
+	for _, remote := range []string{"/srv/git/x.git", "file:///srv/git/x.git"} {
 		if _, err := loadRepo(t, map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": "remote: " + remote + "\n"}); err != nil {
 			t.Errorf("%s: %v", remote, err)
 		}

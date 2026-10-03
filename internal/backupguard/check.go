@@ -1,4 +1,4 @@
-package pullguard
+package backupguard
 
 import (
 	"context"
