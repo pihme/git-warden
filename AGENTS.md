@@ -2,19 +2,37 @@
 
 This file is for the coding agent working in this repo. Read it at the start of a session.
 
-<!-- Generated from the shared AGENTS.md template. Fill every TODO, then delete this comment.
-     The "Shared rules" section is the same in every repo of the family; change it in the shared template first. -->
-
 ## What this repo is
 
-**Git Warden** is <!-- TODO: one or two sentences, the same idea as the GitHub repo description -->. Spec and decisions: `SPEC.md`. User docs: `README.md`.
+**Git Warden** puts guard posts between AI agents and their Git remote. This monorepo holds all parts; the first is the **Push Guard** (`cmd/push-guard`): agents push to it, it checks every push with deterministic rules and forwards only green pushes to the real remote. Spec and decisions: `SPEC.md`. User docs: `README.md`.
 
 License: **PolyForm Noncommercial 1.0.0** (`LICENSE`). Source-available, not OSI Open Source. Do not relicense to Apache/MIT/GPL.
-<!-- Family default: PolyForm Noncommercial; MIT only for deliberately open helper tools. Delete this comment. -->
 
 ## How to work here
 
-<!-- TODO: stack and runtime versions, layout (one line per directory), invariants that must not break, what the tests cover. -->
+Go 1.24 (`go.mod`), one dependency (`gopkg.in/yaml.v3`). At runtime: `git` 2.42+ and `gitleaks` 8.x.
+
+- `cmd/push-guard/`: the binary (subcommands `serve`, `pre-receive`, `init-repo`, `approve`, `reset-streak`, `check-config`, `replay`, `version`) and the end-to-end tests.
+- `internal/config/`: three config layers and merge; `defaults.yaml` holds the built-in rule defaults (embedded).
+- `internal/gitx/`: git subprocess wrapper with timeouts, env passthrough and per-remote credentials.
+- `internal/rules/`: the decision core: delta normalisation, all deterministic rules, verdict. No platform knowledge.
+- `internal/journal/`: append-only `push.jsonl` and the queries on it (approvals, streak, rate).
+- `internal/pushguard/`: pre-receive hook, forwarding, pending bundles, notify, human commands, serve, replay.
+- `internal/testutil/`: helpers for tests with real temporary Git repos.
+- `examples/warden/`: example wall configuration (placeholder remote and credential).
+- Later: `cmd/merge-guard/`, `cmd/pull-guard/`, sharing `internal/rules`.
+
+Invariants that must not break:
+
+- **Fail closed.** Any error, timeout or missing input (scanner, remote, object) rejects the push with `internal error, try again later`. Never forward on doubt.
+- **Red stays silent.** A red rejection says only `rejected: waiting for a human (push <id>)`; no rule IDs, paths or reasons reach the agent. Yellow names rule, ref, path, line and why.
+- **Forward exactly the checked SHAs**, never `--force`; `--force-with-lease` only for refs whose `REF-NON-FF` / `REF-TAG-MOVE` / `REF-DELETE` was explicitly allowed or whose SHA a human approved.
+- **The remote's state is read fresh** for every push; the agent's old-oid is never trusted.
+- **Nothing in the pushed repo configures the guard** (scanner config, exceptions, attributes). Configuration lives on the wall only.
+- **Credentials stay file references:** never in YAML, logs, journal, command lines or agent output.
+- Patterns are anchored (`^(?:…)$`); lists are appended across layers, removed only by exact `*_remove`.
+
+Tests cover the config merge, every rule against real temporary repos, the journal queries, and end to end: a bare remote, the guard repo with the compiled binary as hook, an agent clone pushing by file path and over HTTP (`serve`). The secret-scan tests skip without `gitleaks` on `PATH` (CI has none).
 
 - Tests: `go test ./...` must pass before anything lands on `main`. Tests stay offline: no real accounts, tokens or live services.
 - Release paths (only commits touching them can cut a release) are listed in `.github/release.json`.
@@ -32,7 +50,7 @@ License: **PolyForm Noncommercial 1.0.0** (`LICENSE`). Source-available, not OSI
 
 ### Versions and releases
 
-- SemVer, one tag per artifact: `git-warden/vX.Y.Z`.
+- SemVer, one tag per artifact: `push-guard/vX.Y.Z` (later `merge-guard/…`, `pull-guard/…`).
 - `feat:` bumps minor, `fix:`/`perf:` patch, `feat!:`/`fix!:` or a `BREAKING CHANGE:` footer major. **Before 1.0.0 a breaking change bumps the minor version** (0.3.x to 0.4.0, never to 1.0.0). Reaching 1.0.0 is a deliberate decision by the maintainer, not a side effect.
 - `docs:`, `test:`, `refactor:`, `chore:`, `ci:`, `build:` never bump. A commit only counts when it touches a release path.
 - **Release 1.0** (or any chosen version): an empty commit with the footer `Release-As: 1.0.0`, e.g. `git commit --allow-empty -m "chore: release 1.0" -m "Release-As: 1.0.0"`. With several artifacts in `.github/release.json`, name one per footer line: `Release-As: <name>@1.0.0` (the bare form is then ignored). It releases by itself, regardless of type or paths; upwards only (at or below the current version it is ignored with a warning); several footers: the highest wins. Only use it when the maintainer decided the version.
@@ -56,15 +74,19 @@ License: **PolyForm Noncommercial 1.0.0** (`LICENSE`). Source-available, not OSI
 
 ### Website
 
-- Site: <https://pihme.github.io/git-warden/>, generated onto the `gh-pages` branch from outside this repo. Do not edit `gh-pages` by hand and never merge it into `main`.
-- **Repo description = site tagline.** The hero tagline is the live GitHub repo description; change them together (the generator checks it).
-- **Current status:** two link-free prose paragraphs, *what works* and *limits* (limits include the open issues, described in words, never as numbers or links). About 90–130 words each, plain English for someone who does not know the project, acronyms explained or avoided. No dates, SHAs or "as of" in the prose: metadata appears once, in the line `Last updated <date> · main@<sha>`. Only state what tests, CI, releases or the code show. The covered issues must match the open issues exactly.
-- **Chronicles:** one paragraph per month, newest first, about 60–90 words, only the main milestones. Written as a modest medieval chronicler: the author is always *a humble brother* (or a monk of the order), never "the maker". Light archaic touch, plain verbs, no clock times, minimal dates, no superlatives or flourishes, facts only (never mention things that do not exist yet), one to three links to releases, commits or compares.
-- **Jigsaw:** the project family lives in one central `family.json`. Each relation is described truthfully from both sides; a new project, a changed description or a changed relation means rebuilding all sites and the profile README.
+No website yet (private repo).
 
 ## Do not invent
 
-<!-- TODO: features, rewrites and dependencies that are out of scope or already decided (list SPEC decisions that must not be reopened). -->
+- **No AI judge in the Push Guard.** Rules only; the judge belongs to the Merge Guard and Pull Guard.
+- **No platform API in the Push Guard or the core.** Plain Git only; no GitHub/GitLab clients, no rules for protected branches (the remote's job).
+- **No author/committer identity rules**; agent identity comes from the push credential.
+- **No signature verification on the wall** (`META-UNSIGNED` checks presence only).
+- **No `refs/warden/pending`**: red pushes are stored as bundles (quarantine objects vanish, refs can't be written there).
+- **No registry or network checks** during a push (R17 comes later as its own rule source), and no trufflehog for now.
+- **No database** for the Push Guard: `push.jsonl` plus Git.
+- **No approvals through GitHub issues or the agent's channel**; humans act on the wall host.
+- Don't rename the binaries to `git-warden` (the name is taken on npm, PyPI and crates.io).
 
 ## Agent skills
 

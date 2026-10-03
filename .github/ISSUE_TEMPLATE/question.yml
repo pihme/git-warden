@@ -4,7 +4,7 @@ labels: ["question"]
 body:
   - type: markdown
     attributes:
-      value: The [website](https://pihme.github.io/git-warden/) and the readme may already answer it.
+      value: The README and SPEC.md may already answer it.
   - type: textarea
     id: question
     attributes:

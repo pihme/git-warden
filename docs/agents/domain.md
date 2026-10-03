@@ -8,7 +8,7 @@ How agents and skills consume this repo's domain documentation.
 - **`GLOSSARY.md`** at the repo root, if it exists. If it does not, proceed silently; it is created lazily (for example by `/domain-modeling`) when terms actually get resolved.
 - **`AGENTS.md`**: working rules and the "Do not invent" list.
 
-Decisions live in `SPEC.md`, not in `docs/adr/`. <!-- TODO: change if this repo keeps ADRs or a wiki instead. -->
+Decisions live in `SPEC.md`, not in `docs/adr/`. The design itself is in separate design notes, which `SPEC.md` names; `SPEC.md` records where the implementation settled, added or deviated. When a decision here changes the design, update the design notes too.
 
 ## Use the project's vocabulary
 

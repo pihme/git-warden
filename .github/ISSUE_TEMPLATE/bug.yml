@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting. Please check the open issues first; the website's Current status lists known gaps.
+        Thanks for reporting. Please check the open issues first; the README's Limits section lists known gaps.
         **Never paste tokens, keys or credentials.** Security problems go through private reporting (see SECURITY.md), not here.
   - type: input
     id: version

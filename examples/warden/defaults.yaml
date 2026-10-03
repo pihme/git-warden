@@ -1,0 +1,17 @@
+# Wall defaults for every repo of this Push Guard. Only what differs from the
+# built-in defaults (internal/config/defaults.yaml) needs to be here.
+agent:
+  name: hermit-1                     # goes into every log entry and warning
+  token_file: /etc/warden/agent-token  # HTTP basic auth password for push-guard serve
+notify:
+  # Gets the warning as JSON on stdin. Any channel: mail, ntfy, Signal, ...
+  command: [/usr/local/bin/warden-notify]
+state_dir: /var/lib/warden           # push.jsonl, pending bundles, guard repositories
+timeout: 60s
+scanner:
+  gitleaks: /usr/local/bin/gitleaks
+rules:
+  REF-DELETE:
+    allow: ['refs/heads/agent/.*']   # agents may delete their own agent/* branches
+  REF-NAMESPACE:
+    deny: ['refs/heads/main']        # every push to main is red: main changes go through PRs

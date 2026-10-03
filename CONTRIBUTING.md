@@ -16,8 +16,10 @@ The tracker is public. Never paste tokens, keys, credentials or real service res
 
 ## Build and test locally
 
-<!-- TODO: requirements (runtime versions, tools) and anything the tests need or do not need. -->
+Requirements: Go 1.24 or newer and `git` 2.42 or newer. [gitleaks](https://github.com/gitleaks/gitleaks) 8.x on `PATH` is optional: without it, the secret-scan tests are skipped. The tests are offline; they create temporary Git repositories and need no accounts, tokens or network.
 
 ```bash
+go vet ./...
 go test ./...
+go build -o push-guard ./cmd/push-guard
 ```

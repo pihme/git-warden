@@ -1,8 +1,5 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Website and handbook
-    url: https://pihme.github.io/git-warden/
-    about: Getting started, reference and current status of Git Warden.
   - name: Report a vulnerability (private)
     url: https://github.com/pihme/git-warden/security/advisories/new
     about: Please report security problems privately, not as a public issue.

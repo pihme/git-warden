@@ -223,3 +223,13 @@ func TestRepoNames(t *testing.T) {
 		t.Errorf("path traversal: %v", err)
 	}
 }
+
+func TestExamplesLoad(t *testing.T) {
+	c, err := LoadRepo("../../examples/warden", "hermetarium")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.AgentName != "hermit-1" || c.Credential != "/etc/warden/keys/hermetarium" || !c.Rule("REF-NAMESPACE").Fires("refs/heads/main", false) {
+		t.Fatalf("unexpected example config: %+v", c)
+	}
+}
