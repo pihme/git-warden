@@ -51,6 +51,31 @@ jobs:
           SSH_REQUIRED: "1"
           EVERREF_REQUIRED: "1"
 
+  # The Dockerfile builds, and the image has the pinned programs and refuses
+  # to serve without a configuration (the Push Guard's preflight).
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t git-warden:ci --build-arg VERSION=ci .
+      - name: Smoke test
+        run: |
+          docker run --rm git-warden:ci sh -c 'push-guard version && pull-guard version && git version && test "$(gitleaks version)" = 8.30.1 && test "$(git-everref --version)" = "everref version v1.0.0"'
+          if docker run --rm git-warden:ci 2> serve.err; then echo "serve started without a configuration" >&2; exit 1; fi
+          grep -F 'preflight failed: no wall configuration' serve.err
+
+  # flake.nix: the package builds (with go test ./... in the sandbox) and the
+  # dev shell has the pinned programs. Catches a stale vendorHash.
+  nix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+      - run: nix build -L .#default
+      - run: nix develop -c sh -c 'go version && git version && gitleaks version && git-everref --version'
+
   # Push Guard against this repository on GitHub. Only this job can write, and
   # the test only touches its own testrun-* branch, deleted at the end.
   # Workflows only run on pushes to main, so testrun-* pushes start nothing.
