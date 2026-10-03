@@ -4,10 +4,13 @@
     {
       "name": "git-warden",
       "tag_prefix": "v",
-      "paths": ["cmd/", "internal/", "go.mod", "go.sum"],
-      "build": [["env", "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "go", "build", "-trimpath", "-ldflags", "-s -w -X main.version={ver}", "-o", "release-out/push-guard-linux-amd64", "./cmd/push-guard"]],
-      "assets": ["release-out/push-guard-linux-amd64", "LICENSE", "THIRD_PARTY_NOTICES.md"],
-      "notes": "### Install\n\nDownload `push-guard-linux-amd64` below (`chmod +x`), or build from source as described in the README. The binary doesn't install anything: the wall host also needs `git` and `gitleaks` (see Requirements in the README). The Pull Guard is a git-everref run and has no binary here. `LICENSE` and `THIRD_PARTY_NOTICES.md` are attached for the license notices."
+      "paths": ["cmd/", "internal/", "scripts/", "go.mod", "go.sum"],
+      "build": [
+        ["env", "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "go", "build", "-trimpath", "-ldflags", "-s -w -X main.version={ver}", "-o", "release-out/push-guard-linux-amd64", "./cmd/push-guard"],
+        ["env", "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64", "go", "build", "-trimpath", "-ldflags", "-s -w -X main.version={ver}", "-o", "release-out/pull-guard-linux-amd64", "./cmd/pull-guard"]
+      ],
+      "assets": ["release-out/push-guard-linux-amd64", "release-out/pull-guard-linux-amd64", "scripts/install-everref.sh", "LICENSE", "THIRD_PARTY_NOTICES.md"],
+      "notes": "### Install\n\nDownload `push-guard-linux-amd64` and/or `pull-guard-linux-amd64` below (`chmod +x`), or build from source as described in the README. The binaries don't download or install anything at runtime. The Push Guard host also needs `git` and `gitleaks`; the Pull Guard host needs `git` and `git-everref` (see Requirements in the README). `install-everref.sh` optionally installs the pinned git-everref release with a pinned SHA-256. `LICENSE` and `THIRD_PARTY_NOTICES.md` are attached for the license notices."
     }
   ]
 }

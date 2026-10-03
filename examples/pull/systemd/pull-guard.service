@@ -1,0 +1,9 @@
+[Unit]
+Description=Git Warden Pull Guard: append-only backup of every branch and tag
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=warden-pull
+ExecStart=/usr/local/bin/pull-guard run --config /etc/warden-pull
