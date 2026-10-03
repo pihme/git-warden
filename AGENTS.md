@@ -4,7 +4,7 @@ This file is for the coding agent working in this repo. Read it at the start of 
 
 ## What this repo is
 
-**Git Warden** puts guard posts between AI agents and their Git remote. This monorepo holds all parts; the first is the **Push Guard** (`cmd/push-guard`): agents push to it, it checks every push with deterministic rules and forwards only green pushes to the real remote. Spec and decisions: `SPEC.md`. User docs: `README.md`.
+**Git Warden** puts guard posts between AI agents and their Git remote. This monorepo holds all parts; the first is the **Push Guard** (`cmd/push-guard`): agents push to it, it checks every push with deterministic rules and forwards only green pushes to the real remote. Design: `docs/design.md`, `docs/push-guard-rules.md`, risks R1–R22 in `docs/risks.md`. Implementation decisions: `SPEC.md`. User docs: `README.md`.
 
 License: **PolyForm Noncommercial 1.0.0** (`LICENSE`). Source-available, not OSI Open Source. Do not relicense to Apache/MIT/GPL.
 
@@ -20,6 +20,7 @@ Go 1.24 (`go.mod`), one dependency (`gopkg.in/yaml.v3`). At runtime: `git` 2.42+
 - `internal/pushguard/`: pre-receive hook, forwarding, pending bundles, notify, human commands, serve, replay.
 - `internal/testutil/`: helpers for tests with real temporary Git repos.
 - `examples/warden/`: example wall configuration (placeholder remote and credential).
+- `docs/`: design, Push Guard rule reasoning, risk register; `docs/agents/` holds the agent working docs.
 - Later: `cmd/merge-guard/`, sharing `internal/rules`. The Pull Guard is a scheduled git-everref run, not a binary here.
 
 Invariants that must not break:
@@ -74,7 +75,7 @@ Tests cover the config merge, every rule against real temporary repos, the journ
 
 ### Website
 
-No website yet (private repo).
+No website yet.
 
 ## Do not invent
 
@@ -84,7 +85,7 @@ No website yet (private repo).
 - **No author/committer identity rules**; agent identity comes from the push credential.
 - **No signature verification on the wall** (`META-UNSIGNED` checks presence only).
 - **No `refs/warden/pending`**: red pushes are stored as bundles (quarantine objects vanish, refs can't be written there).
-- **No registry or network checks** during a push (R17 comes later as its own rule source), and no trufflehog for now.
+- **No registry or network checks** during a push (R17, slopsquatting, comes later as its own rule source), and no trufflehog for now.
 - **No database** for the Push Guard: `push.jsonl` plus Git.
 - **No approvals through GitHub issues or the agent's channel**; humans act on the wall host.
 - Don't rename the binaries to `git-warden` (the name is taken on npm, PyPI and crates.io).
@@ -101,4 +102,4 @@ Default roles: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human
 
 ### Domain docs
 
-Single-context: decisions in `SPEC.md`, optional root `GLOSSARY.md`. See `docs/agents/domain.md`.
+Single-context: design in `docs/design.md`, decisions in `SPEC.md`, optional root `GLOSSARY.md`. See `docs/agents/domain.md`.

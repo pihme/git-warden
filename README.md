@@ -4,7 +4,7 @@ Git Warden puts guard posts between AI agents and their Git remote, whether that
 
 ## Status
 
-First batch: the Push Guard only (`push-guard`). All rules of the spec, the pre-receive hook, the HTTP server, the human commands and `replay` are implemented and covered by offline tests against real temporary Git repositories, plus a live test in CI against GitHub over HTTPS and an SSH test against a local `sshd` (see [Limits](#limits)). It is **not in production use yet**. The Merge Guard comes later as `cmd/merge-guard`. The Pull Guard needs no code here: it is a scheduled, pinned [git-everref](https://github.com/daojyun/git-everref) run that keeps every branch and tag of the remote in an append-only backup. Design and decisions: [SPEC.md](SPEC.md).
+First batch: the Push Guard only (`push-guard`). All rules of the spec, the pre-receive hook, the HTTP server, the human commands and `replay` are implemented and covered by offline tests against real temporary Git repositories, plus a live test in CI against GitHub over HTTPS and an SSH test against a local `sshd` (see [Limits](#limits)). It is **not in production use yet**. The Merge Guard comes later as `cmd/merge-guard`. The Pull Guard needs no code here: it is a scheduled, pinned [git-everref](https://github.com/daojyun/git-everref) run that keeps every branch and tag of the remote in an append-only backup. Design: [docs/design.md](docs/design.md) (threat model: [docs/risks.md](docs/risks.md)); what the implementation settled: [SPEC.md](SPEC.md).
 
 ## How it works
 
@@ -97,7 +97,7 @@ rules:
 | `RATE-LIMIT` | red | more than 30 pushes per hour (answer: `rate limited, try later`) |
 | `RATE-YELLOW-STREAK` | red | more than 5 yellow rejections in a repo within 24 h; then every push is red until a human approves a SHA or resets |
 
-The full reasoning per rule is in the Push Guard design notes.
+The full reasoning per rule is in [docs/push-guard-rules.md](docs/push-guard-rules.md).
 
 **Secret scanner.** gitleaks runs as `gitleaks git --log-opts "<new> --not <remote refs>"` with `--config` (the repo folder's `gitleaks.toml`, else the wall's, else a generated one that extends the gitleaks defaults), `--gitleaks-ignore-path` (the repo folder's `gitleaksignore`, else the wall's, else an empty file) and `--ignore-gitleaks-allow`, so nothing in the pushed repo can switch it off. Findings are redacted.
 
@@ -159,7 +159,7 @@ A red push's commits are in `state_dir/pending/<repo>/<id>.bundle`; inspect them
 - `CONTENT-PAGES-SCRIPT` looks at one added line at a time, so a tag split across lines is missed, and a host counts as known if its name appears anywhere in the old tree.
 - `push.jsonl` is read in full on every push; fine for now, it will need rotation or an index later.
 - One Push Guard per agent: `agent.name` is per installation, and rate limits count all pushes of that installation.
-- No registry checks for new dependencies (R17) and no AI judge: the Push Guard is rules only.
+- No registry checks for new dependencies (slopsquatting, [R17](docs/risks.md#4-agent-specific-vectors)) and no AI judge: the Push Guard is rules only.
 
 ## License
 
