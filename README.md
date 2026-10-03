@@ -74,7 +74,7 @@ Releases attach static `push-guard-linux-amd64` and `backup-guard-linux-amd64` b
 
 ## Docker
 
-The [Dockerfile](Dockerfile) builds one image with both guards and their prerequisites, provisioned at pinned versions: static `push-guard` and `backup-guard` (built with Go 1.24), Debian trixie's `git` 2.47 (the build fails below 2.42) with `openssh-client`, gitleaks 8.30.1 (the CI release, SHA-256 checked) and git-everref v1.0.0 (via [scripts/install-everref.sh](scripts/install-everref.sh), SHA-256 checked). Base images are pinned by digest. It runs as the unprivileged user `warden` (uid 10001) and contains no configuration and no secrets. The image isn't published; build it yourself:
+The [Dockerfile](Dockerfile) builds one image with both guards and their prerequisites, provisioned at pinned versions: static `push-guard` and `backup-guard` (built with Go 1.27), Debian trixie's `git` 2.47 (the build fails below 2.42) with `openssh-client`, gitleaks 8.30.1 (the CI release, SHA-256 checked) and git-everref v1.0.0 (via [scripts/install-everref.sh](scripts/install-everref.sh), SHA-256 checked). Base images are pinned by digest. It runs as the unprivileged user `warden` (uid 10001) and contains no configuration and no secrets. The image isn't published; build it yourself:
 
 ```bash
 docker build -t git-warden --build-arg VERSION=$(git describe --tags --always) .
