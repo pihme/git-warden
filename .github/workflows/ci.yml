@@ -37,14 +37,19 @@ jobs:
           tar -xzf "$tarball" gitleaks
           install -m 0755 gitleaks /usr/local/bin/gitleaks
           gitleaks version
+      - name: Install git-everref (pinned, SHA-256 checked)
+        run: |
+          scripts/install-everref.sh /usr/local/bin
+          git-everref --version
       - name: Install sshd (for the SSH end-to-end test)
         run: command -v sshd || test -x /usr/sbin/sshd || (sudo apt-get update -qq && sudo apt-get install -y -qq openssh-server)
       - run: go vet ./...
       - run: go test ./...
         env:
-          # the secret-scan and SSH tests must run in CI, never skip silently
+          # the secret-scan, SSH and everref tests must run in CI, never skip silently
           GITLEAKS_REQUIRED: "1"
           SSH_REQUIRED: "1"
+          EVERREF_REQUIRED: "1"
 
   # Push Guard against this repository on GitHub. Only this job can write, and
   # the test only touches its own testrun-* branch, deleted at the end.
