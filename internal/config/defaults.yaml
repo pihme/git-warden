@@ -1,0 +1,76 @@
+# Built-in defaults of the Push Guard. The wall's defaults.yaml and each repo's
+# warden.yaml are applied on top with the same merge rules (lists extend,
+# *_remove removes exact entries, scalars and limits override).
+pages_branch: gh-pages
+timeout: 60s
+scanner:
+  gitleaks: gitleaks
+forward:
+  atomic: true
+rules:
+  REF-DELETE: {color: red}
+  REF-NON-FF: {color: red}
+  REF-TAG-MOVE: {color: red}
+  REF-TAG-NEW: {color: yellow}
+  REF-NAMESPACE: {color: red}
+  REF-COUNT: {color: red, max_refs: 10}
+  PATH-RED:
+    color: red
+    match:
+      # CI configuration
+      - '\.github/workflows/.*'
+      - '\.github/actions/.*'
+      - '\.gitlab-ci\.yml'
+      - '\.(forgejo|gitea)/workflows/.*'
+      - '\.circleci/.*'
+      - 'Jenkinsfile'
+      # Ownership and licence
+      - '(.*/)?CODEOWNERS'
+      - '(LICENSE|COPYING)(\..*)?'
+      # Secret scanner configuration
+      - '\.gitleaks\.toml'
+      - '\.gitleaksignore'
+      - '\.trufflehog.*'
+      # Agent configuration (case-insensitive: macOS and Windows open agents.md as AGENTS.md)
+      - '(?i)(.*/)?(AGENTS|CLAUDE|GEMINI)\.md'
+      - '(?i)\.cursor/rules/.*'
+      - '(?i)\.github/copilot-instructions\.md'
+  PATH-YELLOW:
+    color: yellow
+    match:
+      # Git metadata
+      - '(.*/)?\.gitattributes'
+      - '\.gitmodules'
+      - '\.lfsconfig'
+      # Hooks that run on other people's machines
+      - '\.husky/.*'
+      - '\.githooks/.*'
+      - 'lefthook\.yml'
+      - '\.pre-commit-config\.yaml'
+      # Dependencies and registries
+      - '(.*/)?(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|go\.mod|go\.sum|Cargo\.toml|Cargo\.lock|pyproject\.toml|uv\.lock)'
+      - '(.*/)?requirements[^/]*\.txt'
+      - '(.*/)?(\.npmrc|\.yarnrc[^/]*|pip\.conf)'
+      # Build
+      - '(.*/)?Dockerfile[^/]*'
+      - '(.*/)?docker-compose[^/]*\.ya?ml'
+      - '(.*/)?Makefile'
+      - '(scripts/)?[^/]*\.sh'
+      - '\.github/dependabot\.yml'
+  MODE-EXEC: {color: yellow}
+  MODE-SYMLINK: {color: yellow}
+  MODE-SUBMODULE: {color: yellow}
+  CONTENT-SECRET: {color: red}
+  CONTENT-SCANNER-ALLOW: {color: red}
+  CONTENT-INVISIBLE: {color: red}
+  CONTENT-BINARY: {color: yellow}
+  CONTENT-BLOB: {color: yellow, min_base64: 200, min_hex: 100}
+  CONTENT-PAGES-SCRIPT: {color: yellow}
+  META-UNSIGNED: {color: yellow, lookback: 20}
+  META-BACKDATED: {color: yellow, max_age: 24h}
+  META-FUTURE: {color: yellow, max_skew: 10m}
+  SIZE-LIMIT: {color: red, max_files: 2000, max_lines: 50000, max_bytes: 50000000, max_file_bytes: 10000000}
+  SIZE-LARGE: {color: yellow, max_files: 200, max_lines: 5000, max_commits: 100, max_file_bytes: 1000000}
+  SIZE-MASS-DELETE: {color: yellow, max_deleted_files: 20, max_deleted_share: 50, min_lines: 100}
+  RATE-LIMIT: {color: red, max_pushes: 30, window: 1h}
+  RATE-YELLOW-STREAK: {color: red, max_yellow: 5, window: 24h}
