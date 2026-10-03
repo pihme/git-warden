@@ -1,5 +1,11 @@
 # Git Warden
 
+[![CI](https://github.com/pihme/git-warden/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pihme/git-warden/actions/workflows/ci.yml)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/pihme/git-warden?label=release)](https://github.com/pihme/git-warden/releases)
+[![Website](https://img.shields.io/badge/website-pihme.github.io%2Fgit--warden-455a6e)](https://pihme.github.io/git-warden/)
+[![Go](https://img.shields.io/badge/go-%3E%3D1.24-00ADD8?logo=go&logoColor=white)](go.mod)
+
 Git Warden puts guard posts between AI agents and their Git remote: a **Push Guard** that checks every push with deterministic rules, and a **Backup Guard** that keeps an append-only backup of every branch and tag. The remote can be GitHub, GitLab, Gitea/Forgejo or a bare repo over SSH. Neither guard uses AI: every decision is a deterministic rule.
 
 - **Push Guard** (`push-guard`): agents push to it instead of the remote, it checks every push while the push is running, and only it holds a write credential for the remote. A clean push is forwarded with exactly the checked SHAs; a `yellow` finding goes back to the agent with a message it can act on; a `red` finding is rejected without details and waits for a human.
@@ -9,7 +15,7 @@ Git Warden puts guard posts between AI agents and their Git remote: a **Push Gua
 
 Both guard posts are built. The Push Guard (`push-guard`): all rules of the spec, the pre-receive hook, the HTTP server, the human commands and `replay`, covered by offline tests against real temporary Git repositories, plus a live test in CI against GitHub over HTTPS and an SSH test against a local `sshd` (see [Limits](#limits)). The Backup Guard (`backup-guard`): preflight, bridge and backup setup, branch selection and the git-everref run, covered by tests with a stand-in everref and end to end with the real git-everref against a local remote (force push, deletion, moved tag, unreachable remote, an HTTP remote that requires a token, first runs killed at every stage). Neither is **in production use yet**.
 
-Documentation: [SPEC.md](SPEC.md) is the one authoritative document (design of both guard posts, decisions, the risk register and [what Git Warden does **not** cover](SPEC.md#coverage-by-git-warden)). Configuration and operation, the same structure for both guards: [docs/push-guard.md](docs/push-guard.md) (Push Guard, with the rules; reasoning per rule in [docs/push-guard-rules.md](docs/push-guard-rules.md)) and [docs/backup-guard.md](docs/backup-guard.md) (Backup Guard); overview in [Configuration and operation](#configuration-and-operation).
+Website and handbook: [pihme.github.io/git-warden](https://pihme.github.io/git-warden/). Documentation: [SPEC.md](SPEC.md) is the one authoritative document (design of both guard posts, decisions, the risk register and [what Git Warden does **not** cover](SPEC.md#coverage-by-git-warden)). Configuration and operation, the same structure for both guards: [docs/push-guard.md](docs/push-guard.md) (Push Guard, with the rules; reasoning per rule in [docs/push-guard-rules.md](docs/push-guard-rules.md)) and [docs/backup-guard.md](docs/backup-guard.md) (Backup Guard); overview in [Configuration and operation](#configuration-and-operation).
 
 ## How it works
 
