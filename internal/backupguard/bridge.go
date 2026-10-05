@@ -200,7 +200,8 @@ func protectedBranches(ctx context.Context, bridge string) (map[string]bool, err
 // addBranches protects new branches with everref add, in chunks. A chunk
 // that fails is retried branch by branch, so one name everref refuses (it
 // reserves some path components) doesn't leave the others unprotected.
-func addBranches(ctx context.Context, ev *Everref, bridge string, branches []string) (added []string, failed map[string]string) {
+func addBranches(ctx context.Context, ev *Everref, bridge string, branches []string) (added []string, failed map[string]string, output string) {
+	var outs strings.Builder
 	add := func(bs []string) error {
 		args := []string{"-q", "add"}
 		for _, b := range bs {
@@ -226,6 +227,10 @@ func addBranches(ctx context.Context, ev *Everref, bridge string, branches []str
 				var re *RunError
 				if errors.As(err, &re) {
 					msg = truncate(lastLines(re.Output, 1), 300)
+					outs.WriteString(re.Output)
+					if !strings.HasSuffix(re.Output, "\n") {
+						outs.WriteString("\n")
+					}
 				}
 				failed[b] = msg
 			} else {
@@ -233,7 +238,7 @@ func addBranches(ctx context.Context, ev *Everref, bridge string, branches []str
 			}
 		}
 	}
-	return added, failed
+	return added, failed, outs.String()
 }
 
 // countEvents counts the events everref run reported.
@@ -254,18 +259,30 @@ func countEvents(out string, res *Result) {
 	}
 }
 
-// lock takes the per-repo lock in stateDir/locks.
+// ErrLocked is returned by lock when another run holds the repo's lock.
+var ErrLocked = errors.New("locked by another run")
+
+func lockPath(stateDir, repo string) string {
+	return filepath.Join(stateDir, "locks", repo+".lock")
+}
+
+// lock takes the per-repo lock in stateDir/locks without waiting: if another
+// run holds it, lock returns ErrLocked and the repo is skipped (a failure),
+// so overlapping runs never pile up behind a slow one.
 func lock(stateDir, repo string) (func(), error) {
-	dir := filepath.Join(stateDir, "locks")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	path := lockPath(stateDir, repo)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(filepath.Join(dir, repo+".lock"), os.O_RDWR|os.O_CREATE, 0o600)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, ErrLocked
+		}
 		return nil, err
 	}
 	return func() {
@@ -279,7 +296,9 @@ type Warning struct {
 	Kind        string    `json:"kind"`  // "backup_failed"
 	Guard       string    `json:"guard"` // "backup"
 	Time        time.Time `json:"time"`
-	Repo        string    `json:"repo"`
+	Repo        string    `json:"repo,omitempty"`      // empty for a failed preflight
+	Preflight   bool      `json:"preflight,omitempty"` // the preflight failed; no repo ran
+	Skipped     bool      `json:"skipped,omitempty"`   // another run held the repo's lock
 	Error       string    `json:"error"`
 	EverrefExit int       `json:"everref_exit"`
 	Output      string    `json:"output,omitempty"`
@@ -290,7 +309,8 @@ func (g *Guard) notify(ctx context.Context, res *Result) error {
 	if len(cmdline) == 0 {
 		return nil
 	}
-	w := Warning{Kind: "backup_failed", Guard: "backup", Time: res.Time, Repo: res.Repo, Error: res.Error, EverrefExit: res.EverrefExit, Output: res.Output}
+	w := Warning{Kind: "backup_failed", Guard: "backup", Time: res.Time, Repo: res.Repo, Preflight: res.Preflight, Skipped: res.Skipped,
+		Error: res.Error, EverrefExit: res.EverrefExit, Output: res.Output}
 	data, err := json.MarshalIndent(w, "", "  ")
 	if err != nil {
 		return err

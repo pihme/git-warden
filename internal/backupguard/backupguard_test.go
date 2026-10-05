@@ -64,7 +64,7 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Everref != DefaultEverref || d.Timeout != DefaultTimeout || d.EverrefVersion != "" || filepath.Base(d.StateDir) != "state" {
+	if d.Everref != DefaultEverref || d.Timeout != DefaultTimeout || d.EverrefVersion != DefaultEverrefVersion || filepath.Base(d.StateDir) != "state" {
 		t.Fatalf("built-in defaults: %+v", d)
 	}
 	dir := writeConfig(t, "everref:\n  path: bin/git-everref\n  version: v1.0.0\nnotify:\n  command: [notify-me, --backup]\nstate_dir: /var/lib/backup\ntimeout: 5m\n", nil)
@@ -174,7 +174,7 @@ func TestPreflightFailsClosed(t *testing.T) {
 	// wrong version
 	t.Setenv("FAKE_EVERREF_VERSION", "v0.9.0")
 	dir = writeConfig(t, "everref:\n  path: "+bin+"\n  version: v1.0.0\n", repo)
-	if _, _, err := Preflight(ctx, dir, nil); err == nil || !strings.Contains(err.Error(), "requires v1.0.0") {
+	if _, _, err := Preflight(ctx, dir, nil); err == nil || !strings.Contains(err.Error(), "requires major version 1") {
 		t.Fatalf("wrong version: %v", err)
 	}
 	// no repos

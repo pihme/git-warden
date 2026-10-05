@@ -23,6 +23,12 @@ import (
 // Built-in defaults. Everything else must be configured.
 const (
 	DefaultEverref = "git-everref"
+	// DefaultEverrefVersion is the everref.version used when defaults.yaml
+	// doesn't set one. Only its major version is compared (FindEverref).
+	DefaultEverrefVersion = "1.0.0"
+	// DevVersion is what a plain source build of git-everref reports. It is
+	// only accepted when everref.version is exactly "dev".
+	DevVersion     = "dev"
 	DefaultTimeout = 30 * time.Minute
 	DefaultsFile   = "defaults.yaml"
 	RepoFile       = "backup.yaml"
@@ -35,10 +41,12 @@ var ErrUnknownRepo = errors.New("unknown repo")
 type Defaults struct {
 	Dir            string        // configuration directory
 	Everref        string        // everref binary: a path or a name looked up on PATH
-	EverrefVersion string        // if set, everref --version must report exactly this
+	EverrefVersion string        // everref --version must report the same major version ("dev": exactly dev)
 	NotifyCommand  []string      // gets a warning as JSON on stdin when a run fails
 	StateDir       string        // bridge clones, backup repositories, backup.jsonl
 	Timeout        time.Duration // per repo and run
+
+	everrefVersionSet bool // everref.version came from defaults.yaml
 }
 
 // Repo is repos/<name>/backup.yaml.
@@ -80,6 +88,9 @@ func decodeStrict(name string, data []byte, v any) error {
 	return nil
 }
 
+// versionRE is a valid everref.version other than "dev": [v]MAJOR[.MINOR[.PATCH]].
+var versionRE = regexp.MustCompile(`^v?[0-9]+(\.[0-9]+){0,2}$`)
+
 // LoadDefaults reads dir/defaults.yaml. The file is optional; unknown keys
 // are errors.
 func LoadDefaults(dir string) (*Defaults, error) {
@@ -95,7 +106,7 @@ func LoadDefaults(dir string) (*Defaults, error) {
 	} else if !st.IsDir() {
 		return nil, fmt.Errorf("configuration directory %s is not a directory", abs)
 	}
-	d := &Defaults{Dir: abs, Everref: DefaultEverref, StateDir: filepath.Join(abs, "state"), Timeout: DefaultTimeout}
+	d := &Defaults{Dir: abs, Everref: DefaultEverref, EverrefVersion: DefaultEverrefVersion, StateDir: filepath.Join(abs, "state"), Timeout: DefaultTimeout}
 	path := filepath.Join(abs, DefaultsFile)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -115,9 +126,19 @@ func LoadDefaults(dir string) (*Defaults, error) {
 		d.Everref = config.ResolveProgram(abs, *p)
 	}
 	if v := raw.Everref.Version; v != nil {
-		d.EverrefVersion = *v
+		if *v != DevVersion && !versionRE.MatchString(*v) {
+			return nil, fmt.Errorf("%s: everref.version %q is neither a version like 1.0.0 nor %q", path, *v, DevVersion)
+		}
+		d.EverrefVersion, d.everrefVersionSet = *v, true
 	}
-	d.NotifyCommand = raw.Notify.Command
+	if c := raw.Notify.Command; len(c) > 0 {
+		if c[0] == "" {
+			return nil, fmt.Errorf("%s: notify.command has an empty program", path)
+		}
+		// Like everref.path: a bare name is looked up on PATH, a relative
+		// path is relative to the configuration directory.
+		d.NotifyCommand = append([]string{config.ResolveProgram(abs, c[0])}, c[1:]...)
+	}
 	if raw.StateDir != nil {
 		if *raw.StateDir == "" {
 			return nil, fmt.Errorf("%s: state_dir is empty", path)

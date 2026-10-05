@@ -108,7 +108,7 @@ func parse(fs *flag.FlagSet, args []string, configDir *string) ([]string, error)
 }
 
 func runRepos(ctx context.Context, configDir string, only []string, out io.Writer) error {
-	g, repos, err := backupguard.Preflight(ctx, configDir, out)
+	g, repos, err := backupguard.PreflightRun(ctx, configDir, out)
 	if err != nil {
 		return fmt.Errorf("preflight: %w", err)
 	}

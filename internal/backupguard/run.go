@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -22,8 +23,10 @@ const (
 // Result is one repo's run; it is also the line appended to backup.jsonl.
 type Result struct {
 	Time        time.Time         `json:"time"`
-	Guard       string            `json:"guard"` // always "backup"
-	Repo        string            `json:"repo"`
+	Guard       string            `json:"guard"`               // always "backup"
+	Repo        string            `json:"repo,omitempty"`      // empty for a failed preflight
+	Preflight   bool              `json:"preflight,omitempty"` // the preflight failed; no repo ran
+	Skipped     bool              `json:"skipped,omitempty"`   // another run held the repo's lock
 	OK          bool              `json:"ok"`
 	Everref     string            `json:"everref,omitempty"` // version
 	Branches    int               `json:"branches"`          // on the remote, after exclude_branches
@@ -40,6 +43,8 @@ type Result struct {
 	Error       string            `json:"error,omitempty"`
 	Output      string            `json:"output,omitempty"` // tail of everref's output, on failure only
 	Notify      string            `json:"notify,omitempty"` // notify.command error
+
+	addOutput string // output of the everref add calls that still failed singly
 }
 
 // Guard runs the Backup Guard for one configuration directory.
@@ -51,32 +56,78 @@ type Guard struct {
 }
 
 // Preflight checks everything a run needs before anything is touched:
-// git (2.42 or newer), the everref binary (and its version, if pinned in
-// defaults.yaml) and at least one configured repo. Any failure is fatal: the Backup Guard fails
-// closed rather than pretending a backup happened.
+// defaults.yaml, git (2.42 or newer), the everref binary and its major
+// version (everref.version), at least one configured repo, and every repo's
+// backup.yaml (which also checks the folder name). Any failure is fatal: the
+// Backup Guard fails closed rather than pretending a backup happened. Once
+// defaults.yaml has loaded, every problem found is reported in one error.
+// Preflight records nothing; a run uses PreflightRun.
 func Preflight(ctx context.Context, configDir string, out io.Writer) (*Guard, []string, error) {
-	d, err := LoadDefaults(configDir)
-	if err != nil {
+	g, repos, _, err := preflight(ctx, configDir, out)
+	return g, repos, err
+}
+
+// PreflightRun is the preflight of backup-guard run. A failure after
+// defaults.yaml has loaded is recorded like a failed repo: one line with
+// "preflight": true in state_dir/backup.jsonl and a backup_failed warning
+// to notify.command. Nothing else is created (no lock, bridge or backup
+// repository). If defaults.yaml doesn't load there is nowhere to record it,
+// and if the line can't be written the error says so; the run fails either way.
+func PreflightRun(ctx context.Context, configDir string, out io.Writer) (*Guard, []string, error) {
+	g, repos, d, err := preflight(ctx, configDir, out)
+	if err == nil {
+		return g, repos, nil
+	}
+	if d == nil {
 		return nil, nil, err
 	}
+	res := &Result{Time: time.Now().UTC(), Guard: "backup", Preflight: true, EverrefExit: -1, Error: "preflight: " + err.Error()}
+	fg := &Guard{Defaults: d, Out: io.Discard}
+	if nerr := fg.notify(ctx, res); nerr != nil {
+		res.Notify = nerr.Error()
+	}
+	if jerr := fg.appendJournal(res); jerr != nil {
+		return nil, nil, fmt.Errorf("%w; the failure could not be recorded in %s: %v", err, filepath.Join(d.StateDir, "backup.jsonl"), jerr)
+	}
+	return nil, nil, err
+}
+
+func preflight(ctx context.Context, configDir string, out io.Writer) (*Guard, []string, *Defaults, error) {
+	d, err := LoadDefaults(configDir)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var problems []string
 	if _, _, err := gitx.CheckGit(ctx); err != nil { // the same git check as the Push Guard's
-		return nil, nil, err
+		problems = append(problems, err.Error())
 	}
 	bin, version, err := FindEverref(ctx, d.Everref, d.EverrefVersion)
 	if err != nil {
-		return nil, nil, err
+		problems = append(problems, err.Error())
 	}
 	repos, err := Repos(d.Dir)
-	if err != nil {
-		return nil, nil, err
+	switch {
+	case err != nil:
+		problems = append(problems, err.Error())
+	case len(repos) == 0:
+		problems = append(problems, fmt.Sprintf("no repos configured: add %s/repos/<name>/%s", d.Dir, RepoFile))
 	}
-	if len(repos) == 0 {
-		return nil, nil, fmt.Errorf("no repos configured: add %s/repos/<name>/%s", d.Dir, RepoFile)
+	for _, name := range repos {
+		if _, err := LoadRepo(d.Dir, name); err != nil {
+			problems = append(problems, err.Error())
+		}
+	}
+	switch len(problems) {
+	case 0:
+	case 1:
+		return nil, nil, d, errors.New(problems[0])
+	default:
+		return nil, nil, d, fmt.Errorf("%d problems: %s", len(problems), strings.Join(problems, "; "))
 	}
 	if out == nil {
 		out = io.Discard
 	}
-	return &Guard{Defaults: d, Everref: bin, Version: version, Out: out}, repos, nil
+	return &Guard{Defaults: d, Everref: bin, Version: version, Out: out}, repos, d, nil
 }
 
 // RunAll runs the given repos one after the other. It returns an error if
@@ -113,6 +164,7 @@ func (g *Guard) RunRepo(ctx context.Context, name string) *Result {
 		}
 		sort.Strings(names)
 		err = fmt.Errorf("%d branch(es) could not be protected: %s", len(names), strings.Join(names, ", "))
+		res.Output = truncate(lastLines(res.addOutput, 40), 4000)
 	}
 	if err != nil {
 		res.Error = err.Error()
@@ -139,6 +191,10 @@ func (g *Guard) runRepo(ctx context.Context, name string, res *Result) error {
 		return err
 	}
 	unlock, err := lock(g.Defaults.StateDir, name)
+	if errors.Is(err, ErrLocked) {
+		res.Skipped = true
+		return fmt.Errorf("skipped: another backup-guard run holds %s", lockPath(g.Defaults.StateDir, name))
+	}
 	if err != nil {
 		return err
 	}
@@ -189,7 +245,7 @@ func (g *Guard) runRepo(ctx context.Context, name string, res *Result) error {
 			missing = append(missing, b)
 		}
 	}
-	res.Added, res.AddFailed = addBranches(ctx, ev, bridge, missing)
+	res.Added, res.AddFailed, res.addOutput = addBranches(ctx, ev, bridge, missing)
 
 	out, err := ev.Run(ctx, bridge, "run", "--all")
 	countEvents(out, res)

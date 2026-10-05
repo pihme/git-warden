@@ -52,8 +52,11 @@ func TestRunFailsClosedWithoutEverref(t *testing.T) {
 	if code != 1 || !strings.Contains(out, "preflight: everref not found") {
 		t.Fatalf("exit %d: %s", code, out)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "state")); err == nil {
-		t.Fatal("a failed preflight created state")
+	// Only the failure record (REQ-BG-015) is written: no repo is set up.
+	for _, sub := range []string{"repos", "locks"} {
+		if _, err := os.Stat(filepath.Join(dir, "state", sub)); err == nil {
+			t.Fatalf("a failed preflight created state/%s", sub)
+		}
 	}
 }
 

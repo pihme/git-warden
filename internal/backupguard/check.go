@@ -20,8 +20,9 @@ func CheckConfig(ctx context.Context, configDir string, remote bool, out io.Writ
 	}
 	d := g.Defaults
 	fmt.Fprintf(out, "everref: %s (%s)\n", g.Everref, g.Version)
-	if d.EverrefVersion == "" {
-		fmt.Fprintln(out, "note: everref.version is not set; any installed everref version is accepted")
+	if !d.everrefVersionSet {
+		fmt.Fprintf(out, "note: everref.version is not set; the default %s applies (git-everref must report major version %s)\n",
+			DefaultEverrefVersion, strings.SplitN(DefaultEverrefVersion, ".", 2)[0])
 	}
 	var problems []string
 	if len(d.NotifyCommand) == 0 {
