@@ -113,7 +113,7 @@ gitleaks also loads `<source>/.gitleaksignore` next to `--gitleaks-ignore-path`.
 These behaviours are within the spec's wording or on the safe side, but may not be intended:
 
 1. **Approved rewrite must not overwrite another writer (A15 / REQ-PG-003).** The lease for a human-approved rewrite/tag-move/delete is the old OID recorded with the approval (remote tip at check time). If another writer moves the ref between approval and repush, the guard rejects with the fixed message `Remote moved since approval`, leaves the remote tip unchanged, and invalidates the approval (re-check and a new approval required). Allow-list exemptions still lease against the remote state just read.
-2. **Settled (A16 Option 1, 2026-10-05):** `REQ-PG-041` deny semantics. Subject-scanning rules (`REF-NAMESPACE`, `PATH-*`) fire on `deny` alone; event rules (`REF-DELETE`, `REF-NON-FF`, `REF-TAG-MOVE`, `MODE-*`, `META-*`, `SIZE-*`, `CONTENT-*`) apply `deny` only when already triggered. Spec sentence sharpened accordingly; code already matched.
+2. **Settled (A16 Option 1, 2026-10-05):** `REQ-PG-041` deny semantics. Subject-scanning rules (`REF-NAMESPACE`, `PATH-*`) fire on `deny` alone; event rules (`REF-DELETE`, `REF-NON-FF`, `REF-TAG-NEW`, `REF-TAG-MOVE`, `MODE-*`, `META-*`, `SIZE-*`, `CONTENT-*`) apply `deny` only when already triggered. Spec sentence sharpened accordingly; code already matched.
 3. `CONTENT-PAGES-SCRIPT` searches with `git grep -I`, so binary files are skipped; the spec says `-i -F`.
 4. `RATE-LIMIT` counts rate-limited pushes too, so an agent that keeps pushing stays limited until it pauses for a full window.
 5. `RATE-YELLOW-STREAK` counts yellow rejections per repo, not per agent and repo as REQ-PG-037 says. Same result while each repo has one agent.
