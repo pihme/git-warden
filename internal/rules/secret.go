@@ -114,13 +114,12 @@ func (e *eval) secretRule(s *Scanner) error {
 	defer os.Remove(report.Name())
 
 	// gitleaks always also loads <source>/.gitleaksignore next to
-	// --gitleaks-ignore-path (REQ-PG-020). Hide any file of that name in the
-	// scanned directory for the duration of the run so only the wall ignore
-	// path applies. Restore it afterwards even if the scan fails.
-	if err := hideDotGitleaksIgnore(s.RepoDir); err != nil {
+	// --gitleaks-ignore-path (REQ-PG-020). A file of that name in the scanned
+	// directory must not exist (it is not a wall config path). Fail closed
+	// rather than renaming it aside, which races under concurrent scans.
+	if err := rejectDotGitleaksIgnore(s.RepoDir); err != nil {
 		return err
 	}
-	defer restoreDotGitleaksIgnore(s.RepoDir)
 
 	ctx := e.ctx
 	cmd := exec.CommandContext(ctx, s.Bin, "git", "--log-opts="+logOpts,
@@ -186,11 +185,9 @@ func (e *eval) refOf(oid string) string {
 	return ""
 }
 
-const dotGitleaksIgnoreAside = ".gitleaksignore.warden-aside"
-
-func hideDotGitleaksIgnore(repoDir string) error {
-	src := filepath.Join(repoDir, ".gitleaksignore")
-	st, err := os.Lstat(src)
+func rejectDotGitleaksIgnore(repoDir string) error {
+	p := filepath.Join(repoDir, ".gitleaksignore")
+	st, err := os.Lstat(p)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -198,21 +195,9 @@ func hideDotGitleaksIgnore(repoDir string) error {
 		return err
 	}
 	if st.IsDir() {
-		return nil
+		return fmt.Errorf("secret scanner: %s is a directory; refuse to scan", p)
 	}
-	dst := filepath.Join(repoDir, dotGitleaksIgnoreAside)
-	if err := os.Rename(src, dst); err != nil {
-		return fmt.Errorf("hide .gitleaksignore: %w", err)
-	}
-	return nil
-}
-
-func restoreDotGitleaksIgnore(repoDir string) {
-	src := filepath.Join(repoDir, dotGitleaksIgnoreAside)
-	if _, err := os.Lstat(src); err != nil {
-		return
-	}
-	_ = os.Rename(src, filepath.Join(repoDir, ".gitleaksignore"))
+	return fmt.Errorf("secret scanner: %s must not exist in the scanned directory (wall ignore path only)", p)
 }
 
 func firstLine(s string) string {

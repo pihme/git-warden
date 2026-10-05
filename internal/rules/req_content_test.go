@@ -88,19 +88,24 @@ func TestREQ_PG_020_ScannerIgnoresRepoConfiguration(t *testing.T) {
 }
 
 // REQ-PG-020: gitleaks also loads <source>/.gitleaksignore on its own, next to
-// --gitleaks-ignore-path. A .gitleaksignore lying in the scanned directory
-// (in production the guard repository's git dir) must not silence a hit.
+// --gitleaks-ignore-path. A .gitleaksignore in the scanned directory (in
+// production the guard repository's git dir) must fail closed, not be renamed
+// aside (that races under concurrent scans).
 func TestREQ_PG_020_ScannerIgnoresIgnoreFileInScannedDir(t *testing.T) {
 	needGitleaks(t)
 	f := newReqFixture(t, "")
 	base := f.repo.Commit("base", nil)
 	head := f.repo.Commit("leak", map[string]string{"cfg.ini": "aws_access_key_id = " + testutil.FakeAWSKey() + "\n"})
-	s := expect(t, f.scan(map[string]string{main: base}, push(main, head)), "CONTENT-SECRET", "cfg.ini")
-	rule := strings.TrimSuffix(strings.TrimPrefix(s.Message, "secret scanner hit ("), ")")
-	f.repo.Write(".gitleaksignore", fmt.Sprintf("%s:%s:%s:%d\n", s.Commit, s.Path, rule, s.Line))
-	fs := f.scan(map[string]string{main: base}, push(main, head))
-	if countRule(fs, "CONTENT-SECRET") == 0 {
-		t.Fatalf("REQ-PG-020: a .gitleaksignore in the scanned directory %s silenced the secret scanner: %v", f.repo.Dir, fs)
+	expect(t, f.scan(map[string]string{main: base}, push(main, head)), "CONTENT-SECRET", "cfg.ini")
+	f.repo.Write(".gitleaksignore", "anything\n")
+	sc, err := NewScanner(f.cfg, f.repo.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sc.Close()
+	_, err = f.evalErr(map[string]string{main: base}, Options{Scanner: sc}, push(main, head))
+	if err == nil || !strings.Contains(err.Error(), ".gitleaksignore") {
+		t.Fatalf("REQ-PG-020: want fail-closed on scanned-dir .gitleaksignore, got %v", err)
 	}
 }
 
