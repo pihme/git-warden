@@ -39,7 +39,7 @@ See [examples/warden](../examples/warden). Relative file paths in either file ar
 | `notify.command` | unset | argv list; gets a warning as JSON on stdin (see [Warnings](#warnings)). |
 | `state_dir` | `<config>/state` | Guard repositories, `push.jsonl`, pending bundles, locks. |
 | `timeout` | `60s` | Per push; the push fails closed when it is exceeded. |
-| `pages_branch` | `gh-pages` | The branch `CONTENT-PAGES-SCRIPT` looks at. |
+| `pages_branch` | `gh-pages` | The branch `CONTENT-PAGES-SCRIPT` looks at. An empty value disables the rule entirely (no fallback to `gh-pages`). |
 | `forward.atomic` | `true` | Forward all refs of a push in one atomic push. |
 | `rules` | built-in | Rule changes for every repo (see [Rules](#rules)). |
 
@@ -85,7 +85,7 @@ Each rule has `enabled` (default `true`), `color` (`red` or `yellow`), `allow` a
 | `CONTENT-INVISIBLE` | red | bidi controls, zero-width characters, U+FEFF other than at the very start of a file, Unicode tag characters |
 | `CONTENT-BINARY` | yellow | a binary file (or text that isn't UTF-8) is added or changed |
 | `CONTENT-BLOB` | yellow | 200+ characters of base64 or 100+ of hex on one added line |
-| `CONTENT-PAGES-SCRIPT` | yellow | on the Pages branch: `<script src>` or `<link href>` to a host not found in the old tree |
+| `CONTENT-PAGES-SCRIPT` | yellow | on the Pages branch: `<script src>` or `<link href>` to a host not found in the old tree; empty `pages_branch` turns the rule off |
 | `META-UNSIGNED` | yellow | an unsigned commit where the last `lookback` (20) commits of the branch carry a signature |
 | `META-BACKDATED` | yellow | committer date before a parent's, or more than `max_age` (24h) before the push |
 | `META-FUTURE` | yellow | author or committer date more than `max_skew` (10m) after the push |

@@ -388,7 +388,6 @@ func parseNumstat(raw []byte) (map[string]numstat, error) {
 	return out, nil
 }
 
-
 // diffHeaderPath extracts the path from a git diff "+++ …" / "--- …" payload
 // (the text after the "+++ " / "--- " prefix). Git may append a tab and an
 // optional timestamp after the path; paths with spaces use that tab as the

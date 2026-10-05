@@ -57,7 +57,7 @@ Each requirement is one shall/must behaviour. Where a rule ID applies, it is nam
 | `REQ-PG-023` | `CONTENT-BINARY` shall fire `yellow` when a binary file is added or changed (`git diff --numstat` reports `-`), including under test directories. | `CONTENT-BINARY` |
 | `REQ-PG-024` | `CONTENT-BINARY` shall also fire for added text that is not valid UTF-8 (undecodable text counts as binary). | `CONTENT-BINARY` (SPEC settled) |
 | `REQ-PG-025` | `CONTENT-BLOB` shall fire `yellow` on a literal of 200+ characters of base64 or 100+ characters of hex on one added line. | `CONTENT-BLOB` |
-| `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` shall fire `yellow` on the Pages branch (`gh-pages` or configured) when a `<script src>` or `<link>` points to a new external host. | `CONTENT-PAGES-SCRIPT` |
+| `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` shall fire `yellow` on the Pages branch (`gh-pages` or configured) when a `<script src>` or `<link>` points to a new external host. An empty `pages_branch` disables the rule entirely (no default to `gh-pages`). | `CONTENT-PAGES-SCRIPT` |
 | `REQ-PG-027` | For `CONTENT-PAGES-SCRIPT`, a host shall count as **new** if `git grep -i -F <host>` finds it nowhere in the remote's old tree of the Pages branch. | `CONTENT-PAGES-SCRIPT` (SPEC settled) |
 | `REQ-PG-028` | `META-UNSIGNED` shall fire `yellow` when a commit has no signature and the last `lookback` commits (default 20) on that branch were all signed. Only signature **presence** counts; keys are not verified. | `META-UNSIGNED` |
 | `REQ-PG-029` | For `META-UNSIGNED`, the lookback shall be first-parent commits of the remote's old state (default branch for a new ref or a tag). With fewer than `lookback` commits the rule shall stay quiet. | `META-UNSIGNED` (SPEC settled) |
@@ -187,7 +187,7 @@ Over added lines, after decoding as UTF-8 (undecodable text counts as binary —
 | `CONTENT-INVISIBLE` | red | Bidi controls (U+202A–U+202E, U+2066–U+2069), zero-width characters (U+200B–U+200D, U+2060), U+FEFF outside the first byte, Unicode tag characters (U+E0000–U+E007F). | `REQ-PG-022` |
 | `CONTENT-BINARY` | yellow | A binary file is added or changed (`git diff --numstat` reports `-`), including in test directories (cf. xz). Also non-UTF-8 text (see below). | `REQ-PG-023`, `REQ-PG-024` |
 | `CONTENT-BLOB` | yellow | A literal of 200+ characters of base64 or 100+ characters of hex on one line. | `REQ-PG-025` |
-| `CONTENT-PAGES-SCRIPT` | yellow | On `gh-pages` (or the configured Pages branch): a `<script src>` or `<link>` to a new external host. A host is new if it is absent from the remote's old Pages tree (`REQ-PG-027`). | `REQ-PG-026`, `REQ-PG-027` |
+| `CONTENT-PAGES-SCRIPT` | yellow | On `gh-pages` (or the configured Pages branch): a `<script src>` or `<link>` to a new external host. A host is new if it is absent from the remote's old Pages tree (`REQ-PG-027`). An empty `pages_branch` disables the rule entirely — there is no fallback to `gh-pages` (`REQ-PG-026`). | `REQ-PG-026`, `REQ-PG-027` |
 
 ### Scanner configuration
 
