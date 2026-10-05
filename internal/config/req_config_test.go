@@ -166,6 +166,35 @@ func TestREQ_PG_032_CountLimitOutOfRange(t *testing.T) {
 	}
 }
 
+// Negative duration limits must be refused when the configuration loads
+// (REQ-PG-032 kind check). Zero is allowed (same as count limits): the
+// strictest finite window / skew / age. A negative max_age would make
+// META-BACKDATED fire on every commit.
+func TestREQ_PG_032_NegativeDurationRejected(t *testing.T) {
+	for name, rule := range map[string]string{
+		"max_skew negative": "META-FUTURE: {max_skew: '-5m'}",
+		"window negative":   "RATE-LIMIT: {window: '-1h'}",
+		"max_age negative":  "META-BACKDATED: {max_age: '-1s'}",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadRepo(t, map[string]string{"defaults.yaml": wall,
+				"repos/demo/warden.yaml": repoOK + "rules:\n  " + rule + "\n"})
+			if err == nil {
+				t.Fatalf("%s loads; negative duration must fail at load", rule)
+			}
+			if !strings.Contains(err.Error(), "must not be negative") {
+				t.Fatalf("err = %v; want must not be negative", err)
+			}
+		})
+	}
+	// Zero duration still loads (strictest finite bound).
+	c := mustLoad(t, map[string]string{"defaults.yaml": wall,
+		"repos/demo/warden.yaml": repoOK + "rules:\n  META-FUTURE: {max_skew: '0s'}\n"})
+	if d, err := c.Rule("META-FUTURE").Duration("max_skew"); err != nil || d != 0 {
+		t.Fatalf("zero max_skew = %v, %v; want 0", d, err)
+	}
+}
+
 // allow_remove and deny_remove take out a default entry; a missing one is an error.
 func TestAllowDenyRemove(t *testing.T) {
 	c := mustLoad(t, map[string]string{

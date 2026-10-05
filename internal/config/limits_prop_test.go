@@ -80,12 +80,13 @@ func TestPropCountLimitOutOfRange(t *testing.T) {
 	})
 }
 
-// Any duration written the way Go prints it loads and reads back unchanged;
-// a number for a duration limit and a duration for a count limit are refused.
+// Any non-negative duration written the way Go prints it loads and reads back
+// unchanged; negatives, a number for a duration limit, and a duration for a
+// count limit are refused.
 func TestPropDurationLimitKinds(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		d := durationKey.Draw(rt, "duration limit")
-		v := time.Duration(rapid.Int64().Draw(rt, "ns"))
+		v := time.Duration(rapid.Int64Min(0).Draw(rt, "ns"))
 		c, err := loadLimit(t, d.rule, d.key, "'"+v.String()+"'")
 		if err != nil {
 			rt.Fatalf("%s: %s doesn't load: %v", d.key, v, err)

@@ -172,7 +172,10 @@ func (r *Rule) Int(key string) (int64, error) {
 	return n, nil
 }
 
-// Duration returns a duration limit (e.g. 24h, 10m).
+// Duration returns a duration limit (e.g. 24h, 10m). Negative durations are
+// refused: they are never meaningful for max_age / max_skew / window (a
+// negative max_age would make META-BACKDATED fire on every commit). Zero is
+// allowed, matching count limits (Int), as the strictest finite bound.
 func (r *Rule) Duration(key string) (time.Duration, error) {
 	v, ok := r.Limits[key]
 	if !ok {
@@ -185,6 +188,9 @@ func (r *Rule) Duration(key string) (time.Duration, error) {
 	d, err := time.ParseDuration(s)
 	if err != nil {
 		return 0, fmt.Errorf("rule %s: limit %s: %w", r.ID, key, err)
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("rule %s: limit %s must not be negative: %s", r.ID, key, d)
 	}
 	return d, nil
 }

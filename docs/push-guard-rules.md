@@ -335,7 +335,7 @@ Warnings go out through `notify.command` in `defaults.yaml`: a command that gets
   - An approved rewrite, tag move or deletion leases against the remote tip recorded with the approval. If the remote moved since then, the push is rejected with `Remote moved since approval` and the approval is dropped. The owner gets no warning for this (`REQ-PG-003`).
   - `deny` makes only subject-scanning rules (`REF-NAMESPACE`, `PATH-*`) fire on its own; event rules apply it only when they already fire (`REQ-PG-041`).
   - A SHA prefix that fits more than one distinct rejected SHA approves nothing (`REQ-PG-005`).
-  - Limits are checked for the kind the rule reads when the config loads (`REQ-PG-032`).
+  - Limits are checked for the kind the rule reads when the config loads (`REQ-PG-032`). Count and duration limits must not be negative (zero is allowed: the strictest finite bound). A negative `max_age` would make `META-BACKDATED` fire on every commit.
   - Paths with spaces are seen by every content rule (`REQ-PG-021`, `022`, `025`, `026`).
   - A `.gitleaksignore` in the scanned directory makes the scan fail closed (`REQ-PG-020`).
   - An empty `pages_branch` switches `CONTENT-PAGES-SCRIPT` off (`REQ-PG-026`).
