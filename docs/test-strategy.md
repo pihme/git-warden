@@ -43,7 +43,7 @@ New candidates are added when a bug or clarification shows a class of inputs rat
 
 ## Backup Guard
 
-`backup-guard` has no numbered requirements yet. Its tests (`internal/backupguard`, `cmd/backup-guard`) follow the same rules; numbered requirements and a test specification follow if the spec in [backup-guard.md](backup-guard.md) grows them. Mutation testing does not cover it yet.
+`backup-guard` has numbered requirements, `REQ-BG-…` in [backup-guard.md § Requirements](backup-guard.md#requirements); requirement tests are named `TestREQ_BG_<nnn>_…`. Its tests (`internal/backupguard`, `cmd/backup-guard`) follow the same rules; a test specification follows. Mutation testing does not cover it yet.
 
 ## Roles
 

@@ -3,7 +3,7 @@
 This is the one authoritative document of Git Warden: what it is, the design of both guard posts, the decisions the implementation settled, the risk register (R1–R22) and, per risk, what Git Warden covers and what it does **not**. Decisions here are settled; reopen them only with a reason (see `docs/agents/domain.md`). Next to it, as reference:
 
 - [docs/push-guard-rules.md](docs/push-guard-rules.md): the reasoning behind every Push Guard rule, verdicts, configuration, layout on the wall, human actions, statistics. Testable Push Guard rule requirements are numbered there as [`REQ-PG-*`](docs/push-guard-rules.md#requirements) (stable; never renumber; only append). Those IDs are unrelated to risk IDs `R1`–`R22` below.
-- [docs/backup-guard.md](docs/backup-guard.md): the Backup Guard's configuration, state and operation.
+- [docs/backup-guard.md](docs/backup-guard.md): the Backup Guard's configuration, state and operation. Testable Backup Guard requirements are numbered there as [`REQ-BG-*`](docs/backup-guard.md#requirements) (stable; never renumber; only append).
 - [README.md](README.md): the user docs (requirements, build, configuration, commands).
 
 Contents: [The idea](#the-idea-in-one-paragraph) · [Goals](#goals) · [Principles](#principles) · [Prerequisites](#prerequisites-and-other-writers) · [Non-goals](#non-goals) · [Prior art](#prior-art-summary) · [Decision core](#decision-core) · [The two guard posts](#the-two-guard-posts) · [Layout, naming and versions](#layout-naming-and-versions) · [Push Guard: settled](#push-guard-what-the-implementation-settled) · [Backup Guard: settled](#backup-guard-what-the-implementation-settled) · [Rollout](#rollout-stages) · [Data model](#data-model) · [Prompt injection](#prompt-injection-resilience) · [Failure modes](#failure-modes-overall) · [Risks](#risks-an-ai-agent-with-push-access) · [Coverage](#coverage-by-git-warden) · [Open questions](#open-questions)
@@ -243,7 +243,7 @@ Testable requirements for these quirks and for every rule are numbered as `REQ-P
 
 ## Backup Guard: what the implementation settled
 
-Where this section and the design above differ, this section wins. Configuration and operation in detail: [docs/backup-guard.md](docs/backup-guard.md).
+Where this section and the design above differ, this section wins. Configuration and operation in detail: [docs/backup-guard.md](docs/backup-guard.md); testable requirements for these points are numbered as `REQ-BG-*` in [docs/backup-guard.md § Requirements](docs/backup-guard.md#requirements).
 
 - **Commands:** `backup-guard run --config DIR [repo…]` (all repos if none is named), `backup-guard check-config --config DIR [--remote]`, `backup-guard version`. Exit codes: `0` every repo backed up, `1` a repo failed or the preflight failed, `2` usage error.
 - **Own configuration directory,** separate from the Push Guard's (it usually lives on another host): `defaults.yaml` (`everref.path`, `everref.version`, `notify.command`, `state_dir`, `timeout`) and `repos/<name>/backup.yaml` (`remote`, `credential`, `credential_username`, `known_hosts`, `exclude_branches`), with the same key names, meanings and remote checks as the Push Guard (see [Configuration and operation](#configuration-and-operation)). Strict: unknown keys are errors. No layers and no rules.
@@ -294,7 +294,7 @@ Git Warden has no model in its decisions, so the persuasion techniques against A
 
 What can an AI agent that may push to a repository break, and which of that can be repaired? This is the threat model behind Git Warden. How far its two guard posts cover each risk, including what they **don't** cover, is in [Coverage by Git Warden](#coverage-by-git-warden).
 
-**Risk IDs** (R1–R22) are stable: they are never renumbered, new risks are only appended at the end. The rest of the docs refer to them by ID. They are unrelated to Push Guard requirement IDs (`REQ-PG-*`) in [docs/push-guard-rules.md](docs/push-guard-rules.md#requirements). Overview: [Risk register](#risk-register). Research as of October 2026.
+**Risk IDs** (R1–R22) are stable: they are never renumbered, new risks are only appended at the end. The rest of the docs refer to them by ID. They are unrelated to Push Guard requirement IDs (`REQ-PG-*`) in [docs/push-guard-rules.md](docs/push-guard-rules.md#requirements) and Backup Guard requirement IDs (`REQ-BG-*`) in [docs/backup-guard.md](docs/backup-guard.md#requirements). Overview: [Risk register](#risk-register). Research as of October 2026.
 
 ### TL;DR
 
