@@ -5,7 +5,7 @@ The Backup Guard (`backup-guard`) keeps an append-only backup of every branch an
 ## Prerequisites
 
 - `git` 2.42 or newer.
-- `git-everref` (MIT), pinned to `v1.0.0`, on `PATH` or at `everref.path`. `backup-guard` never downloads it; without it every run fails closed in the preflight. Install it however you provision the host, or with the optional pinned script:
+- `git-everref` (MIT), pinned to `v1.0.0`, on `PATH` or at `everref.path`. Any release with the major version of `everref.version` (default `1.0.0`, so any `v1.x.y`) is accepted. `backup-guard` never downloads it; without it every run fails closed in the preflight. Install it however you provision the host, or with the optional pinned script:
 
   ```bash
   scripts/install-everref.sh /usr/local/bin   # v1.0.0, SHA-256 checked; default prefix ~/.local/bin
@@ -37,8 +37,8 @@ See [examples/backup](../examples/backup). Relative file paths in either file ar
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `everref.path` | `git-everref` on `PATH` | The git-everref binary: a bare name is looked up on `PATH`, a path is relative to the configuration directory. |
-| `everref.version` | unset | If set (e.g. `v1.0.0`), `git-everref --version` must report exactly this, else the preflight fails. A source build reports `dev`; leave this unset for one. |
-| `notify.command` | unset | argv list; gets a warning as JSON on stdin (see [Warnings](#warnings)). |
+| `everref.version` | `1.0.0` | `[v]MAJOR[.MINOR[.PATCH]]` or `dev`. `git-everref --version` must report the same **major** version (`v1.4.2` satisfies `1.0.0`, `v2.0.0` doesn't), else the preflight fails. A source build reports `dev`, so its version can't be checked: it is refused unless this is set to exactly `dev`, which then accepts only a source build. |
+| `notify.command` | unset | argv list; gets a warning as JSON on stdin (see [Warnings](#warnings)). The program is looked up like `everref.path`: a bare name on `PATH`, a path relative to the configuration directory. |
 | `state_dir` | `<config>/state` | Bridge clones, backup repositories, `backup.jsonl`, locks. |
 | `timeout` | `30m` | Per repo and run; everref is killed when it is exceeded and the run counts as failed. |
 
@@ -63,7 +63,7 @@ exclude_branches: ['dependabot/.*']
 
 ### Branches and tags
 
-Every run backs up every branch of the remote except those matching `exclude_branches`: regular expressions over the branch name without `refs/heads/`, anchored as `^(?:…)$`, e.g. `['dependabot/.*']`. New branches are protected on the run that first sees them; a protection is never removed, also not when the branch is deleted upstream (everref writes a tombstone) or excluded later. Tags can't be excluded; all tags are always backed up. A remote with no branch to back up is a failure, not an empty backup.
+Every run backs up every branch of the remote except those matching `exclude_branches`: regular expressions over the branch name without `refs/heads/`, anchored as `^(?:…)$`, e.g. `['dependabot/.*']`. New branches are protected on the run that first sees them; a protection is never removed, also not when the branch is deleted upstream (everref writes a tombstone) or excluded later. `exclude_branches` therefore only keeps branches out that were never protected: **a branch excluded after a run has protected it stays in the backup, and every later run keeps recording it.** To stop backing it up, start a new backup for the repo (move its state directory away). Tags can't be excluded; all tags are always backed up. A remote with no branch to back up is a failure, not an empty backup.
 
 Check it with:
 
@@ -79,11 +79,11 @@ backup-guard run --config /etc/warden-backup                 # every repo
 backup-guard run --config /etc/warden-backup hermetarium     # just this one
 ```
 
-From a timer, every 15 minutes: [examples/backup/systemd](../examples/backup/systemd) has a `backup-guard.service` and `backup-guard.timer` (or a cron line calling the same command). Overlapping runs of the same repo wait for each other (one lock per repo).
+From a timer, every 15 minutes: [examples/backup/systemd](../examples/backup/systemd) has a `backup-guard.service` and `backup-guard.timer` (or a cron line calling the same command). Runs of the same repo never overlap (one lock per repo): if a run still holds a repo's lock, the next run doesn't wait, it skips that repo as failed (exit `1`, a line with `"skipped": true` in `backup.jsonl`, a `backup_failed` warning) and goes on with the others. A repo that is skipped on every run needs a longer timer interval or a shorter `timeout`.
 
 What one run does:
 
-1. **Preflight** (fails closed, before anything is touched): the configuration loads, `git` 2.42 or newer and `git-everref` are found, `git-everref --version` answers (and matches `everref.version` if set), at least one repo is configured.
+1. **Preflight** (fails closed, before any repo is set up): `defaults.yaml` loads, `git` 2.42 or newer and `git-everref` are found, `git-everref --version` answers with the major version of `everref.version`, at least one repo is configured, and every `repos/<name>/backup.yaml` loads (which also checks the folder name). It reports every problem it finds at once. A failed preflight is recorded like a failed repo: one line with `"preflight": true` in `state_dir/backup.jsonl` and a `backup_failed` warning; no repo runs and no lock, bridge or backup repository is created. Only if `defaults.yaml` itself doesn't load is there nowhere to record it; the run then just exits `1` with the error, as it does when the line can't be written.
 2. Per repo: set up or check `state_dir/repos/<name>/bridge` and `state_dir/repos/<name>/backup.git`, and switch on bridged tags once (`git-everref tags --remote backup on --source origin`). A bridge whose `origin` no longer matches `remote` fails the run. Both repositories are set up in a temporary directory and renamed into place only when complete, so a run killed during the setup leaves nothing half-made; the next run removes the leftovers and sets them up again.
 3. `git ls-remote` with the repo's credential; every branch not in `exclude_branches` that isn't protected yet is protected with `git-everref add origin/<branch>… --remote backup`.
 4. `git-everref -C <bridge> run --all`: everref fetches the remote and records every protected branch and all tags in the backup repo.
@@ -105,7 +105,7 @@ Exit codes: `0` every repo backed up, `1` a repo failed or the preflight failed,
 
 - `state_dir/repos/<name>/backup.git`: the backup, a bare repo. Event refs `refs/heads/everref/remotes/origin/<branch>/created_<unix-ts>` (lineages) and `…/deleted_<unix-ts>` (tombstones), the same for tags under `refs/tags/everref/remotes/origin/tags/<tag>/…`, and journals under `refs/heads/everref/journal/…`. Nothing in it is ever deleted or rewritten.
 - `state_dir/repos/<name>/bridge`: the clone everref runs in; its git config holds everref's protections (`[everref "remotes/origin/<branch>"]`) and tag setting (`[everref-remote "backup"]`).
-- `state_dir/backup.jsonl`: one line per repo and run: `time`, `repo`, `ok`, everref version, number of branches and excluded branches, newly protected branches, branches everref refused, counts of `new`, `rewritten`, `deleted`, `retagged` and `regressed` events, everref's exit code, duration, and on failure the error and the tail of everref's output.
+- `state_dir/backup.jsonl`: one line per repo and run: `time`, `guard` (`backup`), `repo`, `ok`, everref version, number of branches and excluded branches, newly protected branches, branches everref refused, counts of `new`, `rewritten`, `deleted`, `retagged` and `regressed` events, everref's exit code, duration, and on failure the error, the tail of everref's output, `skipped` for a repo whose lock another run held, and `notify` if `notify.command` failed. A failed preflight writes one line without `repo`, with `"preflight": true`.
 - `state_dir/locks/<name>.lock`.
 
 Back the backup repos up offsite (`git bundle create <file> --all`), pack refs regularly (`git -C <backup.git> pack-refs --all`), and don't move or edit the bridge by hand.
@@ -125,7 +125,7 @@ Restoring to the remote is always a human's step.
 
 ## Warnings
 
-A failed repo sends `backup_failed` with the repo, the error, everref's exit code and the tail of its output:
+A failed repo sends `backup_failed` with the repo, the error, everref's exit code and the tail of its output (of the failed `tags` or `run` call, otherwise of the `add` calls for branches that couldn't be protected):
 
 ```json
 {
@@ -139,7 +139,7 @@ A failed repo sends `backup_failed` with the repo, the error, everref's exit cod
 }
 ```
 
-`everref_exit` is `-1` when everref didn't run (preflight, `ls-remote` or setup failed).
+`everref_exit` is `-1` when everref's `run` didn't run (preflight, `ls-remote` or setup failed, or the repo was skipped). A failed preflight sends the same warning without `repo` and with `"preflight": true`; a repo skipped because another run held its lock carries `"skipped": true`.
 
 ## Requirements
 
@@ -149,7 +149,7 @@ Each requirement is one shall/must behaviour. Settled points from [SPEC.md § Ba
 
 | ID | Shall / must | Area / notes |
 | --- | --- | --- |
-| `REQ-BG-001` | `backup-guard run` shall run a preflight before it touches anything. While the preflight fails, no `state_dir`, lock, bridge, backup repository or `backup.jsonl` line shall be created. | Preflight |
+| `REQ-BG-001` | `backup-guard run` shall run a preflight before it sets up anything for a repo. While the preflight fails, no lock, bridge or backup repository shall be created; the only thing written is the failure record in `state_dir/backup.jsonl` (`REQ-BG-015`). | Preflight (amended 2026-10-06) |
 | `REQ-BG-002` | A failed preflight shall end `backup-guard run` with exit code `1` before any repo runs. | Preflight |
 | `REQ-BG-003` | The preflight shall fail if the configuration directory does not exist or is not a directory. | Preflight |
 | `REQ-BG-004` | The preflight shall fail if `defaults.yaml` exists but does not load (`REQ-BG-017`, `REQ-BG-019`, `REQ-BG-021`, `REQ-BG-022`). | Preflight |
@@ -160,11 +160,11 @@ Each requirement is one shall/must behaviour. Settled points from [SPEC.md § Ba
 | `REQ-BG-009` | The preflight shall fail if git-everref is not found. The error shall point to `scripts/install-everref.sh` and `everref.path`. | Prerequisites |
 | `REQ-BG-010` | The preflight shall fail if `git-everref --version` exits non-zero or doesn't answer within 30 s. | Prerequisites |
 | `REQ-BG-011` | The preflight shall fail if the first line of `git-everref --version` doesn't have the form `<name> version <version>`. The version is the last field of that line. | Prerequisites |
-| `REQ-BG-012` | If `everref.version` is set, the preflight shall fail unless the version git-everref reports equals it exactly. | Prerequisites |
-| `REQ-BG-013` | If `everref.version` is unset, the preflight shall accept any version git-everref reports, including `dev` from a source build. | Prerequisites |
+| `REQ-BG-012` | The preflight shall fail unless the major version git-everref reports equals the major version of `everref.version`. Minor and patch versions shall not be compared (`v1.4.2` satisfies `1.0.0`). | Prerequisites (amended 2026-10-06) |
+| `REQ-BG-013` | If `everref.version` is not set, it shall default to `1.0.0`, so git-everref must report major version 1. | Prerequisites (amended 2026-10-06) |
 | `REQ-BG-014` | The preflight shall fail if no repo is configured (no `repos/<name>/backup.yaml`). | Preflight |
-| `REQ-BG-015` | A failed preflight shall send no warning and write no `backup.jsonl` line. | Preflight (SPEC settled: before any state is created) |
-| `REQ-BG-016` | `defaults.yaml` shall be optional. Without it, or for a key it leaves out, the built-in default shall apply: `everref.path` `git-everref` on `PATH`, `everref.version` unset, `notify.command` unset, `state_dir` `<config>/state`, `timeout` `30m`. | Configuration |
+| `REQ-BG-015` | A failed preflight of `backup-guard run` shall append one line to `state_dir/backup.jsonl` with `ok` false, `preflight` true, no `repo`, `everref_exit` `-1` and the error, and shall send a `backup_failed` warning with `preflight` true to `notify.command` if it is set. | Preflight (amended 2026-10-06) |
+| `REQ-BG-016` | `defaults.yaml` shall be optional. Without it, or for a key it leaves out, the built-in default shall apply: `everref.path` `git-everref` on `PATH`, `everref.version` `1.0.0`, `notify.command` unset, `state_dir` `<config>/state`, `timeout` `30m`. | Configuration (amended 2026-10-06) |
 | `REQ-BG-017` | `defaults.yaml` shall accept only `everref.path`, `everref.version`, `notify.command`, `state_dir` and `timeout`. Any other key (a per-repo key such as `remote`, a Push Guard key such as `gitleaks.path`, a typo) shall be an error. | Configuration (no layers) |
 | `REQ-BG-018` | An `everref.path` without a `/` shall be looked up on `PATH`. One with a `/` shall be used as is if it is absolute, otherwise relative to the configuration directory. | Configuration |
 | `REQ-BG-019` | An empty `everref.path` shall be an error. | Configuration |
@@ -185,7 +185,7 @@ Each requirement is one shall/must behaviour. Settled points from [SPEC.md § Ba
 | `REQ-BG-034` | Relative `credential` and `known_hosts` paths shall be relative to the configuration directory. | Repo configuration |
 | `REQ-BG-035` | Each `exclude_branches` entry shall be a regular expression anchored as `^(?:…)$` and matched against the branch name without `refs/heads/`. | Branches and tags |
 | `REQ-BG-036` | An `exclude_branches` entry that isn't a valid regular expression shall be an error. | Repo configuration |
-| `REQ-BG-037` | A `backup.yaml` that doesn't load shall not fail the preflight. It shall fail that repo's run, with a `backup.jsonl` line and a warning, while the other repos still run. | Repo configuration |
+| `REQ-BG-037` | A `backup.yaml` that doesn't load shall fail the preflight (exit `1`), and no repo shall run. | Preflight (amended 2026-10-06) |
 | `REQ-BG-038` | For an SSH remote, every git and git-everref call for the repo shall use `ssh -F none -i <credential> -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes`. | Credentials |
 | `REQ-BG-039` | With `known_hosts` set, ssh shall use only that file (`UserKnownHostsFile=<file>`, `GlobalKnownHostsFile=/dev/null`). Without it, ssh shall use the guard user's own known_hosts. | Credentials |
 | `REQ-BG-040` | For an HTTPS remote, an inline credential helper shall read the token from the `credential` file when git asks and send it with the user name `credential_username` (default `x-access-token`). Credential helpers configured elsewhere shall not be used. | Credentials |
@@ -223,15 +223,15 @@ Each requirement is one shall/must behaviour. Settled points from [SPEC.md § Ba
 | `REQ-BG-072` | `backup-guard` shall never pass `--trigger` or `--schedule` to git-everref, so everref installs no hooks or timer units of its own. | Trigger |
 | `REQ-BG-073` | The example timer `examples/backup/systemd/backup-guard.timer` shall start `backup-guard run` every 15 minutes. | Trigger |
 | `REQ-BG-074` | `timeout` shall bound each repo's run (setup, `ls-remote`, `add` and `run`). When it is exceeded, git-everref shall be killed and the repo's run shall fail. | Run |
-| `REQ-BG-075` | Each repo's run shall hold an exclusive lock on `state_dir/locks/<name>.lock`. A second run of the same repo shall wait until the first releases it. | Locking |
+| `REQ-BG-075` | Each repo's run shall take an exclusive lock on `state_dir/locks/<name>.lock` without waiting. If another run holds it, the repo shall be skipped and count as failed (exit `1`); the other repos still run. | Locking (amended 2026-10-06) |
 | `REQ-BG-076` | The lock shall be released when the process holding it ends, also when it is killed. | Locking |
 | `REQ-BG-077` | A run killed at any step of the setup, or during `git-everref add` or `run`, shall be resumed by the next run: that run shall complete the backup without a manual step, lose no recorded ref, and leave nothing in `state_dir/repos/<name>/` besides `bridge` and `backup.git`. | Interrupted runs |
 | `REQ-BG-078` | Every repo's run after a passed preflight shall append exactly one JSON line to `state_dir/backup.jsonl`, also when it fails. | State |
-| `REQ-BG-079` | The line shall carry `time` (UTC), `guard` (`backup`), `repo`, `ok`, `everref` (version), `branches` (after `exclude_branches`), `excluded`, `added`, `add_failed`, `new`, `rewritten`, `deleted`, `retagged`, `regressed`, `everref_exit` (`-1` if `run` didn't run), `duration_ms`, and, where they apply, `error`, `output` and `notify`. | State |
+| `REQ-BG-079` | The line shall carry `time` (UTC), `guard` (`backup`), `repo`, `ok`, `everref` (version), `branches` (after `exclude_branches`), `excluded`, `added`, `add_failed`, `new`, `rewritten`, `deleted`, `retagged`, `regressed`, `everref_exit` (`-1` if `run` didn't run), `duration_ms`, and, where they apply, `error`, `output`, `skipped` and `notify`. The line of a failed preflight has no `repo` and carries `preflight` true. | State (amended 2026-10-06) |
 | `REQ-BG-080` | The event counts shall come from the output of `git-everref run`: `[new]` counts as `new`, `[new lineage]` as `rewritten`, `[deleted]` as `deleted`, `[re-tagged]` as `retagged`, `[regressed]` as `regressed`. `[deleted; already recorded]` and `[fast-forward]` shall not be counted. | State |
-| `REQ-BG-081` | When a repo's run fails because a git-everref call (`tags` or `run`) failed, `output` shall hold the tail of that call's output (the last 40 lines, at most 4000 bytes). | State |
+| `REQ-BG-081` | When a repo's run fails because a git-everref call failed, `output` shall hold the tail of everref's output (the last 40 lines, at most 4000 bytes): of the failed `tags` or `run` call, otherwise of the `add` calls that still failed for single branches. | State (amended 2026-10-06) |
 | `REQ-BG-082` | If the line can't be appended to `backup.jsonl`, the repo's run shall count as failed. | State |
-| `REQ-BG-083` | A repo whose run fails shall send one `backup_failed` warning to `notify.command`, as JSON on stdin with `kind` (`backup_failed`), `guard` (`backup`), `time`, `repo`, `error`, `everref_exit` and, if there is one, `output`. | Warnings |
+| `REQ-BG-083` | A repo whose run fails shall send one `backup_failed` warning to `notify.command`, as JSON on stdin with `kind` (`backup_failed`), `guard` (`backup`), `time`, `repo`, `error`, `everref_exit` and, where they apply, `output` and `skipped`. | Warnings |
 | `REQ-BG-084` | A repo whose run succeeds shall send no warning. | Warnings |
 | `REQ-BG-085` | With `notify.command` unset or empty, no warning shall be sent, and the run's result shall not change. | Warnings |
 | `REQ-BG-086` | If `notify.command` fails or doesn't finish within 1 minute, its error shall be recorded in the run's `notify` field. | Warnings |
@@ -245,7 +245,7 @@ Each requirement is one shall/must behaviour. Settled points from [SPEC.md § Ba
 | `REQ-BG-094` | `check-config` shall load every repo's `backup.yaml` and report each one that doesn't load as a problem. | check-config |
 | `REQ-BG-095` | `check-config` shall report a `credential` or `known_hosts` file that doesn't exist as a problem. | check-config |
 | `REQ-BG-096` | `check-config` shall report a `notify.command` whose program isn't found as a problem. | check-config |
-| `REQ-BG-097` | `check-config` shall only note, not count as a problem: `everref.version` unset, `notify.command` unset, a credential readable by group or others. | check-config |
+| `REQ-BG-097` | `check-config` shall only note, not count as a problem: `everref.version` not set (the default `1.0.0` applies), `notify.command` unset, a credential readable by group or others. | check-config (amended 2026-10-06) |
 | `REQ-BG-098` | `check-config --remote` shall also run `ls-remote` per repo, with its credential and `timeout`. A failure shall be a problem. | check-config |
 | `REQ-BG-099` | When the preflight passes, `check-config` shall list every problem it found and exit `1`, or print `configuration ok` and exit `0` if there is none. | check-config |
 | `REQ-BG-100` | After a run, git-everref's own commands (`status`, `log`, `restore`) shall work in `state_dir/repos/<name>/bridge`. | Looking and restoring |
@@ -253,6 +253,15 @@ Each requirement is one shall/must behaviour. Settled points from [SPEC.md § Ba
 | `REQ-BG-102` | `backup-guard` shall never download, update or build git-everref, or any other program, at runtime. | No runtime downloads |
 | `REQ-BG-103` | `scripts/install-everref.sh` shall install git-everref `v1.0.0` only if the release tarball matches the SHA-256 pinned in the script. On a mismatch it shall install nothing. | Provisioning |
 | `REQ-BG-104` | `scripts/install-everref.sh` shall install nothing if the unpacked binary's `--version` isn't `everref version v1.0.0`. | Provisioning |
+| `REQ-BG-105` | If the configuration directory or `defaults.yaml` doesn't load, the failed preflight shall only be reported as an error with exit `1`; nothing shall be recorded or warned (there is no known `state_dir` or `notify.command`). | Preflight (2026-10-06) |
+| `REQ-BG-106` | If the failure record of a failed preflight can't be written (`state_dir` can't be created or `backup.jsonl` can't be appended to), the run shall still exit `1`, and the error shall name both the preflight failure and why it couldn't be recorded. | Preflight (2026-10-06) |
+| `REQ-BG-107` | A folder under `repos/` that contains `backup.yaml` but whose name isn't a valid repo name (`REQ-BG-024`) shall fail the preflight. | Preflight (2026-10-06) |
+| `REQ-BG-108` | Once `defaults.yaml` has loaded, the preflight shall report every problem it finds (git, git-everref, repos) in one error. | Preflight (2026-10-06) |
+| `REQ-BG-109` | A repo skipped because another run holds its lock shall get a `backup.jsonl` line with `skipped` true and the error, and a `backup_failed` warning with `skipped` true. | Locking (2026-10-06) |
+| `REQ-BG-110` | `check-config` shall not record a failed preflight: it shall send no warning and write no `backup.jsonl` line. | check-config (2026-10-06) |
+| `REQ-BG-111` | A `notify.command` program without a `/` shall be looked up on `PATH`. One with a `/` shall be used as is if it is absolute, otherwise relative to the configuration directory. An empty program name shall be an error. | Warnings (2026-10-06) |
+| `REQ-BG-112` | A git-everref that reports `dev` (a source build) shall fail the preflight unless `everref.version` is exactly `dev`. With `everref.version: dev`, only a git-everref that reports `dev` shall pass. | Prerequisites (2026-10-06) |
+| `REQ-BG-113` | `everref.version` shall be `dev` or a version `[v]MAJOR[.MINOR[.PATCH]]`. Anything else, including an empty value, shall be an error. | Configuration (2026-10-06) |
 
 ## Decided
 
@@ -263,3 +272,10 @@ From [SPEC.md § Open questions](../SPEC.md#open-questions) and [what the implem
 - **Cadence:** every 15 minutes by default, from the host's timer; everref schedules nothing itself (`REQ-BG-071`–`073`).
 - **Retention:** the backups are kept forever for now; nothing in a backup repository is deleted or rewritten (`REQ-BG-066`).
 - **A backup is never continued with another remote** (`REQ-BG-062`), and **a remote with no branch to back up is a failure** (`REQ-BG-054`).
+- **Decided by Peter (2026-10-06)**, on the mismatches between spec and code found when the requirements were numbered:
+  - **A failed preflight is recorded and warned** like a failed repo: one `backup.jsonl` line with `"preflight": true` and a `backup_failed` warning. Writing `state_dir` and that line is allowed; no repo is set up. If `defaults.yaml` doesn't load, or the line can't be written, the run still exits `1` with a clear error. `check-config` records nothing (`REQ-BG-001`, `015`, `105`, `106`, `110`).
+  - **The preflight loads every `backup.yaml`**, like the Push Guard's, and refuses a repo folder with an invalid name; it reports every problem at once (`REQ-BG-037`, `107`, `108`).
+  - **A branch excluded later stays in the backup:** a protection is never removed (`REQ-BG-051`).
+  - **`everref.version` defaults to `1.0.0`, and only the major version is compared**, also for a version set by hand. A source build (`dev`) is refused unless `everref.version` is exactly `dev`: the fail-closed choice, since its version can't be checked. The install script stays pinned to `v1.0.0` (`REQ-BG-012`, `013`, `112`, `113`).
+  - **A repo whose lock another run holds is skipped, not waited for.** It counts as failed (exit `1`), with a `"skipped": true` line in `backup.jsonl` and a warning; the other repos still run (`REQ-BG-075`, `109`).
+  - Bug fixes so the code does what this page already said: a relative `notify.command` is relative to the configuration directory (`REQ-BG-111`), and the warning for branches that couldn't be protected carries everref's output (`REQ-BG-081`).

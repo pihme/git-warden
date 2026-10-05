@@ -190,7 +190,7 @@ backup-guard check-config --config /etc/warden-backup [--remote]
 backup-guard run --config /etc/warden-backup [repo...]     # from a timer, e.g. every 15 minutes
 ```
 
-`run` starts only after a preflight: the configuration loads, `git` is 2.42 or newer, git-everref is found (and matches `everref.version` if set), and at least one repo is configured. A run that is killed or times out is picked up cleanly by the next one. Example systemd units: [examples/backup/systemd](examples/backup/systemd). The backup of a repo is `state_dir/repos/<name>/backup.git`; look at it and restore with git-everref's own commands in `state_dir/repos/<name>/bridge`. Restoring to the remote is a human's step. Details: [docs/backup-guard.md](docs/backup-guard.md).
+`run` starts only after a preflight: the configuration loads (every repo's `backup.yaml` too), `git` is 2.42 or newer, git-everref is found with the major version of `everref.version` (default `1.0.0`), and at least one repo is configured; a failed preflight is logged in `backup.jsonl` and warned. A repo whose previous run is still going is skipped as failed rather than waited for. A run that is killed or times out is picked up cleanly by the next one. Example systemd units: [examples/backup/systemd](examples/backup/systemd). The backup of a repo is `state_dir/repos/<name>/backup.git`; look at it and restore with git-everref's own commands in `state_dir/repos/<name>/bridge`. Restoring to the remote is a human's step. Details: [docs/backup-guard.md](docs/backup-guard.md).
 
 ## Limits
 

@@ -2,7 +2,7 @@
 # directory, separate from the Push Guard's; it usually lives on the backup host.
 everref:
   path: /usr/local/bin/git-everref   # default: git-everref on PATH
-  version: v1.0.0                    # refuse to run with any other version
+  version: v1.0.0                    # default 1.0.0; refuse any other major version
 notify:
   # Gets a warning as JSON on stdin when a run fails. Any channel: mail, ntfy, Signal, ...
   command: [/usr/local/bin/warden-notify]
