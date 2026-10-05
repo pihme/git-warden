@@ -6,8 +6,8 @@ Status is as of branch `qa/rules-tests` (5.10.2026). **Red** means the test fail
 
 ## Summary
 
-- 45 of 45 requirements have at least one test; 77 requirement tests in total.
-- 73 green, 4 red: line-based `CONTENT-*` rules miss files whose name contains a space (`REQ-PG-021`, `022`, `025`, `026`, see below).
+- 45 of 45 requirements have at least one test; 84 requirement tests in total.
+- All 84 are green. The last red ones (file names with a space, `REQ-PG-021`, `022`, `025`, `026`) were fixed in `a1ef172`, see below.
 
 ## Coverage
 
@@ -15,7 +15,7 @@ Statement coverage from `go test ./... -coverprofile`, before (`test/rules-req-i
 
 | Package | Before | After |
 | --- | --- | --- |
-| `internal/rules` | 83.7 % | 92.3 % |
+| `internal/rules` | 83.7 % | 93.4 % |
 | `internal/config` | 82.2 % | 82.2 % |
 | `internal/journal` | 75.3 % | 75.3 % |
 | `internal/pushguard` (unit tests only) | 21.8 % | 21.8 % |
@@ -41,6 +41,8 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_Parsers` | `internal/rules/req_failclosed_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_ScannerFailuresFailClosed` | `internal/rules/req_failclosed_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_ScannerTimeoutFailsClosed` | `internal/rules/req_failclosed_test.go` | green |
+| `REQ-PG-004` | Verdict | `TestREQ_PG_004_ScannerErrorMessageIsShortened` | `internal/rules/req_edges_test.go` | green |
+| `REQ-PG-004` | Verdict | `TestREQ_PG_004_CatFileMissingOrUnexpectedFailsClosed` | `internal/rules/req_edges_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_ScannerTimeoutIsInternalError` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_UnknownCommitInReportGoesToFirstRef` | `internal/rules/req_failclosed_test.go` | green |
 | `REQ-PG-005` | Verdict | `TestREQ_PG_005_ApprovalIsPerRefAndSHA` | `cmd/push-guard/req_e2e_test.go` | green |
@@ -59,20 +61,25 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-017` | `MODE-SYMLINK` | `TestREQ_PG_017_ModeSymlinkAddedOrChanged` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-018` | `MODE-SUBMODULE` | `TestREQ_PG_018_ModeSubmoduleAddedOrChanged` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-019` | `CONTENT-SECRET` | `TestREQ_PG_019_SecretOnlyInPushedRangeAndAttributedToRef` | `internal/rules/req_content_test.go` | green |
+| `REQ-PG-019` | `CONTENT-SECRET` | `TestREQ_PG_019_ScannerReportDuplicatesAndUnknownCommit` | `internal/rules/req_edges_test.go` | green |
 | `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_ScannerFilesComeFromTheWall` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_ScannerIgnoresIgnoreFileInScannedDir` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_ScannerIgnoresRepoConfiguration` | `internal/rules/req_content_test.go` | green |
+| `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_DotGitleaksIgnoreDirectoryFailsClosed` | `internal/rules/req_edges_test.go` | green |
+| `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_ScannerDefaultsAndWallOnlyConfig` | `internal/rules/req_edges_test.go` | green |
 | `REQ-PG-021` | `CONTENT-SCANNER-ALLOW` | `TestREQ_PG_021_ScannerAllowInAddedLinesAnyCase` | `internal/rules/req_content_test.go` | green |
-| `REQ-PG-021` | `CONTENT-SCANNER-ALLOW` | `TestREQ_PG_021_ScannerAllowInOddFileNames` | `internal/rules/req_pathnames_test.go` | **red** |
+| `REQ-PG-021` | `CONTENT-SCANNER-ALLOW` | `TestREQ_PG_021_ScannerAllowInOddFileNames` | `internal/rules/req_pathnames_test.go` | green |
+| `REQ-PG-021` | `CONTENT-SCANNER-ALLOW` | `TestREQ_PG_021_DiffHeaderPath` | `internal/rules/req_edges_test.go` | green |
 | `REQ-PG-022` | `CONTENT-INVISIBLE` | `TestREQ_PG_022_ByteOrderMarkOnlyAllowedAtTheStart` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-022` | `CONTENT-INVISIBLE` | `TestREQ_PG_022_InvisibleCharacterRanges` | `internal/rules/req_content_test.go` | green |
-| `REQ-PG-022` | `CONTENT-INVISIBLE` | `TestREQ_PG_022_InvisibleInOddFileNames` | `internal/rules/req_pathnames_test.go` | **red** |
+| `REQ-PG-022` | `CONTENT-INVISIBLE` | `TestREQ_PG_022_InvisibleInOddFileNames` | `internal/rules/req_pathnames_test.go` | green |
 | `REQ-PG-023` | `CONTENT-BINARY` | `TestREQ_PG_023_BinaryAddedOrChangedAlsoInTestDirs` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-024` | `CONTENT-BINARY` (SPEC settled) | `TestREQ_PG_024_InvalidUTF8InAddedLinesIsBinary` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-025` | `CONTENT-BLOB` | `TestREQ_PG_025_BlobThresholds` | `internal/rules/req_content_test.go` | green |
-| `REQ-PG-025` | `CONTENT-BLOB` | `TestREQ_PG_025_BlobInOddFileNames` | `internal/rules/req_pathnames_test.go` | **red** |
+| `REQ-PG-025` | `CONTENT-BLOB` | `TestREQ_PG_025_BlobInOddFileNames` | `internal/rules/req_pathnames_test.go` | green |
 | `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` | `TestREQ_PG_026_PagesScriptOnConfiguredBranchOnly` | `internal/rules/req_content_test.go` | green |
-| `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` | `TestREQ_PG_026_PagesScriptInOddFileNames` | `internal/rules/req_pathnames_test.go` | **red** |
+| `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` | `TestREQ_PG_026_PagesScriptInOddFileNames` | `internal/rules/req_pathnames_test.go` | green |
+| `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` | `TestREQ_PG_026_EmptyPagesBranchDisablesRule` | `internal/rules/req_edges_test.go` | green |
 | `REQ-PG-027` | `CONTENT-PAGES-SCRIPT` (SPEC settled) | `TestREQ_PG_027_PagesHostKnownFromOldTreeCaseInsensitive` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-028` | `META-UNSIGNED` | `TestREQ_PG_028_DefaultLookbackIs20` | `internal/rules/req_meta_test.go` | green |
 | `REQ-PG-028` | `META-UNSIGNED` | `TestREQ_PG_028_UnsignedAfterSignedHistory` | `internal/rules/req_meta_test.go` | green |
@@ -108,9 +115,11 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 
 ## Red tests
 
-### REQ-PG-021, 022, 025, 026: file names with a space bypass the line-based CONTENT rules
+None at the moment.
 
-`addedLines` in `internal/rules/delta.go` takes the path from the `+++ b/<path>` line of the patch. For a path that contains a space, git appends a TAB to that line (`+++ b/with space.txt\t`), so the added lines are stored under `"with space.txt\t"` and the rules look them up under `"with space.txt"` and find nothing. `CONTENT-SCANNER-ALLOW`, `CONTENT-INVISIBLE`, `CONTENT-BLOB` and `CONTENT-PAGES-SCRIPT` therefore never fire on such files; an agent can avoid them by putting a space in the file or directory name. Names with non-ASCII characters, quotes or tabs (which git C-quotes) are handled correctly; the tests in `req_pathnames_test.go` cover both kinds.
+### Fixed: REQ-PG-021, 022, 025, 026 (file names with a space)
+
+`addedLines` in `internal/rules/delta.go` took the path from the `+++ b/<path>` line of the patch. For a path that contains a space, git appends a TAB to that line (`+++ b/with space.txt\t`), so the added lines were stored under `"with space.txt\t"` and `CONTENT-SCANNER-ALLOW`, `CONTENT-INVISIBLE`, `CONTENT-BLOB` and `CONTENT-PAGES-SCRIPT` never fired on such files. Since `a1ef172` the path is cut at the first TAB (`diffHeaderPath`); `req_pathnames_test.go` and `TestREQ_PG_021_DiffHeaderPath` are green.
 
 ### Fixed: REQ-PG-020
 
@@ -128,6 +137,11 @@ These behaviours are within the spec's wording or on the safe side, but may not 
 6. `CONTENT-BLOB` treats long runs of `-` or `=` (e.g. Markdown rules) as base64.
 7. Refs approved by a human are excluded from `REF-COUNT`.
 8. `parseNumstat` accepts a truncated rename entry ending in a NUL. Git never produces this.
+9. `pages_branch: ''` switches `CONTENT-PAGES-SCRIPT` off completely, even for `gh-pages`. Neither the spec nor `push-guard.md` mentions this.
+
+### Untested on purpose
+
+The remaining uncovered statements in `internal/rules` (49 of 739) are `if err != nil` branches after git calls and config reads that are validated at load time, plus the `gitleaks` fallback in `NewScanner`, which config already fills in. They are reachable only with a broken git or a hand-built config. That a failing rule rejects the push is covered by the `REQ-PG-004` tests.
 
 ## Running
 
