@@ -2,7 +2,7 @@
 
 This is the one authoritative document of Git Warden: what it is, the design of both guard posts, the decisions the implementation settled, the risk register (R1–R22) and, per risk, what Git Warden covers and what it does **not**. Decisions here are settled; reopen them only with a reason (see `docs/agents/domain.md`). Next to it, as reference:
 
-- [docs/push-guard-rules.md](docs/push-guard-rules.md): the reasoning behind every Push Guard rule, verdicts, configuration, layout on the wall, human actions, statistics.
+- [docs/push-guard-rules.md](docs/push-guard-rules.md): the reasoning behind every Push Guard rule, verdicts, configuration, layout on the wall, human actions, statistics. Testable Push Guard rule requirements are numbered there as [`REQ-PG-*`](docs/push-guard-rules.md#requirements) (stable; never renumber; only append). Those IDs are unrelated to risk IDs `R1`–`R22` below.
 - [docs/backup-guard.md](docs/backup-guard.md): the Backup Guard's configuration, state and operation.
 - [README.md](README.md): the user docs (requirements, build, configuration, commands).
 
@@ -226,6 +226,8 @@ Where this section and the design above differ, this section wins.
 
 ### Push Guard rules
 
+Testable requirements for these quirks and for every rule are numbered as `REQ-PG-*` in [docs/push-guard-rules.md § Requirements](docs/push-guard-rules.md#requirements). Requirement IDs are a separate namespace from rule IDs (`REF-*`, …) and from risk IDs (`R1`–`R22`); do not renumber or reuse either.
+
 - **`META-UNSIGNED` checks presence only:** a `gpgsig`/`gpgsig-sha256` header. The wall has no keyring, so signatures aren't verified. "The last `lookback` commits on that branch" are first-parent commits of the remote's old state (the default branch for a new ref or a tag); with fewer than `lookback` commits the rule stays quiet.
 - **`CONTENT-BINARY`** also fires for added text that isn't valid UTF-8 (the design's "undecodable text counts as binary").
 - **`CONTENT-PAGES-SCRIPT`:** a host counts as new if `git grep -i -F <host>` finds it nowhere in the remote's old tree of the Pages branch.
@@ -292,7 +294,7 @@ Git Warden has no model in its decisions, so the persuasion techniques against A
 
 What can an AI agent that may push to a repository break, and which of that can be repaired? This is the threat model behind Git Warden. How far its two guard posts cover each risk, including what they **don't** cover, is in [Coverage by Git Warden](#coverage-by-git-warden).
 
-**Risk IDs** (R1–R22) are stable: they are never renumbered, new risks are only appended at the end. The rest of the docs refer to them by ID. Overview: [Risk register](#risk-register). Research as of October 2026.
+**Risk IDs** (R1–R22) are stable: they are never renumbered, new risks are only appended at the end. The rest of the docs refer to them by ID. They are unrelated to Push Guard requirement IDs (`REQ-PG-*`) in [docs/push-guard-rules.md](docs/push-guard-rules.md#requirements). Overview: [Risk register](#risk-register). Research as of October 2026.
 
 ### TL;DR
 

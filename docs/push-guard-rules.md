@@ -2,7 +2,7 @@
 
 The reasoning behind every Push Guard rule. Configuration and operation (rule table, configuration, commands including `replay`) are in [docs/push-guard.md](push-guard.md), the overview for both guards in the [README](../README.md#configuration-and-operation); what the implementation settled or changed is in [SPEC.md](../SPEC.md). Design of both guard posts and the risk register (risk IDs R1–R22): [SPEC.md](../SPEC.md).
 
-Focus for now: only the Push Guard, only deterministic rules. **No AI at all:** the Push Guard has to decide fast, pass or fail, while the push is running, and the same input must always give the same answer. No LLM, no platform API, nothing but Git. Every rule below can be decided from the pushed objects and the remote's current refs alone, with the same result every time.
+Focus for now: only the Push Guard, only deterministic rules. **No AI at all:** the Push Guard has to decide fast, pass or fail, while the push is running, and the same input must always give the same answer. No LLM, no platform API, nothing but Git. Every rule below can be decided from the pushed objects and the remote's current refs alone, with the same result every time. Testable requirements for QA are numbered as `REQ-PG-*` in [Requirements](#requirements).
 
 ## Assumption: one Push Guard per agent
 
@@ -24,6 +24,60 @@ For now, each monitored agent gets its own Push Guard. Its configuration names t
 
 Why `red` stays silent: a `yellow` message helps an honest agent fix its change, but it also teaches a manipulated agent what the rules look for. For `red` cases that lesson would be too valuable, so the agent only learns that the push didn't go through.
 
+## Requirements
+
+Testable Push Guard behaviours for QA. **Requirement IDs** (`REQ-PG-*`) are stable: never renumber; only append. They are a separate layer from **rule IDs** (`REF-*`, `PATH-*`, …) and from SPEC **risk IDs** (`R1`–`R22`); do not reuse those namespaces.
+
+Each requirement is one shall/must behaviour. Where a rule ID applies, it is named. Settled quirks from [SPEC.md § Push Guard rules](../SPEC.md#push-guard-rules) are included so tests match the implementation.
+
+| ID | Shall / must | Rule / notes |
+| --- | --- | --- |
+| `REQ-PG-001` | Any `red` finding shall reject the push **without naming the rule**; the response only states rejection and that a human is needed; the owner shall be warned. | Verdict |
+| `REQ-PG-002` | Any `yellow` finding shall reject with an agent-usable message (which rule, on which ref/path/line, and why). `yellow` shall **not** go to a human. | Verdict |
+| `REQ-PG-003` | Only `green` shall forward **exactly the checked SHAs** to the remote, then accept the agent's push. Forwarding shall never use `--force`. A rewrite, tag move or deletion shall use `--force-with-lease` against the remote state just read, and only if the rule's `allow` exempts that ref or a human approved that SHA. | Verdict |
+| `REQ-PG-004` | A rule that errors, times out or cannot read its input shall count as `red` with the message `internal error, try again later` (**fail-closed**). The next push shall be checked from scratch. | Verdict |
+| `REQ-PG-005` | Human approval shall be **per SHA**: approve `ref` + `new-oid`. The agent's next push of exactly that SHA to that ref shall be forwarded without re-checking. Any other SHA shall be checked from scratch. | Verdict |
+| `REQ-PG-006` | `REF-DELETE` shall fire `red` when a branch or tag is deleted. | `REF-DELETE` |
+| `REQ-PG-007` | `REF-NON-FF` shall fire `red` when a branch moves to a commit that does not contain its old commit. | `REF-NON-FF` |
+| `REQ-PG-008` | `REF-TAG-MOVE` shall fire `red` when an existing tag is pointed elsewhere. | `REF-TAG-MOVE` |
+| `REQ-PG-009` | `REF-TAG-NEW` shall fire `yellow` when a new tag is created. | `REF-TAG-NEW` |
+| `REQ-PG-010` | `REF-NAMESPACE` shall fire `red` when a ref is outside `refs/heads/*` and `refs/tags/*`. | `REF-NAMESPACE` |
+| `REQ-PG-011` | `REF-COUNT` shall fire `red` when a push contains more than `max_refs` refs (default 10). | `REF-COUNT` |
+| `REQ-PG-012` | `PATH-RED` shall fire `red` when a changed path (added, modified, deleted or renamed) matches the rule's `match` list. | `PATH-RED` |
+| `REQ-PG-013` | `PATH-YELLOW` shall fire `yellow` when a changed path matches the rule's `match` list. | `PATH-YELLOW` |
+| `REQ-PG-014` | A rename shall be checked under **both** the old and the new path name for path rules. | `PATH-RED`, `PATH-YELLOW` |
+| `REQ-PG-015` | A path that matches both `PATH-RED` and `PATH-YELLOW` shall be treated as `red` (`PATH-RED` overrides yellow). | `PATH-RED`, `PATH-YELLOW` |
+| `REQ-PG-016` | `MODE-EXEC` shall fire `yellow` when a file becomes executable (mode `100755`). | `MODE-EXEC` |
+| `REQ-PG-017` | `MODE-SYMLINK` shall fire `yellow` when a symlink (mode `120000`) is added or changed. | `MODE-SYMLINK` |
+| `REQ-PG-018` | `MODE-SUBMODULE` shall fire `yellow` when a gitlink (mode `160000`) is added or changed. | `MODE-SUBMODULE` |
+| `REQ-PG-019` | `CONTENT-SECRET` shall fire `red` when gitleaks finds a secret in the new commits (`gitleaks git --log-opts="<range>"`). Every commit in the range shall count, including a secret added and later removed. | `CONTENT-SECRET` |
+| `REQ-PG-020` | `CONTENT-SECRET` shall run only with wall scanner configuration (`--config`, `--gitleaks-ignore-path`, `--ignore-gitleaks-allow`), never with the repo's `.gitleaks.toml`, `.gitleaksignore` or inline `gitleaks:allow`. | `CONTENT-SECRET` |
+| `REQ-PG-021` | `CONTENT-SCANNER-ALLOW` shall fire `red` when an added line introduces an inline secret-scanner exception (`gitleaks:allow`, `trufflehog:ignore`). | `CONTENT-SCANNER-ALLOW` |
+| `REQ-PG-022` | `CONTENT-INVISIBLE` shall fire `red` on Bidi controls (U+202A–U+202E, U+2066–U+2069), zero-width characters (U+200B–U+200D, U+2060), U+FEFF outside the first byte, or Unicode tag characters (U+E0000–U+E007F) in added lines. | `CONTENT-INVISIBLE` |
+| `REQ-PG-023` | `CONTENT-BINARY` shall fire `yellow` when a binary file is added or changed (`git diff --numstat` reports `-`), including under test directories. | `CONTENT-BINARY` |
+| `REQ-PG-024` | `CONTENT-BINARY` shall also fire for added text that is not valid UTF-8 (undecodable text counts as binary). | `CONTENT-BINARY` (SPEC settled) |
+| `REQ-PG-025` | `CONTENT-BLOB` shall fire `yellow` on a literal of 200+ characters of base64 or 100+ characters of hex on one added line. | `CONTENT-BLOB` |
+| `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` shall fire `yellow` on the Pages branch (`gh-pages` or configured) when a `<script src>` or `<link>` points to a new external host. | `CONTENT-PAGES-SCRIPT` |
+| `REQ-PG-027` | For `CONTENT-PAGES-SCRIPT`, a host shall count as **new** if `git grep -i -F <host>` finds it nowhere in the remote's old tree of the Pages branch. | `CONTENT-PAGES-SCRIPT` (SPEC settled) |
+| `REQ-PG-028` | `META-UNSIGNED` shall fire `yellow` when a commit has no signature and the last `lookback` commits (default 20) on that branch were all signed. Only signature **presence** counts; keys are not verified. | `META-UNSIGNED` |
+| `REQ-PG-029` | For `META-UNSIGNED`, the lookback shall be first-parent commits of the remote's old state (default branch for a new ref or a tag). With fewer than `lookback` commits the rule shall stay quiet. | `META-UNSIGNED` (SPEC settled) |
+| `REQ-PG-030` | `META-BACKDATED` shall fire `yellow` when the committer date is earlier than a parent's committer date, or more than 24 h before the push. Only the committer date shall be used. | `META-BACKDATED` |
+| `REQ-PG-031` | `META-FUTURE` shall fire `yellow` when the author or committer date is more than 10 min after the push. | `META-FUTURE` |
+| `REQ-PG-032` | `SIZE-LIMIT` shall fire `red` when the delta exceeds the hard limits: `max_files` 2,000, `max_lines` 50,000, `max_bytes` 50 MB of new objects, or `max_file_bytes` 10 MB for a single file (defaults; configurable). | `SIZE-LIMIT` |
+| `REQ-PG-033` | `SIZE-LARGE` shall fire `yellow` when the soft limits are exceeded: `max_files` 200, `max_lines` 5,000, `max_commits` 100, or `max_file_bytes` 1 MB (defaults; configurable). | `SIZE-LARGE` |
+| `REQ-PG-034` | `SIZE-MASS-DELETE` shall fire `yellow` when more than `max_deleted_files` (default 20) files are deleted, or more than `max_deleted_share` (default 50 %) of a file's lines are removed in files over `min_lines` (default 100). | `SIZE-MASS-DELETE` |
+| `REQ-PG-035` | For `SIZE-MASS-DELETE`, the share check shall apply to **modified and renamed** files; fully deleted files shall count only toward `max_deleted_files`. | `SIZE-MASS-DELETE` (SPEC settled) |
+| `REQ-PG-036` | `RATE-LIMIT` shall fire `red` when an agent exceeds `max_pushes` (default 30) pushes per `window` (default 1 h). The response shall say `rate limited, try later`. | `RATE-LIMIT` |
+| `REQ-PG-037` | `RATE-YELLOW-STREAK` shall fire `red` when an agent exceeds `max_yellow` (default 5) `yellow` rejections in the same repo (all refs) within `window` (default 24 h). A human shall be warned; further pushes by that agent to that repo shall be `red` (no rule details) until a human approves one of its SHAs there or resets the streak. A `green` push shall **not** reset the streak. | `RATE-YELLOW-STREAK` |
+| `REQ-PG-038` | Every rule shall be **on by default** and shall be disableable via `enabled: false`. | Configuration |
+| `REQ-PG-039` | Each rule's `color` shall be configurable (`red` or `yellow`, default as in the rule tables). | Configuration |
+| `REQ-PG-040` | `allow` shall be regexes over the rule's subject; a match means the rule does **not** fire for that subject. | Configuration |
+| `REQ-PG-041` | `deny` shall win over `allow`: a `deny` match means the rule fires even if `allow` also matches. A rule fires if `deny` matches, or if it is triggered and `allow` does not match. | Configuration |
+| `REQ-PG-042` | Patterns shall match the **whole** subject: each pattern is wrapped as `^(?:…)$` so partial matches do not exempt or deny unintended subjects. | Configuration |
+| `REQ-PG-043` | Subjects shall be: full ref name for `REF-*`; path for `PATH-*`, `MODE-*`, `CONTENT-*` and per-file `SIZE-*`; ref name for per-ref `SIZE-*` totals; branch (without `refs/heads/` for branches; full ref for tags) for `META-*`. `REF-COUNT` and `RATE-*` have no subject; `allow`/`deny` shall not apply to them. | Configuration |
+| `REQ-PG-044` | Path and content rules shall run over the **cumulative diff**; metadata rules shall run over **each new commit**. | What a rule sees |
+| `REQ-PG-045` | Remote state shall come from a fresh `git ls-remote --symref` per push; the agent's `old-oid` shall not be trusted. | What a rule sees |
+
 ## What a rule sees
 
 For each ref in the push (`old-oid new-oid ref-name` from `pre-receive`):
@@ -41,29 +95,29 @@ Path rules and content rules run over the **cumulative diff**, so splitting a ch
 
 ## Rules
 
-IDs are stable so findings, approvals and config can refer to them. Every list, pattern and limit is configuration with the default shown. **Every rule is on by default and can be disabled**, and most can be narrowed with allow and deny lists (see [Configuration](#configuration)).
+IDs are stable so findings, approvals and config can refer to them. Every list, pattern and limit is configuration with the default shown. **Every rule is on by default and can be disabled** (`REQ-PG-038`), and most can be narrowed with allow and deny lists (`REQ-PG-040`, `REQ-PG-041`; see [Configuration](#configuration)). Testable requirements for each rule are in [Requirements](#requirements) and in the **Requirements** column of the tables below.
 
 ### Refs
 
-| ID | Level | Trigger |
-| --- | --- | --- |
-| `REF-DELETE` | red | A branch or tag is deleted. |
-| `REF-NON-FF` | red | A branch moves to a commit that doesn't contain its old commit (force push, rewritten history). |
-| `REF-TAG-MOVE` | red | An existing tag is pointed elsewhere. |
-| `REF-TAG-NEW` | yellow | A new tag (tags can trigger releases). |
-| `REF-NAMESPACE` | red | A ref outside `refs/heads/*` and `refs/tags/*` (e.g. `refs/notes/*`, `refs/warden/*`, `refs/pull/*`). |
-| `REF-COUNT` | red | More than `max_refs` 10 refs in one push. |
+| ID | Level | Trigger | Requirements |
+| --- | --- | --- | --- |
+| `REF-DELETE` | red | A branch or tag is deleted. | `REQ-PG-006` |
+| `REF-NON-FF` | red | A branch moves to a commit that doesn't contain its old commit (force push, rewritten history). | `REQ-PG-007` |
+| `REF-TAG-MOVE` | red | An existing tag is pointed elsewhere. | `REQ-PG-008` |
+| `REF-TAG-NEW` | yellow | A new tag (tags can trigger releases). | `REQ-PG-009` |
+| `REF-NAMESPACE` | red | A ref outside `refs/heads/*` and `refs/tags/*` (e.g. `refs/notes/*`, `refs/warden/*`, `refs/pull/*`). | `REQ-PG-010` |
+| `REF-COUNT` | red | More than `max_refs` 10 refs in one push. | `REQ-PG-011` |
 
 ### Paths
 
 Paths are classified generally, whatever the file is: a lockfile, a workflow or an agent config are all just entries in a list. Two rules, each with a default blocklist in the configuration:
 
-| ID | Level | Trigger |
-| --- | --- | --- |
-| `PATH-RED` | red | A changed path matches the rule's `match` list (the blocklist). |
-| `PATH-YELLOW` | yellow | A changed path matches the rule's `match` list (the blocklist). |
+| ID | Level | Trigger | Requirements |
+| --- | --- | --- | --- |
+| `PATH-RED` | red | A changed path matches the rule's `match` list (the blocklist). | `REQ-PG-012` |
+| `PATH-YELLOW` | yellow | A changed path matches the rule's `match` list (the blocklist). | `REQ-PG-013` |
 
-The subject is every path that is added, modified, deleted or renamed. **A rename is checked under both names**, so `git mv` can't move a file out of a list or into one unnoticed. A path on both lists is `red`. `allow` and `deny` work as for every rule: `allow` exempts a path from the blocklist, `deny` keeps it in even if `allow` matches. Like every list, both are regex (see [Configuration](#configuration)); paths have no leading slash, and `(.*/)?` means "in any directory".
+The subject is every path that is added, modified, deleted or renamed. **A rename is checked under both names** (`REQ-PG-014`), so `git mv` can't move a file out of a list or into one unnoticed. A path on both lists is `red` (`REQ-PG-015`). `allow` and `deny` work as for every rule (`REQ-PG-040`, `REQ-PG-041`): `allow` exempts a path from the blocklist, `deny` keeps it in even if `allow` matches. Like every list, both are regex (see [Configuration](#configuration)); paths have no leading slash, and `(.*/)?` means "in any directory".
 
 Default blocklists:
 
@@ -116,24 +170,24 @@ PATH-YELLOW:
 
 These depend on the file mode in the Git tree, not on the path, so they are separate rules. The subject is the path.
 
-| ID | Level | Trigger |
-| --- | --- | --- |
-| `MODE-EXEC` | yellow | A file becomes executable (mode `100755`). |
-| `MODE-SYMLINK` | yellow | A symlink (mode `120000`) is added or changed. |
-| `MODE-SUBMODULE` | yellow | A gitlink (mode `160000`, a submodule) is added or changed. |
+| ID | Level | Trigger | Requirements |
+| --- | --- | --- | --- |
+| `MODE-EXEC` | yellow | A file becomes executable (mode `100755`). | `REQ-PG-016` |
+| `MODE-SYMLINK` | yellow | A symlink (mode `120000`) is added or changed. | `REQ-PG-017` |
+| `MODE-SUBMODULE` | yellow | A gitlink (mode `160000`, a submodule) is added or changed. | `REQ-PG-018` |
 
 ### Content
 
-Over added lines, after decoding as UTF-8 (undecodable text counts as binary); `CONTENT-SECRET` scans the new commits, `CONTENT-BINARY` looks at whole files.
+Over added lines, after decoding as UTF-8 (undecodable text counts as binary — `REQ-PG-024`); `CONTENT-SECRET` scans the new commits, `CONTENT-BINARY` looks at whole files.
 
-| ID | Level | Trigger |
-| --- | --- | --- |
-| `CONTENT-SECRET` | red | gitleaks finds something in the new commits: `gitleaks git --log-opts="<range>"`. Every commit counts, not just the final tree, so a secret added and removed again is still a hit. The scanner must ignore everything the repo says about it, see [Scanner configuration](#scanner-configuration). |
-| `CONTENT-SCANNER-ALLOW` | red | An added inline exception for the secret scanner (`gitleaks:allow`, `trufflehog:ignore`). |
-| `CONTENT-INVISIBLE` | red | Bidi controls (U+202A–U+202E, U+2066–U+2069), zero-width characters (U+200B–U+200D, U+2060), U+FEFF outside the first byte, Unicode tag characters (U+E0000–U+E007F). |
-| `CONTENT-BINARY` | yellow | A binary file is added or changed (`git diff --numstat` reports `-`), including in test directories (cf. xz). |
-| `CONTENT-BLOB` | yellow | A literal of 200+ characters of base64 or 100+ characters of hex on one line. |
-| `CONTENT-PAGES-SCRIPT` | yellow | On `gh-pages` (or the configured Pages branch): a `<script src>` or `<link>` to a new external host. |
+| ID | Level | Trigger | Requirements |
+| --- | --- | --- | --- |
+| `CONTENT-SECRET` | red | gitleaks finds something in the new commits: `gitleaks git --log-opts="<range>"`. Every commit counts, not just the final tree, so a secret added and removed again is still a hit. The scanner must ignore everything the repo says about it, see [Scanner configuration](#scanner-configuration). | `REQ-PG-019`, `REQ-PG-020` |
+| `CONTENT-SCANNER-ALLOW` | red | An added inline exception for the secret scanner (`gitleaks:allow`, `trufflehog:ignore`). | `REQ-PG-021` |
+| `CONTENT-INVISIBLE` | red | Bidi controls (U+202A–U+202E, U+2066–U+2069), zero-width characters (U+200B–U+200D, U+2060), U+FEFF outside the first byte, Unicode tag characters (U+E0000–U+E007F). | `REQ-PG-022` |
+| `CONTENT-BINARY` | yellow | A binary file is added or changed (`git diff --numstat` reports `-`), including in test directories (cf. xz). Also non-UTF-8 text (see below). | `REQ-PG-023`, `REQ-PG-024` |
+| `CONTENT-BLOB` | yellow | A literal of 200+ characters of base64 or 100+ characters of hex on one line. | `REQ-PG-025` |
+| `CONTENT-PAGES-SCRIPT` | yellow | On `gh-pages` (or the configured Pages branch): a `<script src>` or `<link>` to a new external host. A host is new if it is absent from the remote's old Pages tree (`REQ-PG-027`). | `REQ-PG-026`, `REQ-PG-027` |
 
 ### Scanner configuration
 
@@ -149,11 +203,11 @@ On top of that, adding such an exception is itself `red` (scanner files in `PATH
 
 ### Commit metadata
 
-| ID | Level | Trigger |
-| --- | --- | --- |
-| `META-UNSIGNED` | yellow | An unsigned commit where the last `lookback` 20 commits on that branch were all signed. Only the presence of a signature counts: the wall has no keyring and verifies no keys. |
-| `META-BACKDATED` | yellow | Committer date earlier than a parent's committer date, or more than 24 h before the push. Only the committer date: a rebase or cherry-pick keeps the old author date on purpose. |
-| `META-FUTURE` | yellow | Author or committer date more than 10 min after the push. |
+| ID | Level | Trigger | Requirements |
+| --- | --- | --- | --- |
+| `META-UNSIGNED` | yellow | An unsigned commit where the last `lookback` 20 commits on that branch were all signed. Only the presence of a signature counts: the wall has no keyring and verifies no keys. Lookback is first-parent of the remote's old state; quiet if fewer than `lookback` commits (`REQ-PG-029`). | `REQ-PG-028`, `REQ-PG-029` |
+| `META-BACKDATED` | yellow | Committer date earlier than a parent's committer date, or more than 24 h before the push. Only the committer date: a rebase or cherry-pick keeps the old author date on purpose. | `REQ-PG-030` |
+| `META-FUTURE` | yellow | Author or committer date more than 10 min after the push. | `REQ-PG-031` |
 
 Why dates matter: a backdated commit looks old and long since reviewed in `git log` and on the web, and slots in between older commits; a date in the future keeps it at the top of date-sorted lists.
 
@@ -163,26 +217,26 @@ No author or committer rules: both are plain text the agent sets freely with `gi
 
 All values are configurable per rule (defaults shown).
 
-| ID | Level | Trigger |
-| --- | --- | --- |
-| `SIZE-LIMIT` | red | Delta over the hard limit: `max_files` 2,000 changed files, `max_lines` 50,000 changed lines, `max_bytes` 50 MB of new objects, `max_file_bytes` 10 MB for a single file. |
-| `SIZE-LARGE` | yellow | Over the soft limit: `max_files` 200, `max_lines` 5,000, `max_commits` 100, `max_file_bytes` 1 MB. |
-| `SIZE-MASS-DELETE` | yellow | `max_deleted_files` 20 files deleted, or more than `max_deleted_share` 50 % of a file's lines removed in files over `min_lines` 100 lines. |
-| `RATE-LIMIT` | red | More than `max_pushes` 30 pushes per agent per `window` 1 h (response says "rate limited, try later"). |
-| `RATE-YELLOW-STREAK` | red | More than `max_yellow` (default 5, configurable) `yellow` rejections for the same agent in the same repo, across all refs, within `window` (default 24 h, configurable for agents that work fast) (counting per ref would let the agent start from zero on a new branch). **A human is warned**, and further pushes by that agent to that repo are treated as `red` (no rule details) until a human approves one of its SHAs there or resets the streak. A `green` push doesn't reset it, otherwise the agent could slip a harmless commit in between. Guards against an agent using the `yellow` messages to rebuild its change until no rule fires. |
+| ID | Level | Trigger | Requirements |
+| --- | --- | --- | --- |
+| `SIZE-LIMIT` | red | Delta over the hard limit: `max_files` 2,000 changed files, `max_lines` 50,000 changed lines, `max_bytes` 50 MB of new objects, `max_file_bytes` 10 MB for a single file. | `REQ-PG-032` |
+| `SIZE-LARGE` | yellow | Over the soft limit: `max_files` 200, `max_lines` 5,000, `max_commits` 100, `max_file_bytes` 1 MB. | `REQ-PG-033` |
+| `SIZE-MASS-DELETE` | yellow | `max_deleted_files` 20 files deleted, or more than `max_deleted_share` 50 % of a file's lines removed in files over `min_lines` 100 lines. Share check: modified/renamed files; deleted files count toward `max_deleted_files` (`REQ-PG-035`). | `REQ-PG-034`, `REQ-PG-035` |
+| `RATE-LIMIT` | red | More than `max_pushes` 30 pushes per agent per `window` 1 h (response says "rate limited, try later"). | `REQ-PG-036` |
+| `RATE-YELLOW-STREAK` | red | More than `max_yellow` (default 5, configurable) `yellow` rejections for the same agent in the same repo, across all refs, within `window` (default 24 h, configurable for agents that work fast) (counting per ref would let the agent start from zero on a new branch). **A human is warned**, and further pushes by that agent to that repo are treated as `red` (no rule details) until a human approves one of its SHAs there or resets the streak. A `green` push doesn't reset it, otherwise the agent could slip a harmless commit in between. Guards against an agent using the `yellow` messages to rebuild its change until no rule fires. | `REQ-PG-037` |
 
 ## Configuration
 
 Many `red` and `yellow` rules have legitimate uses, e.g. an agent cleaning up its own branches or moving snapshot tags. So each rule has, besides its limits and patterns:
 
-- `enabled` (default `true`): a disabled rule never fires.
-- `color` (`red` or `yellow`, default as in the tables): the owner decides per rule and repo what is a violation for a human and what the agent fixes itself.
-- `allow`: regular expressions over the rule's **subject**; a match means the rule doesn't fire for it.
-- `deny`: regular expressions over the subject; a match means the rule fires even if `allow` matches. `deny` wins over `allow`.
+- `enabled` (default `true`): a disabled rule never fires (`REQ-PG-038`).
+- `color` (`red` or `yellow`, default as in the tables): the owner decides per rule and repo what is a violation for a human and what the agent fixes itself (`REQ-PG-039`).
+- `allow`: regular expressions over the rule's **subject**; a match means the rule doesn't fire for it (`REQ-PG-040`).
+- `deny`: regular expressions over the subject; a match means the rule fires even if `allow` matches. `deny` wins over `allow` (`REQ-PG-041`).
 
-Patterns always match the **whole** subject: the Push Guard wraps each one as `^(?:…)$` itself, because Go's `MatchString` also accepts partial matches. Otherwise `agent.*` would also allow deleting `refs/heads/main-agent-x`.
+Patterns always match the **whole** subject (`REQ-PG-042`): the Push Guard wraps each one as `^(?:…)$` itself, because Go's `MatchString` also accepts partial matches. Otherwise `agent.*` would also allow deleting `refs/heads/main-agent-x`.
 
-The subject depends on the rule group: the full ref name for `REF-*`, the path for `PATH-*`, `MODE-*`, `CONTENT-*` and `SIZE-*` per file, the ref name for `SIZE-*` totals, the branch for `META-*`. `REF-COUNT` and `RATE-*` have no subject. A rule fires for a subject if `deny` matches, or if it is triggered and `allow` doesn't match. `REF-NAMESPACE` looks at every pushed ref and `PATH-*` at every changed path; every other rule only at the subjects its trigger hits.
+The subject depends on the rule group (`REQ-PG-043`): the full ref name for `REF-*`, the path for `PATH-*`, `MODE-*`, `CONTENT-*` and `SIZE-*` per file, the ref name for `SIZE-*` totals, the branch for `META-*`. `REF-COUNT` and `RATE-*` have no subject. A rule fires for a subject if `deny` matches, or if it is triggered and `allow` doesn't match. `REF-NAMESPACE` looks at every pushed ref and `PATH-*` at every changed path; every other rule only at the subjects its trigger hits.
 
 ```yaml
 rules:
