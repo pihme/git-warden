@@ -262,7 +262,7 @@ func TestREQ_PG_044_CumulativeDiffAndPerCommitMeta(t *testing.T) {
 
 	// metadata is checked per commit: a backdated middle commit is named
 	tree := hashObject(t, f.repo, "tree", "", false)
-	now := f.now
+	now := f.now.Add(time.Minute) // after split, which was committed on the wall clock
 	c1 := rawCommit(t, f.repo, tree, []string{split}, now.Unix(), now.Unix(), false, "c1")
 	c2 := rawCommit(t, f.repo, tree, []string{c1}, now.Add(-48*time.Hour).Unix(), now.Add(-48*time.Hour).Unix(), false, "c2")
 	c3 := rawCommit(t, f.repo, tree, []string{c2}, now.Unix(), now.Unix(), false, "c3")
