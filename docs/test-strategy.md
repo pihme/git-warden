@@ -26,7 +26,11 @@ Coverage for `internal/pushguard` should be read with the end-to-end tests inclu
 - **Scope:** `internal/rules`, `internal/journal`, `internal/config`. Each mutant runs only the tests of its own package; the end-to-end tests are not run per mutant (about 13 s each).
 - **Command:** `make mutate` on the mutation branch, with `WORKERS` for parallelism (default 2). Not part of CI or the build: a full run takes tens of minutes and loads the machine.
 - **Goal:** no surviving mutant in the scoped packages. A survivor that the end-to-end tests already catch still gets a unit test in its package, so the mutation run stays meaningful on its own.
-- **Workflow:** QA runs the tool and lists the survivors with file, line and mutation. The maintainer (or QA) adds unit tests until they are killed. A mutant that cannot change behaviour (an equivalent mutant) is listed with a one-line reason in the tool's configuration instead of being tested.
+- **Workflow:** QA runs the tool and lists the survivors with file, line and mutation. The maintainer (or QA) adds unit tests until they are killed. A mutant that cannot change behaviour (an equivalent mutant) is listed with its mutant ID and a one-line reason under Equivalent mutants below instead of being tested.
+
+### Equivalent mutants
+
+None yet.
 
 ## Fuzzing and property tests
 
