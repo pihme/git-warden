@@ -6,8 +6,8 @@ Status is as of branch `qa/rules-tests` (5.10.2026). **Red** means the test fail
 
 ## Summary
 
-- 45 of 45 requirements have at least one test; 73 requirement tests in total.
-- 72 green, 1 red: `REQ-PG-020` (see below).
+- 45 of 45 requirements have at least one test; 77 requirement tests in total.
+- 73 green, 4 red: line-based `CONTENT-*` rules miss files whose name contains a space (`REQ-PG-021`, `022`, `025`, `026`, see below).
 
 ## Coverage
 
@@ -63,12 +63,16 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_ScannerIgnoresIgnoreFileInScannedDir` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_ScannerIgnoresRepoConfiguration` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-021` | `CONTENT-SCANNER-ALLOW` | `TestREQ_PG_021_ScannerAllowInAddedLinesAnyCase` | `internal/rules/req_content_test.go` | green |
+| `REQ-PG-021` | `CONTENT-SCANNER-ALLOW` | `TestREQ_PG_021_ScannerAllowInOddFileNames` | `internal/rules/req_pathnames_test.go` | **red** |
 | `REQ-PG-022` | `CONTENT-INVISIBLE` | `TestREQ_PG_022_ByteOrderMarkOnlyAllowedAtTheStart` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-022` | `CONTENT-INVISIBLE` | `TestREQ_PG_022_InvisibleCharacterRanges` | `internal/rules/req_content_test.go` | green |
+| `REQ-PG-022` | `CONTENT-INVISIBLE` | `TestREQ_PG_022_InvisibleInOddFileNames` | `internal/rules/req_pathnames_test.go` | **red** |
 | `REQ-PG-023` | `CONTENT-BINARY` | `TestREQ_PG_023_BinaryAddedOrChangedAlsoInTestDirs` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-024` | `CONTENT-BINARY` (SPEC settled) | `TestREQ_PG_024_InvalidUTF8InAddedLinesIsBinary` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-025` | `CONTENT-BLOB` | `TestREQ_PG_025_BlobThresholds` | `internal/rules/req_content_test.go` | green |
+| `REQ-PG-025` | `CONTENT-BLOB` | `TestREQ_PG_025_BlobInOddFileNames` | `internal/rules/req_pathnames_test.go` | **red** |
 | `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` | `TestREQ_PG_026_PagesScriptOnConfiguredBranchOnly` | `internal/rules/req_content_test.go` | green |
+| `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` | `TestREQ_PG_026_PagesScriptInOddFileNames` | `internal/rules/req_pathnames_test.go` | **red** |
 | `REQ-PG-027` | `CONTENT-PAGES-SCRIPT` (SPEC settled) | `TestREQ_PG_027_PagesHostKnownFromOldTreeCaseInsensitive` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-028` | `META-UNSIGNED` | `TestREQ_PG_028_DefaultLookbackIs20` | `internal/rules/req_meta_test.go` | green |
 | `REQ-PG-028` | `META-UNSIGNED` | `TestREQ_PG_028_UnsignedAfterSignedHistory` | `internal/rules/req_meta_test.go` | green |
@@ -104,9 +108,13 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 
 ## Red tests
 
-### REQ-PG-020: `.gitleaksignore` in the scanned directory
+### REQ-PG-021, 022, 025, 026: file names with a space bypass the line-based CONTENT rules
 
-gitleaks also loads `<source>/.gitleaksignore` next to `--gitleaks-ignore-path`. If that file exists in the scanned directory, the scanner fails closed (`TestREQ_PG_020_ScannerIgnoresIgnoreFileInScannedDir`) instead of renaming it aside (rename races under concurrent scans). Committed `.gitleaks.toml` / `.gitleaksignore` and inline `gitleaks:allow` stay ignored via `--config` / `--ignore-gitleaks-allow`.
+`addedLines` in `internal/rules/delta.go` takes the path from the `+++ b/<path>` line of the patch. For a path that contains a space, git appends a TAB to that line (`+++ b/with space.txt\t`), so the added lines are stored under `"with space.txt\t"` and the rules look them up under `"with space.txt"` and find nothing. `CONTENT-SCANNER-ALLOW`, `CONTENT-INVISIBLE`, `CONTENT-BLOB` and `CONTENT-PAGES-SCRIPT` therefore never fire on such files; an agent can avoid them by putting a space in the file or directory name. Names with non-ASCII characters, quotes or tabs (which git C-quotes) are handled correctly; the tests in `req_pathnames_test.go` cover both kinds.
+
+### Fixed: REQ-PG-020
+
+gitleaks also loads `<source>/.gitleaksignore` next to `--gitleaks-ignore-path`. If that file exists in the scanned directory, the scanner now fails closed (`TestREQ_PG_020_ScannerIgnoresIgnoreFileInScannedDir`, green) instead of renaming it aside (rename races under concurrent scans). Committed `.gitleaks.toml` / `.gitleaksignore` and inline `gitleaks:allow` stay ignored via `--config` / `--ignore-gitleaks-allow`.
 
 ## Observations (questions, not failing tests)
 
