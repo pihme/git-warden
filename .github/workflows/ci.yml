@@ -94,7 +94,7 @@ jobs:
   # Workflows only run on pushes to main, so testrun-* pushes start nothing.
   live:
     needs: test
-    if: github.event_name != 'pull_request'
+    if: success() && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -134,8 +134,8 @@ jobs:
           done
 
   release:
-    needs: [test, live]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore(release):')
+    needs: [test, container, nix, live]
+    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore(release):')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
