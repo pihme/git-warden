@@ -113,6 +113,15 @@ func (e *eval) secretRule(s *Scanner) error {
 	report.Close()
 	defer os.Remove(report.Name())
 
+	// gitleaks always also loads <source>/.gitleaksignore next to
+	// --gitleaks-ignore-path (REQ-PG-020). Hide any file of that name in the
+	// scanned directory for the duration of the run so only the wall ignore
+	// path applies. Restore it afterwards even if the scan fails.
+	if err := hideDotGitleaksIgnore(s.RepoDir); err != nil {
+		return err
+	}
+	defer restoreDotGitleaksIgnore(s.RepoDir)
+
 	ctx := e.ctx
 	cmd := exec.CommandContext(ctx, s.Bin, "git", "--log-opts="+logOpts,
 		"--config", s.ConfigFile, "--gitleaks-ignore-path", s.IgnoreFile,
@@ -175,6 +184,35 @@ func (e *eval) refOf(oid string) string {
 		return e.d.Refs[0].Ref
 	}
 	return ""
+}
+
+const dotGitleaksIgnoreAside = ".gitleaksignore.warden-aside"
+
+func hideDotGitleaksIgnore(repoDir string) error {
+	src := filepath.Join(repoDir, ".gitleaksignore")
+	st, err := os.Lstat(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if st.IsDir() {
+		return nil
+	}
+	dst := filepath.Join(repoDir, dotGitleaksIgnoreAside)
+	if err := os.Rename(src, dst); err != nil {
+		return fmt.Errorf("hide .gitleaksignore: %w", err)
+	}
+	return nil
+}
+
+func restoreDotGitleaksIgnore(repoDir string) {
+	src := filepath.Join(repoDir, dotGitleaksIgnoreAside)
+	if _, err := os.Lstat(src); err != nil {
+		return
+	}
+	_ = os.Rename(src, filepath.Join(repoDir, ".gitleaksignore"))
 }
 
 func firstLine(s string) string {

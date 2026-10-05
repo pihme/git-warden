@@ -59,7 +59,7 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-018` | `MODE-SUBMODULE` | `TestREQ_PG_018_ModeSubmoduleAddedOrChanged` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-019` | `CONTENT-SECRET` | `TestREQ_PG_019_SecretOnlyInPushedRangeAndAttributedToRef` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_ScannerFilesComeFromTheWall` | `internal/rules/req_content_test.go` | green |
-| `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_ScannerIgnoresIgnoreFileInScannedDir` | `internal/rules/req_content_test.go` | **red** |
+| `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_ScannerIgnoresIgnoreFileInScannedDir` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_ScannerIgnoresRepoConfiguration` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-021` | `CONTENT-SCANNER-ALLOW` | `TestREQ_PG_021_ScannerAllowInAddedLinesAnyCase` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-022` | `CONTENT-INVISIBLE` | `TestREQ_PG_022_ByteOrderMarkOnlyAllowedAtTheStart` | `internal/rules/req_content_test.go` | green |
@@ -102,9 +102,9 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 
 ## Red tests
 
-### REQ-PG-020: gitleaks reads `.gitleaksignore` from the scanned directory
+### REQ-PG-020: `.gitleaksignore` in the scanned directory
 
-`TestREQ_PG_020_ScannerIgnoresIgnoreFileInScannedDir`: besides the file passed with `--gitleaks-ignore-path`, gitleaks also loads `<source>/.gitleaksignore` from the directory it scans. In production that directory is the guard repo's git dir (`absGitDir` in the `rules.NewScanner` call in `internal/pushguard/hook.go`). An agent cannot place a file there by pushing, so the risk is low, but a fingerprint in that file silences `CONTENT-SECRET`, which REQ-PG-020 rules out. A committed `.gitleaks.toml`, a committed `.gitleaksignore` and inline `gitleaks:allow` are all ignored correctly (green tests).
+gitleaks also loads `<source>/.gitleaksignore` next to `--gitleaks-ignore-path`. The scanner temporarily renames any `.gitleaksignore` in the scanned directory aside for the duration of the run so only the wall ignore path applies (`TestREQ_PG_020_ScannerIgnoresIgnoreFileInScannedDir`). Committed `.gitleaks.toml` / `.gitleaksignore` and inline `gitleaks:allow` stay ignored via `--config` / `--ignore-gitleaks-allow`.
 
 ## Observations (questions, not failing tests)
 
