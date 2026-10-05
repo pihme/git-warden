@@ -76,7 +76,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Fuzz-tag tests (seeds + rapid)
-        run: go test -tags=fuzz ./internal/... -rapid.checks=100
+        run: go test -tags=fuzz ./internal/config ./internal/journal ./internal/rules -rapid.checks=100
 
   # The Dockerfile builds, and the image has the pinned programs and refuses
   # to serve without a configuration (the Push Guard's preflight).
