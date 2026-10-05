@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -135,25 +136,40 @@ func matchAny(res []*regexp.Regexp, s string) bool {
 	return false
 }
 
-// Int returns an integer limit.
+// Int returns an integer limit. Values outside int64 or below zero are
+// refused: YAML may yield a uint64 bigger than MaxInt64, and a negative
+// count is never meaningful for the rules that read limits.
 func (r *Rule) Int(key string) (int64, error) {
 	v, ok := r.Limits[key]
 	if !ok {
 		return 0, fmt.Errorf("rule %s: limit %s not set", r.ID, key)
 	}
-	switch n := v.(type) {
+	var n int64
+	switch x := v.(type) {
 	case int:
-		return int64(n), nil
+		n = int64(x)
 	case int64:
-		return n, nil
+		n = x
 	case uint64:
-		return int64(n), nil
-	case float64:
-		if n == float64(int64(n)) {
-			return int64(n), nil
+		if x > uint64(math.MaxInt64) {
+			return 0, fmt.Errorf("rule %s: limit %s is out of range: %v", r.ID, key, v)
 		}
+		n = int64(x)
+	case float64:
+		if x > float64(math.MaxInt64) || x < float64(math.MinInt64) {
+			return 0, fmt.Errorf("rule %s: limit %s is out of range: %v", r.ID, key, v)
+		}
+		if x != float64(int64(x)) {
+			return 0, fmt.Errorf("rule %s: limit %s is not an integer: %v", r.ID, key, v)
+		}
+		n = int64(x)
+	default:
+		return 0, fmt.Errorf("rule %s: limit %s is not an integer: %v", r.ID, key, v)
 	}
-	return 0, fmt.Errorf("rule %s: limit %s is not an integer: %v", r.ID, key, v)
+	if n < 0 {
+		return 0, fmt.Errorf("rule %s: limit %s must not be negative: %d", r.ID, key, n)
+	}
+	return n, nil
 }
 
 // Duration returns a duration limit (e.g. 24h, 10m).

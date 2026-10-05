@@ -142,6 +142,30 @@ func TestREQ_PG_032_LimitKindCheckedOnLoad(t *testing.T) {
 	}
 }
 
+
+// A count limit outside int64 (YAML uint64 wrap) or a negative count must be
+// refused when the configuration loads, not turned into a wrapped negative
+// limit that every push would then mis-apply.
+func TestREQ_PG_032_CountLimitOutOfRange(t *testing.T) {
+	for name, rule := range map[string]string{
+		"uint64 above MaxInt64": "SIZE-LIMIT: {max_files: 9223372036854775808}",
+		"negative count":        "SIZE-LIMIT: {max_files: -1}",
+		"float above MaxInt64":  "REF-COUNT: {max_refs: 1e19}",
+		"float below MinInt64":  "RATE-LIMIT: {max_pushes: -1e19}",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := loadRepo(t, map[string]string{"defaults.yaml": wall,
+				"repos/demo/warden.yaml": repoOK + "rules:\n  " + rule + "\n"})
+			if err == nil {
+				t.Fatalf("%s loads; out-of-range count must fail at load", rule)
+			}
+			if !strings.Contains(err.Error(), "out of range") && !strings.Contains(err.Error(), "must not be negative") {
+				t.Fatalf("err = %v; want out of range or must not be negative", err)
+			}
+		})
+	}
+}
+
 // allow_remove and deny_remove take out a default entry; a missing one is an error.
 func TestAllowDenyRemove(t *testing.T) {
 	c := mustLoad(t, map[string]string{

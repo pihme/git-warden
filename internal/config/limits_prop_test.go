@@ -33,7 +33,7 @@ func loadLimit(t *testing.T, rule, key, value string) (*Config, error) {
 func TestPropCountLimitRoundTrip(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		l := countLimit.Draw(rt, "limit")
-		n := rapid.Int64().Draw(rt, "n")
+		n := rapid.Int64Min(0).Draw(rt, "n")
 		c, err := loadLimit(t, l.rule, l.key, fmt.Sprint(n))
 		if err != nil {
 			rt.Fatalf("%s: %d doesn't load: %v", l.key, n, err)
@@ -48,7 +48,7 @@ func TestPropCountLimitRoundTrip(t *testing.T) {
 func TestPropCountLimitFloatForms(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		l := countLimit.Draw(rt, "limit")
-		n := rapid.Int64Range(-1<<53, 1<<53).Draw(rt, "n")
+		n := rapid.Int64Range(0, 1<<53).Draw(rt, "n")
 		c, err := loadLimit(t, l.rule, l.key, fmt.Sprintf("%d.0", n))
 		if err != nil {
 			rt.Fatalf("%s: %d.0 doesn't load: %v", l.key, n, err)
@@ -56,7 +56,7 @@ func TestPropCountLimitFloatForms(t *testing.T) {
 		if got, err := c.Rule(l.rule).Int(l.key); err != nil || got != n {
 			rt.Fatalf("%s: %d.0 reads back as %d, %v", l.key, n, got, err)
 		}
-		if n > -1<<51 && n < 1<<51 { // above that, x.5 isn't a float64 and rounds to a whole number
+		if n < 1<<51 { // above that, x.5 isn't a float64 and rounds to a whole number
 			if _, err := loadLimit(t, l.rule, l.key, fmt.Sprintf("%d.5", n)); err == nil {
 				rt.Fatalf("%s: fraction %d.5 loads", l.key, n)
 			}
