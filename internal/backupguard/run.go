@@ -164,13 +164,13 @@ func (g *Guard) RunRepo(ctx context.Context, name string) *Result {
 		}
 		sort.Strings(names)
 		err = fmt.Errorf("%d branch(es) could not be protected: %s", len(names), strings.Join(names, ", "))
-		res.Output = truncate(lastLines(res.addOutput, 40), 4000)
+		res.Output = tail(lastLines(res.addOutput, 40), 4000)
 	}
 	if err != nil {
 		res.Error = err.Error()
 		var re *RunError
 		if errors.As(err, &re) {
-			res.Output = truncate(lastLines(re.Output, 40), 4000)
+			res.Output = tail(lastLines(re.Output, 40), 4000)
 		}
 		if nerr := g.notify(ctx, res); nerr != nil {
 			res.Notify = nerr.Error()
@@ -185,7 +185,7 @@ func (g *Guard) RunRepo(ctx context.Context, name string) *Result {
 	return res
 }
 
-func (g *Guard) runRepo(ctx context.Context, name string, res *Result) error {
+func (g *Guard) runRepo(ctx context.Context, name string, res *Result) (err error) {
 	repo, err := LoadRepo(g.Defaults.Dir, name)
 	if err != nil {
 		return err
@@ -201,6 +201,12 @@ func (g *Guard) runRepo(ctx context.Context, name string, res *Result) error {
 	defer unlock()
 	ctx, cancel := context.WithTimeout(ctx, g.Defaults.Timeout)
 	defer cancel()
+	defer func() {
+		// A killed process only reports "exit -1"; say why it was killed.
+		if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			err = fmt.Errorf("timeout %s (defaults.yaml) exceeded, killed: %w", g.Defaults.Timeout, err)
+		}
+	}()
 
 	remote, err := newRemote(repo)
 	if err != nil {

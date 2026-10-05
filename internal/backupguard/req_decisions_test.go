@@ -413,3 +413,41 @@ func TestREQ_BG_051_ExcludedLaterStaysBackedUp(t *testing.T) {
 		t.Fatalf("journal: %+v", j[1])
 	}
 }
+
+// TestREQ_BG_081_TailKeepsTheEnd: the output tail keeps the last bytes,
+// cut at a line start (or at least a UTF-8 boundary), never the first ones.
+func TestREQ_BG_081_TailKeepsTheEnd(t *testing.T) {
+	if got := tail("short", 10); got != "short" {
+		t.Errorf("short: %q", got)
+	}
+	if got := tail("aaaa\nbbbb\nerror: what failed", 22); got != "…error: what failed" {
+		t.Errorf("line cut: %q", got)
+	}
+	long := strings.Repeat("ü", 50) // no newline: cut at a rune boundary
+	got := tail(long, 11)
+	if !strings.HasSuffix(long, strings.TrimPrefix(got, "…")) || got != "…"+strings.Repeat("ü", 5) {
+		t.Errorf("rune cut: %q", got)
+	}
+	if got := tail("x\n"+strings.Repeat("y", 30), 10); got != "…"+strings.Repeat("y", 10) {
+		t.Errorf("a newline before the window must not drop the window: %q", got)
+	}
+}
+
+// TestREQ_BG_074_TimeoutIsNamed: a run killed by its timeout says so in the
+// journal and the warning, not only "exit -1".
+func TestREQ_BG_074_TimeoutIsNamed(t *testing.T) {
+	f := qaFake(t)
+	bare, _ := remoteWith(t, "main")
+	dir := writeConfig(t, "", map[string]string{"r": "remote: " + bare + "\n"})
+	warning := notifyScript(t, dir, "notify.sh")
+	testutil.WriteFiles(t, dir, map[string]string{DefaultsFile: f.config("timeout: 2s\nnotify:\n  command: [./notify.sh]\n")})
+	g, _ := qaGuard(t, dir)
+	t.Setenv("QA_RUN_SLEEP", "120")
+	res := g.RunRepo(context.Background(), "r")
+	if res.OK || !strings.Contains(res.Error, "timeout 2s (defaults.yaml) exceeded") {
+		t.Fatalf("result: %+v", res)
+	}
+	if w := readWarning(t, warning); !strings.Contains(w.Error, "timeout 2s") {
+		t.Fatalf("warning: %+v", w)
+	}
+}

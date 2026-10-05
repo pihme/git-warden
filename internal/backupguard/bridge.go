@@ -226,7 +226,7 @@ func addBranches(ctx context.Context, ev *Everref, bridge string, branches []str
 				msg := err.Error()
 				var re *RunError
 				if errors.As(err, &re) {
-					msg = truncate(lastLines(re.Output, 1), 300)
+					msg = tail(lastLines(re.Output, 1), 300)
 					outs.WriteString(re.Output)
 					if !strings.HasSuffix(re.Output, "\n") {
 						outs.WriteString("\n")
@@ -346,6 +346,23 @@ func (g *Guard) appendJournal(res *Result) error {
 		return err
 	}
 	return f.Close()
+}
+
+// tail keeps the end of s, at most n bytes plus a leading "…": the end of
+// everref's output says what failed. The cut is moved forward to a UTF-8
+// boundary, and to the next line start if that keeps something.
+func tail(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	cut := len(s) - n
+	for cut < len(s) && !utf8.RuneStart(s[cut]) {
+		cut++
+	}
+	if i := strings.IndexByte(s[cut:], '\n'); i >= 0 && cut+i+1 < len(s) {
+		cut += i + 1
+	}
+	return "…" + s[cut:]
 }
 
 func truncate(s string, n int) string {

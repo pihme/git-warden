@@ -8,7 +8,7 @@ Status is as of `main` @ `0d52412` (Peter's decisions of 2026-10-06 included) pl
 
 - 113 of 113 requirements have at least one test. `REQ-BG-071` (one pass, then exit) is covered implicitly by every `run` test in `cmd/backup-guard`.
 - 85 requirement tests (65 from QA, 20 from Maintainer with the 2026-10-06 decisions), plus 12 older tests mapped below.
-- 84 green, 1 red: `TestREQ_BG_081_OutputTail` (see Findings).
+- 87 green, 0 red. `TestREQ_BG_081_OutputTail` was red until the fix on this branch (see Findings).
 
 ## Coverage
 
@@ -125,6 +125,7 @@ Statement coverage from `go test -cover`, before (`2be85f0`, numbering only), on
 | `REQ-BG-072` | Trigger | `TestREQ_BG_070_072_RunAllWithoutTrigger` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-073` | Trigger | `TestREQ_BG_073_ExampleTimer` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-074` | Run | `TestREQ_BG_074_TimeoutKillsEverref` | `internal/backupguard/req_bg_test.go` | green |
+| `REQ-BG-074` | Run | `TestREQ_BG_074_TimeoutIsNamed` | `internal/backupguard/req_decisions_test.go` | green |
 | `REQ-BG-075` | Locking | `TestREQ_BG_075_LockedRepoIsSkippedWithoutWaiting` | `internal/backupguard/req_decisions_test.go` | green |
 | `REQ-BG-076` | Locking | `TestREQ_BG_076_LockReleasedOnKill` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-077` | Interrupted runs | `TestInterruptedFirstRun` | `internal/backupguard/interrupt_test.go` | green |
@@ -132,7 +133,8 @@ Statement coverage from `go test -cover`, before (`2be85f0`, numbering only), on
 | `REQ-BG-079` | State | `TestREQ_BG_078_079_JournalLine` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-080` | State | `TestCountEvents` | `internal/backupguard/backupguard_test.go` | green |
 | `REQ-BG-081` | State | `TestREQ_BG_081_FailedAddCarriesEverrefOutput` | `internal/backupguard/req_decisions_test.go` | green |
-| `REQ-BG-081` | State | `TestREQ_BG_081_OutputTail` | `internal/backupguard/req_bg_test.go` | **red** |
+| `REQ-BG-081` | State | `TestREQ_BG_081_OutputTail` | `internal/backupguard/req_bg_test.go` | green |
+| `REQ-BG-081` | State | `TestREQ_BG_081_TailKeepsTheEnd` | `internal/backupguard/req_decisions_test.go` | green |
 | `REQ-BG-082` | State | `TestREQ_BG_082_JournalAppendFails` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-083` | Warnings | `TestREQ_BG_083_084_Warnings` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-083` | Warnings | `TestAddRetriesSinglyAndRunFailureNotifies` | `internal/backupguard/backupguard_test.go` | green |
@@ -174,15 +176,16 @@ Statement coverage from `go test -cover`, before (`2be85f0`, numbering only), on
 
 ### Open
 
-- **`REQ-BG-081`, end of everref's output is lost** (`TestREQ_BG_081_OutputTail`, red). `run.go` takes the last 40 lines (`lastLines`) but then `truncate(…, 4000)` keeps the *first* 4000 bytes. When the 40 lines are longer than 4000 bytes, the end of the output, usually the line that says what failed, is cut off in `backup.jsonl` and in the warning. Fix: keep the last 4000 bytes (cut at a line or rune boundary).
+None.
 
 ### Fixed
 
 - Everything Peter decided on 2026-10-06 (`REQ-BG-001`, `012`, `013`, `015`, `016`, `037`, `075`, `081` for `add`, `097`, `105` to `113`), fixed by Maintainer in `ec030cc` and `0d52412`.
+- **`REQ-BG-081`, end of everref's output was lost** (`TestREQ_BG_081_OutputTail`). `run.go` took the last 40 lines but `truncate(…, 4000)` kept the *first* 4000 bytes. Now the last 4000 bytes are kept, cut at a line start (or at least a UTF-8 boundary) and marked with a leading `…`, in `backup.jsonl` and the warning; the same for the short error text and `add_failed` reasons.
 
 ## Observations (no requirement broken)
 
-- **`REQ-BG-074`, timeout cause not shown.** A run killed by `timeout` reports only `git-everref … run --all: exit -1:`. The context deadline sits in `RunError.Err`, but `RunError.Error()` doesn't print it, so neither the log nor the warning says that the run timed out. Suggestion: add `: timed out after <timeout>` (or `Err`) to the message.
+- **`REQ-BG-074`, timeout cause not shown** (addressed). A run killed by `timeout` reported only `git-everref … run --all: exit -1:`. The error in `backup.jsonl` and the warning now starts with `timeout <timeout> (defaults.yaml) exceeded, killed:` (`TestREQ_BG_074_TimeoutIsNamed`).
 - **`REQ-BG-094` now overlaps `REQ-BG-037`.** Since the preflight loads every `backup.yaml`, a broken one already fails the preflight of `check-config`; `REQ-BG-094` is met through the preflight (`REQ-BG-108` reports all of them). The test checks that every broken file is named and exit is `1`. The wording of `REQ-BG-094` could say so.
 
 ## Untested on purpose

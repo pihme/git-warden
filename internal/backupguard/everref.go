@@ -101,7 +101,7 @@ type RunError struct {
 }
 
 func (e *RunError) Error() string {
-	return fmt.Sprintf("git-everref %s: exit %d: %s", strings.Join(e.Args, " "), e.ExitCode, truncate(lastLines(e.Output, 5), 500))
+	return fmt.Sprintf("git-everref %s: exit %d: %s", strings.Join(e.Args, " "), e.ExitCode, tail(lastLines(e.Output, 5), 500))
 }
 
 func (e *RunError) Unwrap() error { return e.Err }
