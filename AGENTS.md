@@ -42,6 +42,7 @@ Invariants that must not break:
 Tests cover the config merge, every rule against real temporary repos, the journal queries, and end to end: a bare remote, the guard repo with the compiled binary as hook, an agent clone pushing by file path and over HTTP (`serve`). The secret-scan tests skip without `gitleaks` on `PATH`; CI installs a pinned, checksum-verified gitleaks and sets `GITLEAKS_REQUIRED=1`, which turns that skip into a failure. `TestLiveRemote` pushes to a real HTTPS remote and only runs in CI's `live` job (or with `WARDEN_LIVE_REMOTE` and `WARDEN_LIVE_TOKEN_FILE` set); it must only ever touch its own `testrun-*` branch. `TestSSHRemote` starts a throwaway `sshd` as the current user on a free local port; CI sets `SSH_REQUIRED=1`. The Backup Guard tests use a stand-in everref script, and its end-to-end tests run the real `git-everref` against a local remote; they skip without it, and CI installs it with `scripts/install-everref.sh` and sets `EVERREF_REQUIRED=1`.
 
 - Tests: `go test ./...` must pass before anything lands on `main`. Tests stay offline: no real accounts, tokens or live services, except the env-gated `TestLiveRemote`.
+- CI records statement coverage (`-coverprofile`, no fail threshold) and uploads `coverage.out` as a workflow artifact.
 - Release paths (only commits touching them can cut a release) are listed in `.github/release.json`.
 
 ## Shared rules

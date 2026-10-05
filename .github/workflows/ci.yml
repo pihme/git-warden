@@ -44,12 +44,25 @@ jobs:
       - name: Install sshd (for the SSH end-to-end test)
         run: command -v sshd || test -x /usr/sbin/sshd || (sudo apt-get update -qq && sudo apt-get install -y -qq openssh-server)
       - run: go vet ./...
-      - run: go test ./...
+      - name: Test with coverage
+        run: go test ./... -coverprofile=coverage.out -covermode=atomic
         env:
           # the secret-scan, SSH and everref tests must run in CI, never skip silently
           GITLEAKS_REQUIRED: "1"
           SSH_REQUIRED: "1"
           EVERREF_REQUIRED: "1"
+      - name: Coverage summary
+        if: always() && hashFiles('coverage.out') != ''
+        run: go tool cover -func=coverage.out | tee coverage.txt | tail -1
+      - name: Upload coverage
+        if: always() && hashFiles('coverage.out') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.out
+            coverage.txt
+          retention-days: 14
 
   # The Dockerfile builds, and the image has the pinned programs and refuses
   # to serve without a configuration (the Push Guard's preflight).
