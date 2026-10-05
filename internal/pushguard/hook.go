@@ -413,7 +413,7 @@ func (r *run) remoteMovedSinceApproval(stale []rules.Update) (int, error) {
 	r.entry.Verdict = string(config.Red)
 	r.entry.Reason = journal.ReasonRemoteMoved
 	r.entry.Updates = stale
-	// No owner notify yet (Peter TBD): fixed agent message only, like RATE-LIMIT.
+	// No owner notify: Peter declined (2026-10-05). Fixed agent message only, like RATE-LIMIT.
 	for _, u := range stale {
 		r.say("push-guard: %s (%s → %s)", MsgRemoteMoved, u.Ref, shortSHA(u.New))
 	}
