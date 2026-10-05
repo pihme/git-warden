@@ -2,12 +2,12 @@
 
 This document maps every requirement in [push-guard-rules.md](push-guard-rules.md) (`REQ-PG-001` to `REQ-PG-045`) to the automated tests that check it. Test names start with `TestREQ_PG_<nnn>_`, so `go test ./... -run 'TestREQ_PG_020'` runs the tests of one requirement.
 
-Status is as of branch `qa/rules-tests` (5.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
+Status is as of branch `qa/config-tests` (5.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
 
 ## Summary
 
-- 45 of 45 requirements have at least one test; 84 requirement tests in total.
-- All 84 are green. The last red ones (file names with a space, `REQ-PG-021`, `022`, `025`, `026`) were fixed in `a1ef172`, see below.
+- 45 of 45 requirements have at least one test; 86 requirement tests in total.
+- 85 green, 1 red: a limit of the wrong kind (e.g. `max_skew: 600`) passes `check-config` and only fails on the first push (`REQ-PG-032`, see below).
 
 ## Coverage
 
@@ -16,11 +16,11 @@ Statement coverage from `go test ./... -coverprofile`, before (`test/rules-req-i
 | Package | Before | After |
 | --- | --- | --- |
 | `internal/rules` | 83.7 % | 93.4 % |
-| `internal/config` | 82.2 % | 82.2 % |
+| `internal/config` | 82.2 % | 98.2 % |
 | `internal/journal` | 75.3 % | 75.3 % |
 | `internal/pushguard` (unit tests only) | 21.8 % | 21.8 % |
 | `internal/pushguard` (end-to-end, measured in the built binary) | 61.0 % | 61.3 % |
-| whole module | 56.4 % | 58.8 % |
+| whole module | 56.4 % | 60.1 % |
 
 The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -cover` reports 0 % for them. The binary row was measured by building it with `-cover` (`GOFLAGS=-cover`, `GOCOVERDIR`) and reading the result with `go tool covdata percent`. The journal and config requirement tests check boundaries of code that was already covered, so their coverage numbers do not move.
 
@@ -91,6 +91,8 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-032` | `SIZE-LIMIT` | `TestREQ_PG_032_033_SizeDefaults` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-032` | `SIZE-LIMIT` | `TestREQ_PG_032_MaxBytes` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-032` | `SIZE-LIMIT` | `TestREQ_PG_032_SizeSkipsDeletions` | `internal/rules/req_size_test.go` | green |
+| `REQ-PG-032` | Configuration | `TestREQ_PG_032_WholeNumberLimitForms` | `internal/config/req_config_test.go` | green |
+| `REQ-PG-032` | Configuration | `TestREQ_PG_032_LimitKindCheckedOnLoad` | `internal/config/req_config_test.go` | **red** |
 | `REQ-PG-033` | `SIZE-LARGE` | `TestREQ_PG_033_MaxCommits` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-034` | `SIZE-MASS-DELETE` | `TestREQ_PG_034_DeletedFiles` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-034` | `SIZE-MASS-DELETE` | `TestREQ_PG_034_DeletedShare` | `internal/rules/req_size_test.go` | green |
@@ -115,7 +117,9 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 
 ## Red tests
 
-None at the moment.
+### REQ-PG-032: a limit of the wrong kind passes check-config
+
+`config.load` checks only that a limit is a number or a string that parses as a duration, not that it has the kind the rule reads. `META-FUTURE: {max_skew: 600}`, `SIZE-LIMIT: {max_files: '10m'}` and `SIZE-LIMIT: {max_files: 1.5}` therefore load, and `push-guard check-config` says `configuration ok`. On the first push the rule calls `Duration` or `Int`, gets an error, and every push to that repo fails with `internal error, try again later` (fail-closed, so safe, but the preflight should catch it). A list or a bool is already rejected on load. `TestREQ_PG_032_LimitKindCheckedOnLoad` expects all five cases to fail on load.
 
 ### Fixed: REQ-PG-021, 022, 025, 026 (file names with a space)
 
@@ -138,6 +142,10 @@ These behaviours are within the spec's wording or on the safe side, but may not 
 7. Refs approved by a human are excluded from `REF-COUNT`.
 8. `parseNumstat` accepts a truncated rename entry ending in a NUL. Git never produces this.
 9. `pages_branch: ''` switches `CONTENT-PAGES-SCRIPT` off completely, even for `gh-pages`. Neither the spec nor `push-guard.md` mentions this.
+
+### Further configuration tests
+
+`internal/config/req_config_test.go` also covers the verdict colour order, wall-only `Load`, `Repos` and `RepoDir`, unknown rule IDs (disabled), the limit accessors, `allow_remove` / `deny_remove`, a rule entry without settings, `timeout` (default 60s, must be positive), unreadable or broken `defaults.yaml` / `warden.yaml`, and `known_hosts` or a scheme that does not fit the remote. All green. Left out on purpose in `internal/config`: errors from `filepath.Abs` and from the built-in defaults (fixed at build time), and the `60s` fallback in `build`, which the built-in defaults already set.
 
 ### Untested on purpose
 
