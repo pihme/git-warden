@@ -20,3 +20,7 @@ dist/
 # Nix build output
 result
 result-*
+
+# Local mutation-testing artifacts (QA; not CI)
+mutation-report.json
+.gomutants-cache.json

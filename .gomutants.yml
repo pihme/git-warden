@@ -1,0 +1,21 @@
+# Project defaults for `make mutate` / `gomutants`. Not used by CI.
+# CLI flags from scripts/mutate.sh override these for a single run.
+#
+# Every exclusion must have a reason in docs/test-strategy.md.
+
+workers: 2
+test-cpu: 1
+timeout-coefficient: 10
+adaptive-timeout: true
+timeout-margin: 3.0
+timeout-min: 2s
+cache: .gomutants-cache.json
+checkpoint-interval: 10s
+# Built-in stdlib logging exclude-calls stay on (log.Print*, slog.*).
+# Extend with fmt.Sprintf so RETURN_ZERO / STATEMENT_REMOVE on pure message
+# formatting helpers do not count as test gaps (see test-strategy.md).
+exclude-calls:
+  - "fmt.Sprintf"
+exclude-calls-defaults: true
+# No generated production sources in the scoped packages today.
+exclude-files: []
