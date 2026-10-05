@@ -2,12 +2,12 @@
 
 This document maps every requirement in [push-guard-rules.md](push-guard-rules.md) (`REQ-PG-001` to `REQ-PG-045`) to the automated tests that check it. Test names start with `TestREQ_PG_<nnn>_`, so `go test ./... -run 'TestREQ_PG_020'` runs the tests of one requirement.
 
-Status is as of branch `qa/journal-tests` (5.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
+Status is as of `main` @ `f223de4` plus branch `qa/journal-tests` (5.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
 
 ## Summary
 
 - 45 of 45 requirements have at least one test; 89 requirement tests in total.
-- 88 green, 1 red: `approve` with a SHA prefix that fits two different rejected SHAs silently picks the newer one (`REQ-PG-005`, see below).
+- 89 green, 0 red. All findings so far are fixed (see below).
 
 ## Coverage
 
@@ -17,10 +17,10 @@ Statement coverage from `go test ./... -coverprofile`, before (`test/rules-req-i
 | --- | --- | --- |
 | `internal/rules` | 83.7 % | 93.4 % |
 | `internal/config` | 82.2 % | 98.2 % |
-| `internal/journal` | 75.3 % | 95.7 % |
+| `internal/journal` | 75.3 % | 96.5 % |
 | `internal/pushguard` (unit tests only) | 21.8 % | 21.8 % |
 | `internal/pushguard` (end-to-end, measured in the built binary) | 61.0 % | 61.3 % |
-| whole module | 56.4 % | 60.6 % |
+| whole module | 56.4 % | 60.9 % |
 
 The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -cover` reports 0 % for them. The binary row was measured by building it with `-cover` (`GOFLAGS=-cover`, `GOCOVERDIR`) and reading the result with `go tool covdata percent`. The journal and config requirement tests check boundaries of code that was already covered, so their coverage numbers do not move.
 
@@ -120,9 +120,11 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 
 ## Red tests
 
-### REQ-PG-005: ambiguous SHA prefix (fixed)
+None at the moment.
 
-**Fixed:** `FindRejected` returns nothing when a prefix matches more than one distinct rejected SHA; `approve` errors with “ambiguous SHA prefix …; give more digits”. Same SHA rejected twice still resolves to the newest push.
+### Fixed: REQ-PG-005 (an ambiguous SHA prefix approved the newer commit)
+
+`push-guard approve <repo> <ref> <prefix>` silently approved the newest rejected push whose SHA starts with the prefix, even when two different rejected SHAs shared it. An agent could push a second commit with the same short prefix after the one the human reviewed. Since `f223de4`, `FindRejected` returns nothing when a prefix matches more than one distinct rejected SHA, and `approve` errors with `ambiguous SHA prefix …; give more digits`. The same SHA rejected twice still resolves to the newest push. `TestREQ_PG_005_AmbiguousPrefixApprovesNothing` also checks `AmbiguousRejectedPrefix`: forwarded pushes, other repos and other refs do not make a prefix ambiguous.
 
 ### Fixed: REQ-PG-032 (a limit of the wrong kind passed check-config)
 

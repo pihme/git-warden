@@ -69,6 +69,25 @@ func TestREQ_PG_005_AmbiguousPrefixApprovesNothing(t *testing.T) {
 	if e, full := FindRejected(es, "r", mainRef, "abcd"); e != nil {
 		t.Fatalf("REQ-PG-005: ambiguous prefix abcd picked push %s (%s)", e.ID, full)
 	}
+	// approve tells the human to give more digits only when the prefix is really ambiguous
+	fwd := rejected("f", mainRef, "", "abcd333333333333333333333333333333333333")
+	fwd.Forwarded = true
+	other := rejected("o", mainRef, "", "abcd444444444444444444444444444444444444")
+	other.Repo = "s"
+	es2 := []Entry{rejected("1", mainRef, "", shaA), rejected("2", "refs/heads/x", "", shaB), fwd, other,
+		rejected("3", mainRef, "", shaA)}
+	for _, c := range []struct {
+		es     []Entry
+		prefix string
+		want   bool
+	}{
+		{es, "abcd", true}, {es, "abcd1", false}, {es, shaB, false}, {es, "abc", false}, {es, "ffff", false},
+		{es2, "abcd", false}, // same SHA twice, other ref, forwarded push, other repo
+	} {
+		if got := AmbiguousRejectedPrefix(c.es, "r", mainRef, c.prefix); got != c.want {
+			t.Errorf("AmbiguousRejectedPrefix(%q) = %v, want %v", c.prefix, got, c.want)
+		}
+	}
 }
 
 // LastPush is the agent's newest push in any repo (used to send the rate-limit
