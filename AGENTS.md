@@ -10,7 +10,7 @@ License: **PolyForm Noncommercial 1.0.0** (`LICENSE`). Source-available, not OSI
 
 ## How to work here
 
-Go 1.24 (`go.mod`), one dependency (`gopkg.in/yaml.v3`). At runtime: `git` 2.42+, `gitleaks` 8.x (Push Guard, if `CONTENT-SECRET` is enabled, the default) and `git-everref` v1.0.0 (Backup Guard). Both external programs are prerequisites on the host; nothing in Git Warden downloads them at runtime (`scripts/install-everref.sh` is an optional, pinned installer).
+Go 1.24 (`go.mod`), one runtime dependency (`gopkg.in/yaml.v3`) and one test-only dependency (`pgregory.net/rapid`, behind `//go:build fuzz`). At runtime: `git` 2.42+, `gitleaks` 8.x (Push Guard, if `CONTENT-SECRET` is enabled, the default) and `git-everref` v1.0.0 (Backup Guard). Both external programs are prerequisites on the host; nothing in Git Warden downloads them at runtime (`scripts/install-everref.sh` is an optional, pinned installer).
 
 - `cmd/push-guard/`: the binary (subcommands `serve`, `pre-receive`, `init-repo`, `approve`, `reset-streak`, `check-config`, `replay`, `version`) and the end-to-end tests.
 - `internal/config/`: three config layers and merge; `defaults.yaml` holds the built-in rule defaults (embedded).

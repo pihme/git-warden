@@ -16,7 +16,7 @@ How Git Warden (`push-guard` and `backup-guard`) is tested, and why. The details
 | End to end | `cmd/push-guard/*_test.go`, `cmd/backup-guard/main_test.go` | The built binary between an agent repo and a remote (local, SSH via `sshd`), including approve, reset and notify | yes, `go test ./...` |
 | Live | `cmd/push-guard/live_test.go` (`TestLiveRemote`) | A real push to this repo on GitHub with a token | yes, separate `live` job; skipped locally unless `WARDEN_LIVE_REMOTE` and `WARDEN_LIVE_TOKEN_FILE` are set |
 | Mutation | `make mutate` (local / QA only) | Whether the unit tests notice small changes to the code | **no**, run by hand |
-| Fuzzing and property tests | only the places listed below | Inputs that once produced special cases | fuzz seeds and `rapid` tests run with `go test`; long fuzzing runs only by hand |
+| Fuzzing and property tests | `//go:build fuzz` files under `internal/rules`, `internal/journal`, `internal/config` | Inputs that once produced special cases | yes, modest (`go test -tags=fuzz ./internal/... -rapid.checks=100` in the `fuzz` CI job); long fuzzing (`make fuzz FUZZTIME=…`) only by hand |
 
 Coverage for `internal/pushguard` should be read with the end-to-end tests included (build the test binary with `-cover` and use `GOCOVERDIR`), because most of that package is only reached through the binary. How to measure it is in the test specification.
 
@@ -66,10 +66,20 @@ None yet. Survivors that remain after targeted tests and that truly cannot chang
 
 ## Fuzzing and property tests
 
-Only where testing already found special cases, not as a general net:
+Only where testing already found special cases, not as a general net. All of them sit behind the `fuzz` build tag (`//go:build fuzz`) so ordinary `go test ./...` stays fast and free of the test-only `rapid` dependency.
 
-- **Go fuzzing (`go test -fuzz`):** parsing of diff headers and `git diff --numstat -z` output (paths with spaces, TABs, renames).
-- **`rapid` property tests:** an ambiguous SHA prefix never approves anything; a limit of the wrong kind never passes `check-config`. `rapid` is a test-only dependency and does not end up in the binaries.
+- **Go fuzzing (`go test -tags=fuzz -fuzz=…`):** parsing of diff headers and `git diff --numstat -z` / `--raw -z` output (paths with spaces, TABs, renames, C-quoting). Seeds run with every `go test -tags=fuzz`; long runs use `make fuzz FUZZTIME=5s` (or any duration).
+- **`rapid` property tests:** an ambiguous SHA prefix never approves anything; a limit of the wrong kind never passes `check-config`; a count outside int64 never loads as a wrapped negative. `rapid` (`pgregory.net/rapid`) is test-only and does not end up in the binaries (not listed in `THIRD_PARTY_NOTICES.md`).
+
+**Commands:**
+
+| Command | What it does |
+| --- | --- |
+| `go test -tags=fuzz ./...` / `make fuzz` | Seeds + rapid property tests |
+| `make fuzz FUZZTIME=5s` | Same, then each `Fuzz*` for that duration |
+| CI `fuzz` job | `go test -tags=fuzz ./internal/... -rapid.checks=100` so they do not rot |
+
+**Finding recorded here:** YAML can decode a count such as `max_files: 9223372036854775808` as `uint64`, and `Rule.Int` used to cast it to `int64` without a range check, wrapping to a negative limit. Load now rejects values above `MaxInt64` and negative counts (`REQ-PG-032`).
 
 New candidates are added when a bug or clarification shows a class of inputs rather than a single case.
 
