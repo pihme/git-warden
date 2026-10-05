@@ -2,12 +2,12 @@
 
 This document maps every requirement in [push-guard-rules.md](push-guard-rules.md) (`REQ-PG-001` to `REQ-PG-045`) to the automated tests that check it. Test names start with `TestREQ_PG_<nnn>_`, so `go test ./... -run 'TestREQ_PG_020'` runs the tests of one requirement.
 
-Status is as of branch `qa/config-tests` (5.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
+Status is as of branch `qa/journal-tests` (5.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
 
 ## Summary
 
-- 45 of 45 requirements have at least one test; 86 requirement tests in total.
-- 85 green, 1 red: a limit of the wrong kind (e.g. `max_skew: 600`) passes `check-config` and only fails on the first push (`REQ-PG-032`, see below).
+- 45 of 45 requirements have at least one test; 89 requirement tests in total.
+- 88 green, 1 red: `approve` with a SHA prefix that fits two different rejected SHAs silently picks the newer one (`REQ-PG-005`, see below).
 
 ## Coverage
 
@@ -17,10 +17,10 @@ Statement coverage from `go test ./... -coverprofile`, before (`test/rules-req-i
 | --- | --- | --- |
 | `internal/rules` | 83.7 % | 93.4 % |
 | `internal/config` | 82.2 % | 98.2 % |
-| `internal/journal` | 75.3 % | 75.3 % |
+| `internal/journal` | 75.3 % | 95.7 % |
 | `internal/pushguard` (unit tests only) | 21.8 % | 21.8 % |
 | `internal/pushguard` (end-to-end, measured in the built binary) | 61.0 % | 61.3 % |
-| whole module | 56.4 % | 60.1 % |
+| whole module | 56.4 % | 60.6 % |
 
 The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -cover` reports 0 % for them. The binary row was measured by building it with `-cover` (`GOFLAGS=-cover`, `GOCOVERDIR`) and reading the result with `go tool covdata percent`. The journal and config requirement tests check boundaries of code that was already covered, so their coverage numbers do not move.
 
@@ -47,6 +47,8 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_UnknownCommitInReportGoesToFirstRef` | `internal/rules/req_failclosed_test.go` | green |
 | `REQ-PG-005` | Verdict | `TestREQ_PG_005_ApprovalIsPerRefAndSHA` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-005` | Verdict | `TestREQ_PG_005_ApprovedRewriteIsForwardedWithoutRecheck` | `cmd/push-guard/req_e2e_test.go` | green |
+| `REQ-PG-005` | Verdict | `TestREQ_PG_005_FindRejectedByPrefix` | `internal/journal/req_journal_edges_test.go` | green |
+| `REQ-PG-005` | Verdict | `TestREQ_PG_005_AmbiguousPrefixApprovesNothing` | `internal/journal/req_journal_edges_test.go` | **red** |
 | `REQ-PG-006` | `REF-DELETE` | `TestREQ_PG_006_RefDeleteBranchAndTag` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-007` | `REF-NON-FF` | `TestREQ_PG_007_RefNonFastForward` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-008` | `REF-TAG-MOVE` | `TestREQ_PG_008_RefTagMove` | `internal/rules/req_ref_path_mode_test.go` | green |
@@ -92,13 +94,14 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-032` | `SIZE-LIMIT` | `TestREQ_PG_032_MaxBytes` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-032` | `SIZE-LIMIT` | `TestREQ_PG_032_SizeSkipsDeletions` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-032` | Configuration | `TestREQ_PG_032_WholeNumberLimitForms` | `internal/config/req_config_test.go` | green |
-| `REQ-PG-032` | Configuration | `TestREQ_PG_032_LimitKindCheckedOnLoad` | `internal/config/req_config_test.go` | **red** |
+| `REQ-PG-032` | Configuration | `TestREQ_PG_032_LimitKindCheckedOnLoad` | `internal/config/req_config_test.go` | green |
 | `REQ-PG-033` | `SIZE-LARGE` | `TestREQ_PG_033_MaxCommits` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-034` | `SIZE-MASS-DELETE` | `TestREQ_PG_034_DeletedFiles` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-034` | `SIZE-MASS-DELETE` | `TestREQ_PG_034_DeletedShare` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-034` | `SIZE-MASS-DELETE` | `TestREQ_PG_034_DeletedShareDefaults` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-035` | `SIZE-MASS-DELETE` (SPEC settled) | `TestREQ_PG_035_ShareOnRenamesNotDeletes` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-036` | `RATE-LIMIT` | `TestREQ_PG_036_PushCountWindow` | `internal/journal/req_journal_test.go` | green |
+| `REQ-PG-036` | `RATE-LIMIT` | `TestREQ_PG_036_LastPush` | `internal/journal/req_journal_edges_test.go` | green |
 | `REQ-PG-036` | `RATE-LIMIT` | `TestREQ_PG_036_RateLimitedPushIsRedWithFixedMessage` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-037` | `RATE-YELLOW-STREAK` | `TestREQ_PG_037_ApprovalEndsStreak` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-037` | `RATE-YELLOW-STREAK` | `TestREQ_PG_037_GreenPushDoesNotResetCount` | `cmd/push-guard/req_e2e_test.go` | green |
@@ -117,9 +120,13 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 
 ## Red tests
 
-### REQ-PG-032: a limit of the wrong kind passes check-config
+### REQ-PG-005: an ambiguous SHA prefix approves the newer commit
 
-`config.load` checks only that a limit is a number or a string that parses as a duration, not that it has the kind the rule reads. `META-FUTURE: {max_skew: 600}`, `SIZE-LIMIT: {max_files: '10m'}` and `SIZE-LIMIT: {max_files: 1.5}` therefore load, and `push-guard check-config` says `configuration ok`. On the first push the rule calls `Duration` or `Int`, gets an error, and every push to that repo fails with `internal error, try again later` (fail-closed, so safe, but the preflight should catch it). A list or a bool is already rejected on load. `TestREQ_PG_032_LimitKindCheckedOnLoad` expects all five cases to fail on load.
+`push-guard approve <repo> <ref> <prefix>` looks up the rejected push with `journal.FindRejected`, which returns the **newest** rejected push of the ref whose SHA starts with the prefix. If two different rejected SHAs share the prefix, it silently picks the newer one. An agent that knows its rejected SHA can push a second commit with the same short prefix (7 hex digits take about 2^28 tries) after the one the human reviewed; `approve r main abcd123` then approves the agent's commit. The output names the full SHA and push ID, and the notify message suggests the full SHA, so the risk is limited to a human typing a short prefix, which `push-guard.md` advertises. Like `git`, an ambiguous prefix should be refused (ask for more digits). The same SHA rejected twice is not ambiguous. `TestREQ_PG_005_AmbiguousPrefixApprovesNothing` expects `FindRejected` to return nothing for an ambiguous prefix.
+
+### Fixed: REQ-PG-032 (a limit of the wrong kind passed check-config)
+
+`config.load` checks only that a limit is a number or a string that parses as a duration, not that it has the kind the rule reads. `META-FUTURE: {max_skew: 600}`, `SIZE-LIMIT: {max_files: '10m'}` and `SIZE-LIMIT: {max_files: 1.5}` therefore load, and `push-guard check-config` says `configuration ok`. On the first push the rule calls `Duration` or `Int`, gets an error, and every push to that repo fails with `internal error, try again later` (fail-closed, so safe, but the preflight should catch it). A list or a bool is already rejected on load. `TestREQ_PG_032_LimitKindCheckedOnLoad` expects all five cases to fail on load; green since `7cee044`.
 
 ### Fixed: REQ-PG-021, 022, 025, 026 (file names with a space)
 
@@ -146,6 +153,10 @@ These behaviours are within the spec's wording or on the safe side, but may not 
 ### Further configuration tests
 
 `internal/config/req_config_test.go` also covers the verdict colour order, wall-only `Load`, `Repos` and `RepoDir`, unknown rule IDs (disabled), the limit accessors, `allow_remove` / `deny_remove`, a rule entry without settings, `timeout` (default 60s, must be positive), unreadable or broken `defaults.yaml` / `warden.yaml`, and `known_hosts` or a scheme that does not fit the remote. All green. Left out on purpose in `internal/config`: errors from `filepath.Abs` and from the built-in defaults (fixed at build time), and the `60s` fallback in `build`, which the built-in defaults already set.
+
+### Further journal tests
+
+`internal/journal/req_journal_edges_test.go` also covers blank and 1 MB lines in `push.jsonl`, a broken line failing closed with its line number, an unreadable journal, the private permissions of the state directory (0700) and the journal (0600), append errors, and 50 concurrent appends of 64 KB each without interleaving. Left out on purpose: `json.Marshal`, `flock`, `write` and `fsync` errors, and the fallback at the end of `ApprovalLease`, which `OpenApproval` makes unreachable.
 
 ### Untested on purpose
 
