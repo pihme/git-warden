@@ -64,6 +64,20 @@ jobs:
             coverage.txt
           retention-days: 14
 
+
+  # Property tests and fuzz seeds under //go:build fuzz (rapid checks kept modest).
+  fuzz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Fuzz-tag tests (seeds + rapid)
+        run: go test -tags=fuzz ./internal/... -rapid.checks=100
+
   # The Dockerfile builds, and the image has the pinned programs and refuses
   # to serve without a configuration (the Push Guard's preflight).
   container:
@@ -134,7 +148,7 @@ jobs:
           done
 
   release:
-    needs: [test, container, nix, live]
+    needs: [test, fuzz, container, nix, live]
     if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore(release):')
     runs-on: ubuntu-24.04
     permissions:
