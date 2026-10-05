@@ -140,7 +140,7 @@
                 ./scripts/install-everref.sh # its pins are checked by a test
               ];
             };
-            vendorHash = "sha256-g+yaVIx4jxpAQ/+WrGKxhVeliYx7nLQe/zsGpxV4Fn4=";
+            vendorHash = "sha256-3dWz1bJjqcS+WTpQOo2F7448l9zI555jOSSWjZFVQo8=";
             subPackages = [
               "cmd/push-guard"
               "cmd/backup-guard"
