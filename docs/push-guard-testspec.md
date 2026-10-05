@@ -138,19 +138,30 @@ None at the moment.
 
 gitleaks also loads `<source>/.gitleaksignore` next to `--gitleaks-ignore-path`. If that file exists in the scanned directory, the scanner now fails closed (`TestREQ_PG_020_ScannerIgnoresIgnoreFileInScannedDir`, green) instead of renaming it aside (rename races under concurrent scans). Committed `.gitleaks.toml` / `.gitleaksignore` and inline `gitleaks:allow` stay ignored via `--config` / `--ignore-gitleaks-allow`.
 
+## Clarifications during tests
+
+Points the tests raised that are now decided. The spec (`push-guard-rules.md`, section Decided) and the code follow them; the tests named in the table above check them.
+
+| # | Requirement | Question | Decision |
+| --- | --- | --- | --- |
+| C1 | `REQ-PG-003` (A15) | Another writer moves the ref between a human's approval and the agent's repush. Does the approved rewrite overwrite that commit? | No. The lease is the old OID recorded with the approval. If the remote moved, the guard rejects with the fixed message `Remote moved since approval`, leaves the remote unchanged and drops the approval, so a new check and approval are needed (`57aabff`). The owner gets no warning for this (Peter, 2026-10-05). |
+| C2 | `REQ-PG-041` (A16) | Does `deny` make a rule fire on its own? | Only for rules that scan a subject (`REF-NAMESPACE`, `PATH-*`). Event rules (`REF-DELETE`, `REF-NON-FF`, `REF-TAG-NEW`, `REF-TAG-MOVE`, `MODE-*`, `META-*`, `SIZE-*`, `CONTENT-*`) apply `deny` only when they already fire (`41d8035`, `82be3bf`). |
+| C3 | `REQ-PG-005` | What does `approve` do with a SHA prefix that fits two different rejected SHAs? | It approves nothing and asks for more digits, like git. The same SHA rejected twice is not ambiguous; the newest push counts (`f223de4`). |
+| C4 | `REQ-PG-032` | May a limit of the wrong kind (`max_skew: 600`, `max_files: '10m'` or `1.5`) load? | No. Limits are checked for the kind the rule reads when the config loads, so `check-config` rejects them instead of every push failing later (`7cee044`). |
+| C5 | `REQ-PG-021`, `022`, `025`, `026` | Do the content rules see files whose path contains a space? | Yes. The path from the diff header is cut at the TAB git appends for such paths (`a1ef172`). |
+| C6 | `REQ-PG-020` | What if a `.gitleaksignore` lies in the directory gitleaks scans? | The scan fails closed (internal error) instead of letting gitleaks load it or renaming it aside (`41f6ec6`). |
+| C7 | `REQ-PG-026` | What does an empty `pages_branch` do? | It switches `CONTENT-PAGES-SCRIPT` off completely, with no fallback to `gh-pages`. Now documented in the spec and `push-guard.md` (`0f05967`). |
+
 ## Observations (questions, not failing tests)
 
 These behaviours are within the spec's wording or on the safe side, but may not be intended:
 
-1. **Approved rewrite must not overwrite another writer (A15 / REQ-PG-003).** The lease for a human-approved rewrite/tag-move/delete is the old OID recorded with the approval (remote tip at check time). If another writer moves the ref between approval and repush, the guard rejects with the fixed message `Remote moved since approval`, leaves the remote tip unchanged, and invalidates the approval (re-check and a new approval required). Allow-list exemptions still lease against the remote state just read.
-2. **Settled (A16 Option 1, 2026-10-05):** `REQ-PG-041` deny semantics. Subject-scanning rules (`REF-NAMESPACE`, `PATH-*`) fire on `deny` alone; event rules (`REF-DELETE`, `REF-NON-FF`, `REF-TAG-NEW`, `REF-TAG-MOVE`, `MODE-*`, `META-*`, `SIZE-*`, `CONTENT-*`) apply `deny` only when already triggered. Spec sentence sharpened accordingly; code already matched.
-3. `CONTENT-PAGES-SCRIPT` searches with `git grep -I`, so binary files are skipped; the spec says `-i -F`.
-4. `RATE-LIMIT` counts rate-limited pushes too, so an agent that keeps pushing stays limited until it pauses for a full window.
-5. `RATE-YELLOW-STREAK` counts yellow rejections per repo, not per agent and repo as REQ-PG-037 says. Same result while each repo has one agent.
-6. `CONTENT-BLOB` treats long runs of `-` or `=` (e.g. Markdown rules) as base64.
-7. Refs approved by a human are excluded from `REF-COUNT`.
-8. `parseNumstat` accepts a truncated rename entry ending in a NUL. Git never produces this.
-9. `pages_branch: ''` switches `CONTENT-PAGES-SCRIPT` off completely, even for `gh-pages`. Neither the spec nor `push-guard.md` mentions this.
+1. `CONTENT-PAGES-SCRIPT` searches with `git grep -I`, so binary files are skipped; the spec says `-i -F`.
+2. `RATE-LIMIT` counts rate-limited pushes too, so an agent that keeps pushing stays limited until it pauses for a full window.
+3. `RATE-YELLOW-STREAK` counts yellow rejections per repo, not per agent and repo as REQ-PG-037 says. Same result while each repo has one agent.
+4. `CONTENT-BLOB` treats long runs of `-` or `=` (e.g. Markdown rules) as base64.
+5. Refs approved by a human are excluded from `REF-COUNT`.
+6. `parseNumstat` accepts a truncated rename entry ending in a NUL. Git never produces this.
 
 ### Further configuration tests
 
