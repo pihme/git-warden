@@ -30,6 +30,7 @@ const (
 	ReasonStreak        = "streak"
 	ReasonUnknownRepo   = "unknown_repo"
 	ReasonInternalError = "internal_error"
+	ReasonRemoteMoved   = "remote_moved_since_approval"
 )
 
 // Entry is one line of push.jsonl.
@@ -55,6 +56,7 @@ type Entry struct {
 	// approve
 	Ref   string   `json:"ref,omitempty"`
 	SHA   string   `json:"sha,omitempty"`
+	Old   string   `json:"old,omitempty"`   // remote tip when the overruled push was checked (lease base)
 	Rules []string `json:"rules,omitempty"` // rule IDs of the overruled push
 	Push  string   `json:"push,omitempty"`  // id of the overruled push
 	By    string   `json:"by,omitempty"`    // local user who ran the command
@@ -199,6 +201,13 @@ func OpenApproval(entries []Entry, repo, ref, sha string) bool {
 				open = true
 			}
 		case EventPush:
+			if e.Reason == ReasonRemoteMoved {
+				for _, u := range e.Updates {
+					if u.Ref == ref && u.New == sha {
+						open = false
+					}
+				}
+			}
 			if !e.Forwarded {
 				continue
 			}
@@ -210,6 +219,22 @@ func OpenApproval(entries []Entry, repo, ref, sha string) bool {
 		}
 	}
 	return open
+}
+
+// ApprovalLease returns the remote tip (old OID) recorded with an open approval
+// of (ref, sha), or ("", false) if none is open. Empty Old means the approval
+// has no lease base (manual approve without a matching rejected push).
+func ApprovalLease(entries []Entry, repo, ref, sha string) (old string, ok bool) {
+	if !OpenApproval(entries, repo, ref, sha) {
+		return "", false
+	}
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := entries[i]
+		if e.Repo == repo && e.Event == EventApprove && e.Ref == ref && e.SHA == sha {
+			return e.Old, true
+		}
+	}
+	return "", true
 }
 
 // FindRejected returns the newest rejected (not forwarded) push of repo that

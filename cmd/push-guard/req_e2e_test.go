@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/pihme/git-warden/internal/journal"
+	"github.com/pihme/git-warden/internal/testutil"
 )
 
 // remoteLines returns the non-empty "remote:" lines of git push output, i.e.
@@ -110,6 +111,59 @@ func TestREQ_PG_003_AllowedTagMoveIsForwarded(t *testing.T) {
 	// the allow covers only snap-*: another new tag is still yellow
 	e.agent.Git("tag", "other")
 	assertContains(t, e.mustReject("origin", "other"), "REF-TAG-NEW refs/tags/other")
+}
+
+func TestREQ_PG_003_ApprovedRewriteRemoteMovedSinceApproval(t *testing.T) {
+	// A15: approval lease is the tip recorded at check time. If another writer
+	// moves the remote before the agent repushes, block with a fixed message
+	// (not "waiting for a human"), leave tip unchanged, invalidate approval.
+	e := setup(t, "")
+	before := e.remoteRef("refs/heads/main")
+	e.agent.Write("README.md", "rewritten\n")
+	e.agent.Git("commit", "--quiet", "-a", "--amend", "-m", "rewrite history")
+	head := e.agent.Head()
+	assertContains(t, e.mustReject("--force", "origin", "main"), "waiting for a human")
+	e.run("approve", "--config", e.config, repoName, "main", head[:12])
+
+	other := testutil.Open(t, filepath.Join(e.base, "other-writer"))
+	testutil.Run(t, "", "clone", "--quiet", e.remote.Dir, other.Dir)
+	moved := other.Commit("other writer", map[string]string{"other.txt": "x\n"})
+	other.Git("push", "--quiet", "origin", "HEAD:main")
+	if e.remoteRef("refs/heads/main") != moved {
+		t.Fatal("REQ-PG-003/A15: other writer did not move remote tip")
+	}
+
+	out := e.mustReject("--force", "origin", "main")
+	assertContains(t, out, "Remote moved since approval")
+	assertContains(t, out, "re-check and a new approval are required")
+	assertNotContains(t, out, "waiting for a human")
+	if got := e.remoteRef("refs/heads/main"); got != moved {
+		t.Fatalf("REQ-PG-003/A15: remote tip changed to %s (want other writer's %s; before was %s)", got, moved, before)
+	}
+	p := e.lastPush()
+	if p.Reason != journal.ReasonRemoteMoved || p.Forwarded || p.Verdict != "red" {
+		t.Fatalf("REQ-PG-003/A15: journal entry %+v", p)
+	}
+	if journal.OpenApproval(e.entries(), repoName, "refs/heads/main", head) {
+		t.Fatal("REQ-PG-003/A15: approval still open after remote-moved")
+	}
+	// second identical push: approval gone → re-checked as red NonFF again
+	out2 := e.mustReject("--force", "origin", "main")
+	assertContains(t, out2, "waiting for a human")
+	assertNotContains(t, out2, "Remote moved since approval")
+	if e.remoteRef("refs/heads/main") != moved {
+		t.Fatal("REQ-PG-003/A15: second push moved remote")
+	}
+	ws := e.warnings()
+	for _, w := range ws {
+		if w.Kind != "red_push" {
+			t.Fatalf("REQ-PG-003/A15: unexpected warning kind %q in %+v", w.Kind, ws)
+		}
+	}
+	// first NonFF + second NonFF after re-check; remote-moved must not notify
+	if len(ws) != 2 {
+		t.Fatalf("REQ-PG-003/A15: warnings %+v (want 2 red_push, no remote-moved notify)", ws)
+	}
 }
 
 func TestREQ_PG_005_ApprovedRewriteIsForwardedWithoutRecheck(t *testing.T) {

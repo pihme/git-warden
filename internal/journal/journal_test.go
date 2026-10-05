@@ -3,6 +3,8 @@ package journal
 import (
 	"testing"
 	"time"
+
+	"github.com/pihme/git-warden/internal/rules"
 )
 
 func TestAppendRead(t *testing.T) {
@@ -59,5 +61,42 @@ func TestStreakAndCounts(t *testing.T) {
 	es = append(es, Entry{Event: EventReset, Repo: "r"})
 	if StreakActive(es, "r") || YellowCount(es, "r", now, 24*time.Hour) != 0 {
 		t.Fatal("reset did not end the streak")
+	}
+}
+
+func TestApprovalLeaseAndRemoteMovedInvalidation(t *testing.T) {
+	const (
+		repo = "r"
+		ref  = "refs/heads/main"
+		sha  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		old  = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	)
+	es := []Entry{
+		{Event: EventPush, Repo: repo, Verdict: "red", Updates: []rules.Update{{Ref: ref, Old: old, New: sha}}},
+		{Event: EventApprove, Repo: repo, Ref: ref, SHA: sha, Old: old},
+	}
+	got, ok := ApprovalLease(es, repo, ref, sha)
+	if !ok || got != old {
+		t.Fatalf("ApprovalLease = %q, %v; want %q, true", got, ok, old)
+	}
+	if !OpenApproval(es, repo, ref, sha) {
+		t.Fatal("approval should be open")
+	}
+
+	es = append(es, Entry{
+		Event: EventPush, Repo: repo, Verdict: "red", Reason: ReasonRemoteMoved,
+		Updates: []rules.Update{{Ref: ref, New: sha}},
+	})
+	if OpenApproval(es, repo, ref, sha) {
+		t.Fatal("ReasonRemoteMoved should invalidate the approval")
+	}
+	if _, ok := ApprovalLease(es, repo, ref, sha); ok {
+		t.Fatal("ApprovalLease should report closed after remote-moved")
+	}
+
+	es2 := []Entry{{Event: EventApprove, Repo: repo, Ref: ref, SHA: sha}}
+	got, ok = ApprovalLease(es2, repo, ref, sha)
+	if !ok || got != "" {
+		t.Fatalf("manual ApprovalLease = %q, %v; want empty, true", got, ok)
 	}
 }

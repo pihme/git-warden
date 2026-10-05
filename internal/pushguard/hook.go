@@ -27,6 +27,7 @@ const (
 	MsgInternal    = "internal error, try again later"
 	MsgRateLimited = "rate limited, try later"
 	MsgUnknownRepo = "rejected: unknown repo"
+	MsgRemoteMoved = "Remote moved since approval"
 )
 
 // MsgWaiting is the whole response to a red push.
@@ -181,12 +182,31 @@ func (r *run) main() (int, error) {
 	}
 
 	var approved, rest []rules.Update
+	var stale []rules.Update
 	for _, u := range updates {
-		if journal.OpenApproval(r.entries, r.h.Repo, u.Ref, u.New) {
-			approved = append(approved, u)
-		} else {
+		old, ok := journal.ApprovalLease(r.entries, r.h.Repo, u.Ref, u.New)
+		if !ok {
 			rest = append(rest, u)
+			continue
 		}
+		cur := refs.Refs[u.Ref]
+		if cur == "" {
+			cur = gitx.ZeroOID
+		}
+		lease := old
+		if lease == "" {
+			lease = gitx.ZeroOID
+		}
+		// REQ-PG-003 / A15: an approval's lease is the remote tip at check time.
+		// If the tip moved since then, do not forward (would overwrite silently).
+		if cur != lease {
+			stale = append(stale, u)
+			continue
+		}
+		approved = append(approved, u)
+	}
+	if len(stale) > 0 {
+		return r.remoteMovedSinceApproval(stale)
 	}
 	in := rules.Input{Remote: refs.Refs, DefaultBranch: defBranch, Now: r.h.Now}
 	in.Updates = approved
@@ -387,4 +407,23 @@ func LockRepo(stateDir, repo string) (func(), error) {
 		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 		f.Close()
 	}, nil
+}
+
+func (r *run) remoteMovedSinceApproval(stale []rules.Update) (int, error) {
+	r.entry.Verdict = string(config.Red)
+	r.entry.Reason = journal.ReasonRemoteMoved
+	r.entry.Updates = stale
+	// No owner notify yet (Peter TBD): fixed agent message only, like RATE-LIMIT.
+	for _, u := range stale {
+		r.say("push-guard: %s (%s → %s)", MsgRemoteMoved, u.Ref, shortSHA(u.New))
+	}
+	r.say("push-guard: re-check and a new approval are required (push %s)", r.id)
+	return 1, nil
+}
+
+func shortSHA(s string) string {
+	if len(s) > 12 {
+		return s[:12]
+	}
+	return s
 }

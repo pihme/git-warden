@@ -55,6 +55,12 @@ func Approve(configDir, repo, ref, sha string, out io.Writer) error {
 	e := journal.Entry{Time: time.Now().UTC(), Event: journal.EventApprove, Repo: repo, Ref: ref, By: whoami()}
 	if push, full := journal.FindRejected(entries, repo, ref, sha); push != nil {
 		e.SHA, e.Push = full, push.ID
+		for _, u := range push.Updates {
+			if u.Ref == ref && u.New == full {
+				e.Old = u.Old
+				break
+			}
+		}
 		seen := map[string]bool{}
 		for _, f := range push.Findings {
 			if !seen[f.Rule] {

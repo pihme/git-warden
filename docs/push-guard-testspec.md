@@ -6,8 +6,8 @@ Status is as of branch `qa/rules-tests` (5.10.2026). **Red** means the test fail
 
 ## Summary
 
-- 45 of 45 requirements have at least one test; 71 requirement tests in total.
-- 70 green, 1 red: `REQ-PG-020` (see below).
+- 45 of 45 requirements have at least one test; 72 requirement tests in total.
+- 71 green, 1 red: `REQ-PG-020` (see below).
 
 ## Coverage
 
@@ -33,6 +33,7 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-003` | Verdict | `TestREQ_PG_003_AllowedTagMoveIsForwarded` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-003` | Verdict | `TestREQ_PG_003_GreenForwardsExactlyTheCheckedSHAs` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-003` | Verdict | `TestREQ_PG_003_MixedPushForwardsNothing` | `cmd/push-guard/req_e2e_test.go` | green |
+| `REQ-PG-003` | Verdict / A15 | `TestREQ_PG_003_ApprovedRewriteRemoteMovedSinceApproval` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_BadLimitsFailClosed` | `internal/rules/req_failclosed_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_BadObjectsFailClosed` | `internal/rules/req_failclosed_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_InternalErrorThenFreshCheck` | `cmd/push-guard/req_e2e_test.go` | green |
@@ -110,7 +111,7 @@ gitleaks also loads `<source>/.gitleaksignore` next to `--gitleaks-ignore-path`.
 
 These behaviours are within the spec's wording or on the safe side, but may not be intended:
 
-1. **Approved rewrite can overwrite another writer.** The lease for an approved rewrite uses the remote state read at repush time. If another writer moves the ref between the approval and the repush, the approved SHA is force-pushed over their commit without a warning (checked end to end). REQ-PG-003 literally allows this ("against the remote state just read"); binding the lease to the old SHA of the approved push would prevent it.
+1. **Approved rewrite must not overwrite another writer (A15 / REQ-PG-003).** The lease for a human-approved rewrite/tag-move/delete is the old OID recorded with the approval (remote tip at check time). If another writer moves the ref between approval and repush, the guard rejects with the fixed message `Remote moved since approval`, leaves the remote tip unchanged, and invalidates the approval (re-check and a new approval required). Allow-list exemptions still lease against the remote state just read.
 2. `REQ-PG-041`: for event rules (REF-DELETE, NON-FF, MODE, META, SIZE, CONTENT), `deny` only overrides `allow` when the rule is triggered; it fires without a trigger only for `PATH-*` and `REF-NAMESPACE`. The sentence "A rule fires if `deny` matches" can be read either way.
 3. `CONTENT-PAGES-SCRIPT` searches with `git grep -I`, so binary files are skipped; the spec says `-i -F`.
 4. `RATE-LIMIT` counts rate-limited pushes too, so an agent that keeps pushing stays limited until it pauses for a full window.
