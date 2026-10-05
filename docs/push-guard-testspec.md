@@ -6,8 +6,8 @@ Status is as of branch `qa/rules-tests` (5.10.2026). **Red** means the test fail
 
 ## Summary
 
-- 45 of 45 requirements have at least one test; 72 requirement tests in total.
-- 71 green, 1 red: `REQ-PG-020` (see below).
+- 45 of 45 requirements have at least one test; 73 requirement tests in total.
+- 72 green, 1 red: `REQ-PG-020` (see below).
 
 ## Coverage
 
@@ -96,6 +96,7 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-039` | Configuration | `TestREQ_PG_039_ColorOverrides` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-040` | Configuration | `TestREQ_PG_040_AllowPerSubject` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-041` | Configuration | `TestREQ_PG_041_DenyWinsOverAllow` | `internal/rules/req_config_test.go` | green |
+| `REQ-PG-041` | Configuration / A16 | `TestREQ_PG_041_EventDenyNeedsTrigger` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-042` | Configuration | `TestREQ_PG_042_PatternsMatchWholeSubject` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-043` | Configuration | `TestREQ_PG_043_Subjects` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-044` | What a rule sees | `TestREQ_PG_044_CumulativeDiffAndPerCommitMeta` | `internal/rules/req_config_test.go` | green |
@@ -112,7 +113,7 @@ gitleaks also loads `<source>/.gitleaksignore` next to `--gitleaks-ignore-path`.
 These behaviours are within the spec's wording or on the safe side, but may not be intended:
 
 1. **Approved rewrite must not overwrite another writer (A15 / REQ-PG-003).** The lease for a human-approved rewrite/tag-move/delete is the old OID recorded with the approval (remote tip at check time). If another writer moves the ref between approval and repush, the guard rejects with the fixed message `Remote moved since approval`, leaves the remote tip unchanged, and invalidates the approval (re-check and a new approval required). Allow-list exemptions still lease against the remote state just read.
-2. `REQ-PG-041`: for event rules (REF-DELETE, NON-FF, MODE, META, SIZE, CONTENT), `deny` only overrides `allow` when the rule is triggered; it fires without a trigger only for `PATH-*` and `REF-NAMESPACE`. The sentence "A rule fires if `deny` matches" can be read either way.
+2. **Settled (A16 Option 1, 2026-10-05):** `REQ-PG-041` deny semantics. Subject-scanning rules (`REF-NAMESPACE`, `PATH-*`) fire on `deny` alone; event rules (`REF-DELETE`, `REF-NON-FF`, `REF-TAG-MOVE`, `MODE-*`, `META-*`, `SIZE-*`, `CONTENT-*`) apply `deny` only when already triggered. Spec sentence sharpened accordingly; code already matched.
 3. `CONTENT-PAGES-SCRIPT` searches with `git grep -I`, so binary files are skipped; the spec says `-i -F`.
 4. `RATE-LIMIT` counts rate-limited pushes too, so an agent that keeps pushing stays limited until it pauses for a full window.
 5. `RATE-YELLOW-STREAK` counts yellow rejections per repo, not per agent and repo as REQ-PG-037 says. Same result while each repo has one agent.

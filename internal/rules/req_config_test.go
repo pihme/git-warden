@@ -153,8 +153,20 @@ func TestREQ_PG_041_DenyWinsOverAllow(t *testing.T) {
 	if res.IsAllowed("REF-NON-FF", main) || !res.IsAllowed("REF-NON-FF", "refs/heads/feature") {
 		t.Errorf("REQ-PG-041: a denied ref must not be recorded as allowed: %v", res.Allowed)
 	}
-	// deny fires without a trigger: README.md is on no PATH-YELLOW list
+	// PATH-* subject scanning: deny fires without a match-list trigger (A16).
+	// REF-NON-FF above only fires with its non-FF trigger (deny alone is not enough).
 	expect(t, res.Findings, "PATH-YELLOW", "README.md")
+}
+
+// A16: event-rule deny applies only when triggered. A fast-forward to main with
+// REF-NON-FF deny must not fire REF-NON-FF (branch protection stays on REF-NAMESPACE).
+func TestREQ_PG_041_EventDenyNeedsTrigger(t *testing.T) {
+	f := newReqFixture(t, `rules:
+  REF-NON-FF: {deny: ['refs/heads/main']}
+`)
+	a := f.repo.Commit("a", map[string]string{"a.txt": "a\n"})
+	b := f.repo.Commit("b", map[string]string{"b.txt": "b\n"})
+	expectNone(t, f.eval(map[string]string{main: a}, push(main, b)), "REF-NON-FF")
 }
 
 func TestREQ_PG_042_PatternsMatchWholeSubject(t *testing.T) {

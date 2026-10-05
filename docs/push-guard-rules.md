@@ -72,7 +72,7 @@ Each requirement is one shall/must behaviour. Where a rule ID applies, it is nam
 | `REQ-PG-038` | Every rule shall be **on by default** and shall be disableable via `enabled: false`. | Configuration |
 | `REQ-PG-039` | Each rule's `color` shall be configurable (`red` or `yellow`, default as in the rule tables). | Configuration |
 | `REQ-PG-040` | `allow` shall be regexes over the rule's subject; a match means the rule does **not** fire for that subject. | Configuration |
-| `REQ-PG-041` | `deny` shall win over `allow`: a `deny` match means the rule fires even if `allow` also matches. A rule fires if `deny` matches, or if it is triggered and `allow` does not match. | Configuration |
+| `REQ-PG-041` | `deny` shall win over `allow`: when a rule is evaluated for a subject, a `deny` match means the rule fires even if `allow` also matches. Subject-scanning rules (`REF-NAMESPACE`, `PATH-*`) are evaluated for every relevant subject and therefore fire on `deny` alone. Event rules (`REF-DELETE`, `REF-NON-FF`, `REF-TAG-MOVE`, `MODE-*`, `META-*`, `SIZE-*`, `CONTENT-*`) apply `deny` only when their trigger has already fired; a `deny` match without that trigger does not fire the rule. Once triggered (or subject-scanned), a rule fires if `deny` matches, or if it is triggered and `allow` does not match. | Configuration |
 | `REQ-PG-042` | Patterns shall match the **whole** subject: each pattern is wrapped as `^(?:…)$` so partial matches do not exempt or deny unintended subjects. | Configuration |
 | `REQ-PG-043` | Subjects shall be: full ref name for `REF-*`; path for `PATH-*`, `MODE-*`, `CONTENT-*` and per-file `SIZE-*`; ref name for per-ref `SIZE-*` totals; branch (without `refs/heads/` for branches; full ref for tags) for `META-*`. `REF-COUNT` and `RATE-*` have no subject; `allow`/`deny` shall not apply to them. | Configuration |
 | `REQ-PG-044` | Path and content rules shall run over the **cumulative diff**; metadata rules shall run over **each new commit**. | What a rule sees |
@@ -236,7 +236,7 @@ Many `red` and `yellow` rules have legitimate uses, e.g. an agent cleaning up it
 
 Patterns always match the **whole** subject (`REQ-PG-042`): the Push Guard wraps each one as `^(?:…)$` itself, because Go's `MatchString` also accepts partial matches. Otherwise `agent.*` would also allow deleting `refs/heads/main-agent-x`.
 
-The subject depends on the rule group (`REQ-PG-043`): the full ref name for `REF-*`, the path for `PATH-*`, `MODE-*`, `CONTENT-*` and `SIZE-*` per file, the ref name for `SIZE-*` totals, the branch for `META-*`. `REF-COUNT` and `RATE-*` have no subject. A rule fires for a subject if `deny` matches, or if it is triggered and `allow` doesn't match. `REF-NAMESPACE` looks at every pushed ref and `PATH-*` at every changed path; every other rule only at the subjects its trigger hits.
+The subject depends on the rule group (`REQ-PG-043`): the full ref name for `REF-*`, the path for `PATH-*`, `MODE-*`, `CONTENT-*` and `SIZE-*` per file, the ref name for `SIZE-*` totals, the branch for `META-*`. `REF-COUNT` and `RATE-*` have no subject. Subject-scanning rules (`REF-NAMESPACE`, `PATH-*`) look at every pushed ref or changed path and fire when `deny` matches, or when their match/trigger condition holds and `allow` doesn't match. Event rules (`REF-DELETE`, `REF-NON-FF`, `REF-TAG-MOVE`, `MODE-*`, `META-*`, `SIZE-*`, `CONTENT-*`) are evaluated only for subjects their trigger hits; for those, `deny` wins over `allow` but does not fire the rule without the trigger. Once evaluated, a rule fires if `deny` matches, or if it is triggered and `allow` doesn't match (`REQ-PG-041`).
 
 ```yaml
 rules:
@@ -258,7 +258,7 @@ rules:
     enabled: false                         # nobody signs here
 ```
 
-**Protecting branches** works through `deny` on `REF-NAMESPACE`, because that rule looks at every ref name in every push. A `deny` on `REF-DELETE` or `REF-NON-FF` would only stop deleting and force-pushing; a normal fast-forward push wouldn't trigger it.
+**Protecting branches** works through `deny` on `REF-NAMESPACE`, because that rule subject-scans every ref name in every push. A `deny` on an event rule such as `REF-DELETE` or `REF-NON-FF` would only stop deleting and force-pushing: a normal fast-forward push wouldn't trigger those rules, so their `deny` lists would not apply.
 
 Configuration lives on the wall, never in the repo itself. Changing it is a human's job. **Each repo can have its own configuration:** shared defaults, plus a file per repo that overrides individual settings (rules, `enabled`, `color`, lists, limits). A setting the repo file doesn't mention keeps the default. **Lists are added to, never replaced:** `match`, `allow` and `deny` in a repo file extend the defaults, so a default protection (e.g. `deny` for `refs/heads/main`) can't vanish unnoticed. Removing a default entry needs an explicit `match_remove` / `deny_remove` / `allow_remove` with the exact pattern (a pattern that isn't there is an error). There are three layers: the built-in defaults of the program, then `defaults.yaml`, then the repo file.
 
