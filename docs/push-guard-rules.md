@@ -36,7 +36,7 @@ Each requirement is one shall/must behaviour. Where a rule ID applies, it is nam
 | `REQ-PG-002` | Any `yellow` finding shall reject with an agent-usable message (which rule, on which ref/path/line, and why). `yellow` shall **not** go to a human. | Verdict |
 | `REQ-PG-003` | Only `green` shall forward **exactly the checked SHAs** to the remote, then accept the agent's push. Forwarding shall never use `--force`. A rewrite, tag move or deletion shall use `--force-with-lease`, and only if the rule's `allow` exempts that ref or a human approved that SHA. Allow-list exemptions lease against the remote state just read. Human-approved rewrites/tag-moves/deletes lease against the **old OID recorded with the approval** (tip at check/approval time). If the remote tip differs at repush, reject with the fixed agent message `Remote moved since approval` (named fixed-message exception, analogous to `REQ-PG-036` / rate-limit — not a silent red / not "waiting for a human"); consume/invalidate the approval; a new check and approval are required. | Verdict |
 | `REQ-PG-004` | A rule that errors, times out or cannot read its input shall count as `red` with the message `internal error, try again later` (**fail-closed**). The next push shall be checked from scratch. | Verdict |
-| `REQ-PG-005` | Human approval shall be **per SHA**: approve `ref` + `new-oid`. The agent's next push of exactly that SHA to that ref shall be forwarded without re-checking. Any other SHA shall be checked from scratch. | Verdict |
+| `REQ-PG-005` | Human approval shall be **per SHA**: approve `ref` + `new-oid` (a unique prefix of a rejected push is enough). If the prefix matches more than one distinct rejected SHA of that ref, approve shall refuse and ask for more digits (same SHA rejected twice is not ambiguous). The agent's next push of exactly that SHA to that ref shall be forwarded without re-checking. Any other SHA shall be checked from scratch. | Verdict |
 | `REQ-PG-006` | `REF-DELETE` shall fire `red` when a branch or tag is deleted. | `REF-DELETE` |
 | `REQ-PG-007` | `REF-NON-FF` shall fire `red` when a branch moves to a commit that does not contain its old commit. | `REF-NON-FF` |
 | `REQ-PG-008` | `REF-TAG-MOVE` shall fire `red` when an existing tag is pointed elsewhere. | `REF-TAG-MOVE` |
@@ -318,7 +318,7 @@ Checking new dependencies against the registry (exists? how old? downloads?, R17
 
 A human acts only on `red`, and only on the wall host where the configuration lives; being able to run the command there is the authentication. Both actions go into `push.jsonl` with the rule IDs, so the statistics can count them:
 
-- `push-guard approve <repo> <ref> <sha>`: the agent's next push of exactly that SHA to that ref is forwarded without re-checking (and resets the streak).
+- `push-guard approve <repo> <ref> <sha>`: the agent's next push of exactly that SHA to that ref is forwarded without re-checking (and resets the streak). A short unique prefix of a rejected push is enough; an ambiguous prefix is refused.
 - `push-guard reset-streak <repo>`: ends a `RATE-YELLOW-STREAK` without approving anything.
 
 The commits of a rejected `red` push are kept as a bundle `pending/<repo>/<id>.bundle` for the human to inspect. Refs can't be written inside the push's quarantine, and its objects vanish once the push is rejected, so a ref namespace like `refs/warden/pending` doesn't work here.

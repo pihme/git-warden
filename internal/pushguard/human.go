@@ -69,6 +69,8 @@ func Approve(configDir, repo, ref, sha string, out io.Writer) error {
 			}
 		}
 		sort.Strings(e.Rules)
+	} else if journal.AmbiguousRejectedPrefix(entries, repo, ref, sha) {
+		return fmt.Errorf("ambiguous SHA prefix %s for %s; give more digits", sha, ref)
 	} else if len(sha) == 40 || len(sha) == 64 {
 		e.SHA = sha
 		fmt.Fprintf(out, "note: no rejected push of %s to %s found in the journal\n", sha, ref)

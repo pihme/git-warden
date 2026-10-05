@@ -48,7 +48,7 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-005` | Verdict | `TestREQ_PG_005_ApprovalIsPerRefAndSHA` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-005` | Verdict | `TestREQ_PG_005_ApprovedRewriteIsForwardedWithoutRecheck` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-005` | Verdict | `TestREQ_PG_005_FindRejectedByPrefix` | `internal/journal/req_journal_edges_test.go` | green |
-| `REQ-PG-005` | Verdict | `TestREQ_PG_005_AmbiguousPrefixApprovesNothing` | `internal/journal/req_journal_edges_test.go` | **red** |
+| `REQ-PG-005` | Verdict | `TestREQ_PG_005_AmbiguousPrefixApprovesNothing` | `internal/journal/req_journal_edges_test.go` | green |
 | `REQ-PG-006` | `REF-DELETE` | `TestREQ_PG_006_RefDeleteBranchAndTag` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-007` | `REF-NON-FF` | `TestREQ_PG_007_RefNonFastForward` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-008` | `REF-TAG-MOVE` | `TestREQ_PG_008_RefTagMove` | `internal/rules/req_ref_path_mode_test.go` | green |
@@ -120,9 +120,9 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 
 ## Red tests
 
-### REQ-PG-005: an ambiguous SHA prefix approves the newer commit
+### REQ-PG-005: ambiguous SHA prefix (fixed)
 
-`push-guard approve <repo> <ref> <prefix>` looks up the rejected push with `journal.FindRejected`, which returns the **newest** rejected push of the ref whose SHA starts with the prefix. If two different rejected SHAs share the prefix, it silently picks the newer one. An agent that knows its rejected SHA can push a second commit with the same short prefix (7 hex digits take about 2^28 tries) after the one the human reviewed; `approve r main abcd123` then approves the agent's commit. The output names the full SHA and push ID, and the notify message suggests the full SHA, so the risk is limited to a human typing a short prefix, which `push-guard.md` advertises. Like `git`, an ambiguous prefix should be refused (ask for more digits). The same SHA rejected twice is not ambiguous. `TestREQ_PG_005_AmbiguousPrefixApprovesNothing` expects `FindRejected` to return nothing for an ambiguous prefix.
+**Fixed:** `FindRejected` returns nothing when a prefix matches more than one distinct rejected SHA; `approve` errors with “ambiguous SHA prefix …; give more digits”. Same SHA rejected twice still resolves to the newest push.
 
 ### Fixed: REQ-PG-032 (a limit of the wrong kind passed check-config)
 

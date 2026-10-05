@@ -135,7 +135,7 @@ What one push does: the hook reads the remote's refs fresh, fetches remote objec
 | `push-guard serve --config DIR --listen ADDR` | The HTTP server (see above). |
 | `push-guard pre-receive --config DIR --repo NAME` | The hook; run by Git, not by hand. |
 | `push-guard init-repo --config DIR <repo>` | Creates and syncs a guard repository for SSH or local pushes. |
-| `push-guard approve --config DIR <repo> <ref> <sha>` | The agent's next push of exactly that SHA (a prefix of a rejected push's SHA is enough) to that ref is forwarded without re-checking, with a lease if it rewrites or deletes the ref. Ends an active yellow streak. Logged with the rule IDs of the overruled push. Any other SHA is checked from scratch. |
+| `push-guard approve --config DIR <repo> <ref> <sha>` | The agent's next push of exactly that SHA (a unique prefix of a rejected push's SHA is enough; an ambiguous prefix is refused) to that ref is forwarded without re-checking, with a lease if it rewrites or deletes the ref. Ends an active yellow streak. Logged with the rule IDs of the overruled push. Any other SHA is checked from scratch. |
 | `push-guard reset-streak --config DIR <repo>` | Ends a `RATE-YELLOW-STREAK` without approving anything. |
 | `push-guard check-config --config DIR [--remote]` | Preflight, files and credentials; `--remote` adds `ls-remote` per repo. |
 | `push-guard replay --config DIR <repo> --git-dir PATH [--branch main] [--skip-scanner] [-v]` | Treats every first-parent step of a branch's history as one push (with the commit's committer time as the time of the push), forwards nothing, writes nothing, and prints the hits per rule. Use it to tune the rules before going live. |

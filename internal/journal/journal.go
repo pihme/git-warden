@@ -238,18 +238,54 @@ func ApprovalLease(entries []Entry, repo, ref, sha string) (old string, ok bool)
 }
 
 // FindRejected returns the newest rejected (not forwarded) push of repo that
-// contains an update of ref to a SHA starting with prefix.
+// contains an update of ref to a SHA starting with prefix. If the prefix matches
+// more than one distinct SHA, it returns (nil, "") so approve cannot pick
+// between them (same SHA rejected twice is not ambiguous).
 func FindRejected(entries []Entry, repo, ref, prefix string) (*Entry, string) {
+	if len(prefix) < 4 {
+		return nil, ""
+	}
+	var match *Entry
+	var full string
+	shas := map[string]struct{}{}
 	for i := len(entries) - 1; i >= 0; i-- {
 		e := entries[i]
 		if e.Repo != repo || e.Event != EventPush || e.Forwarded {
 			continue
 		}
 		for _, u := range e.Updates {
-			if u.Ref == ref && len(prefix) >= 4 && len(u.New) >= len(prefix) && u.New[:len(prefix)] == prefix {
-				return &entries[i], u.New
+			if u.Ref != ref || len(u.New) < len(prefix) || u.New[:len(prefix)] != prefix {
+				continue
+			}
+			shas[u.New] = struct{}{}
+			if match == nil {
+				match = &entries[i]
+				full = u.New
 			}
 		}
 	}
-	return nil, ""
+	if len(shas) != 1 {
+		return nil, ""
+	}
+	return match, full
+}
+
+// AmbiguousRejectedPrefix reports whether prefix matches more than one distinct
+// rejected SHA of ref in repo.
+func AmbiguousRejectedPrefix(entries []Entry, repo, ref, prefix string) bool {
+	if len(prefix) < 4 {
+		return false
+	}
+	shas := map[string]struct{}{}
+	for _, e := range entries {
+		if e.Repo != repo || e.Event != EventPush || e.Forwarded {
+			continue
+		}
+		for _, u := range e.Updates {
+			if u.Ref == ref && len(u.New) >= len(prefix) && u.New[:len(prefix)] == prefix {
+				shas[u.New] = struct{}{}
+			}
+		}
+	}
+	return len(shas) > 1
 }
