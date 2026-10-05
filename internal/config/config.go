@@ -491,18 +491,28 @@ func (mr *mergedRule) compile(id string) (*Rule, error) {
 			*l.dst = append(*l.dst, re)
 		}
 	}
-	for k, v := range r.Limits {
-		switch v.(type) {
-		case int, int64, uint64, float64:
-		case string:
+	for k := range r.Limits {
+		if durationLimit(k) {
 			if _, err := r.Duration(k); err != nil {
 				return nil, err
 			}
-		default:
-			return nil, fmt.Errorf("rule %s: limit %s has unsupported value %v", id, k, v)
+			continue
+		}
+		if _, err := r.Int(k); err != nil {
+			return nil, err
 		}
 	}
 	return r, nil
+}
+
+// durationLimit reports whether key is a duration limit (not an integer count).
+func durationLimit(key string) bool {
+	switch key {
+	case "max_age", "max_skew", "window":
+		return true
+	default:
+		return false
+	}
 }
 
 func resolve(dir, p string) string {
