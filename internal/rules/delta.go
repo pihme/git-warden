@@ -388,6 +388,29 @@ func parseNumstat(raw []byte) (map[string]numstat, error) {
 	return out, nil
 }
 
+
+// diffHeaderPath extracts the path from a git diff "+++ …" / "--- …" payload
+// (the text after the "+++ " / "--- " prefix). Git may append a tab and an
+// optional timestamp after the path; paths with spaces use that tab as the
+// delimiter. Paths with unusual characters are C-quoted.
+func diffHeaderPath(p string) string {
+	if i := strings.IndexByte(p, '\t'); i >= 0 {
+		p = p[:i]
+	}
+	if strings.HasPrefix(p, `"`) {
+		if uq, err := strconv.Unquote(p); err == nil {
+			p = uq
+		}
+	}
+	if p == "/dev/null" {
+		return ""
+	}
+	if strings.HasPrefix(p, "a/") || strings.HasPrefix(p, "b/") {
+		return p[2:]
+	}
+	return p
+}
+
 // addedLines parses the -U0 patch of the cumulative diff.
 func addedLines(ctx context.Context, g *gitx.Git, base, head string) (map[string][]Line, error) {
 	out, err := g.Run(ctx, "diff-tree", "-r", "-p", "-M", "-U0", "--no-commit-id", "--no-color",
@@ -406,17 +429,7 @@ func addedLines(ctx context.Context, g *gitx.Git, base, head string) (map[string
 		case strings.HasPrefix(l, "diff --git "):
 			path, inHeader = "", true
 		case inHeader && strings.HasPrefix(l, "+++ "):
-			p := strings.TrimPrefix(l, "+++ ")
-			if strings.HasPrefix(p, `"`) {
-				if uq, err := strconv.Unquote(p); err == nil {
-					p = uq
-				}
-			}
-			if p == "/dev/null" {
-				path = ""
-			} else {
-				path = strings.TrimPrefix(p, "b/")
-			}
+			path = diffHeaderPath(strings.TrimPrefix(l, "+++ "))
 		case strings.HasPrefix(l, "@@ "):
 			inHeader = false
 			no = hunkStart(l)
