@@ -135,6 +135,7 @@
                 ./go.sum
                 ./cmd
                 ./internal
+                ./docs # rule tables read by the tests
                 ./examples # read by the tests
                 ./scripts/install-everref.sh # its pins are checked by a test
               ];
