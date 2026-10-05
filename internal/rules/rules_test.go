@@ -434,7 +434,6 @@ func TestContentSecret(t *testing.T) {
 	base := f.repo.Commit("base", nil)
 	f.repo.Commit("add key", map[string]string{"cfg.ini": "aws_access_key_id = " + testutil.FakeAWSKey() + "\n"})
 	head := f.repo.Commit("remove key", map[string]string{"cfg.ini": "aws_access_key_id = from-env\n"})
-	f.repo.Write(".gitleaksignore", "") // the repo's own scanner files are ignored
 	sc, err := NewScanner(f.cfg, f.repo.Dir)
 	if err != nil {
 		t.Fatal(err)
