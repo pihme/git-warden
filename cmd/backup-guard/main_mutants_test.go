@@ -34,7 +34,8 @@ func TestMutantsUsageGoesToStderr(t *testing.T) {
 // Flag errors are written to the given stderr (fs.SetOutput), not os.Stderr.
 func TestMutantsFlagErrorsUseStderrWriter(t *testing.T) {
 	code, out, errOut := runSplit("run", "--bogus")
-	if code != 2 || out != "" || !strings.Contains(errOut, "flag provided but not defined: -bogus") {
+	if code != 2 || out != "" || !strings.Contains(errOut, "flag provided but not defined: -bogus") ||
+		!strings.Contains(errOut, "Usage of backup-guard run:") || !strings.Contains(errOut, "-config") {
 		t.Fatalf("bad flag: exit %d stdout %q stderr %q", code, out, errOut)
 	}
 }
