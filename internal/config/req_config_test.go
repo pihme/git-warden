@@ -142,7 +142,6 @@ func TestREQ_PG_032_LimitKindCheckedOnLoad(t *testing.T) {
 	}
 }
 
-
 // A count limit outside int64 (YAML uint64 wrap) or a negative count must be
 // refused when the configuration loads, not turned into a wrapped negative
 // limit that every push would then mis-apply.
