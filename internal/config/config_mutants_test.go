@@ -5,12 +5,18 @@ package config
 
 import (
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
+	"regexp/syntax"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
+
+	"github.com/pihme/git-warden/internal/testutil"
+	"gopkg.in/yaml.v3"
 )
 
 func TestMutantsColorRankUnknownTiedWithGreen(t *testing.T) {
@@ -290,5 +296,162 @@ func TestMutantsCompileBadRegexWraps(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "REF-DELETE") {
 		t.Fatalf("%v", err)
+	}
+}
+
+// ---- round 2 (survivors after the first round) ----
+
+func TestMutantsLimitErrorReasons(t *testing.T) {
+	r := &Rule{ID: "R", Limits: map[string]any{
+		"frac": 1.5, "zero": 0, "maxu": uint64(math.MaxInt64), "num": 5, "neg1ns": "-1ns",
+	}}
+	if _, err := r.Int("missing"); err == nil || !strings.Contains(err.Error(), "not set") {
+		t.Errorf("Int missing: %v, want not set", err)
+	}
+	if _, err := r.Duration("missing"); err == nil || !strings.Contains(err.Error(), "not set") {
+		t.Errorf("Duration missing: %v, want not set", err)
+	}
+	if _, err := r.Duration("num"); err == nil || !strings.Contains(err.Error(), "is not a duration") {
+		t.Errorf("Duration(number): %v, want is not a duration", err)
+	}
+	if n, err := r.Int("frac"); err == nil || n != 0 {
+		t.Errorf("Int(frac) = %d, %v; want 0 and an error", n, err)
+	}
+	if n, err := r.Int("zero"); err != nil || n != 0 {
+		t.Errorf("Int(0) = %d, %v; zero is allowed", n, err)
+	}
+	if n, err := r.Int("maxu"); err != nil || n != math.MaxInt64 {
+		t.Errorf("Int(MaxInt64 as uint64) = %d, %v", n, err)
+	}
+	if _, err := r.Duration("neg1ns"); err == nil {
+		t.Error("Duration(-1ns) loads")
+	}
+}
+
+func TestMutantsTimeoutOneNanosecondIsPositive(t *testing.T) {
+	c := mustLoad(t, map[string]string{"defaults.yaml": wall + "timeout: 1ns\n", "repos/demo/warden.yaml": repoOK})
+	if c.Timeout != time.Nanosecond {
+		t.Fatalf("timeout = %v", c.Timeout)
+	}
+}
+
+// A YAML type error from a layer stays in the error chain.
+func TestMutantsParseLayerKeepsYAMLError(t *testing.T) {
+	_, err := loadRepo(t, map[string]string{"defaults.yaml": wall + "colour: red\n", "repos/demo/warden.yaml": repoOK})
+	var te *yaml.TypeError
+	if !errors.As(err, &te) {
+		t.Fatalf("err = %v (%T), want a wrapped *yaml.TypeError", err, err)
+	}
+}
+
+// notify: {} in a later layer keeps the command of the layer below;
+// forward: {} keeps atomic and does not crash.
+func TestMutantsEmptyNotifyAndForwardKeepLowerLayer(t *testing.T) {
+	c := mustLoad(t, map[string]string{
+		"defaults.yaml":          wall + "notify:\n  command: [/bin/true]\nforward: {atomic: false}\n",
+		"repos/demo/warden.yaml": repoOK + "notify: {}\nforward: {}\n",
+	})
+	if len(c.NotifyCommand) != 1 || c.NotifyCommand[0] != "/bin/true" {
+		t.Errorf("notify: {} cleared the wall's command: %v", c.NotifyCommand)
+	}
+	if c.ForwardAtomic {
+		t.Error("forward: {} reset atomic")
+	}
+}
+
+// A rule listed without settings must not stop the rules after it (the IDs
+// are applied in sorted order; PATH-RED sorts before REF-COUNT).
+func TestMutantsNullRuleDoesNotStopLaterRules(t *testing.T) {
+	c := mustLoad(t, map[string]string{"defaults.yaml": wall,
+		"repos/demo/warden.yaml": repoOK + "rules:\n  PATH-RED:\n  REF-COUNT: {max_refs: 2}\n"})
+	if n, _ := c.Rule("REF-COUNT").Int("max_refs"); n != 2 {
+		t.Fatalf("max_refs = %d, want 2", n)
+	}
+}
+
+// *_remove errors keep the inner error in the chain.
+func TestMutantsRemoveErrorsWrap(t *testing.T) {
+	for _, key := range []string{"match_remove", "allow_remove", "deny_remove"} {
+		_, err := loadRepo(t, map[string]string{"defaults.yaml": wall,
+			"repos/demo/warden.yaml": repoOK + "rules:\n  PATH-RED: {" + key + ": ['nope']}\n"})
+		if err == nil || errors.Unwrap(err) == nil || !strings.Contains(errors.Unwrap(err).Error(), "not found") {
+			t.Errorf("%s: err = %v, want a wrapped not-found error", key, err)
+		}
+	}
+}
+
+// An invalid repo name is refused even if a folder of that name exists.
+func TestMutantsInvalidRepoNameWithFolder(t *testing.T) {
+	dir := t.TempDir()
+	testutil.WriteFiles(t, dir, map[string]string{"defaults.yaml": wall, "repos/Bad/warden.yaml": repoOK})
+	if _, err := LoadRepo(dir, "Bad"); !errors.Is(err, ErrUnknownRepo) {
+		t.Fatalf("LoadRepo(Bad) = %v, want ErrUnknownRepo", err)
+	}
+}
+
+// Read errors other than "does not exist" are returned as they are, not
+// replaced by a later validation error.
+func TestMutantsUnreadableFilesReturnTheReadError(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "defaults.yaml"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); !errors.Is(err, syscall.EISDIR) {
+		t.Errorf("defaults.yaml is a directory: %v, want EISDIR", err)
+	}
+	dir = t.TempDir()
+	testutil.WriteFiles(t, dir, map[string]string{"defaults.yaml": wall})
+	if err := os.MkdirAll(filepath.Join(dir, "repos", "demo", "warden.yaml"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadRepo(dir, "demo"); !errors.Is(err, syscall.EISDIR) {
+		t.Errorf("warden.yaml is a directory: %v, want EISDIR", err)
+	}
+}
+
+// If the working directory is gone, a relative config dir cannot be
+// resolved: load returns that error instead of reading relative paths.
+func TestMutantsLoadFailsWithoutWorkingDirectory(t *testing.T) {
+	gone := t.TempDir()
+	t.Chdir(gone)
+	if err := os.Remove(gone); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load("cfg")
+	if err == nil || strings.Contains(err.Error(), "agent.name") {
+		t.Fatalf("err = %v, want the getwd error", err)
+	}
+}
+
+func TestMutantsCheckRemoteErrorWrapped(t *testing.T) {
+	_, err := loadRepo(t, map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": "remote: ftp://h/x.git\n"})
+	if err == nil || errors.Unwrap(err) == nil || !strings.Contains(errors.Unwrap(err).Error(), "unsupported") {
+		t.Fatalf("err = %v, want the CheckRemote error wrapped", err)
+	}
+}
+
+func TestMutantsBadRegexKeepsSyntaxError(t *testing.T) {
+	_, err := loadRepo(t, map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": repoOK + "rules:\n  REF-DELETE: {allow: ['(']}\n"})
+	var se *syntax.Error
+	if !errors.As(err, &se) {
+		t.Fatalf("err = %v, want a wrapped *syntax.Error", err)
+	}
+}
+
+// After a duration limit, the remaining limits of the rule are still checked.
+// Limits are a map, so repeat the load to cover both iteration orders.
+func TestMutantsLimitCheckContinuesAfterDuration(t *testing.T) {
+	for i := 0; i < 32; i++ {
+		_, err := loadRepo(t, map[string]string{"defaults.yaml": wall,
+			"repos/demo/warden.yaml": repoOK + "rules:\n  RATE-LIMIT: {window: 1h, max_pushes: -1}\n"})
+		if err == nil {
+			t.Fatalf("run %d: negative max_pushes next to a duration loads", i)
+		}
+	}
+}
+
+func TestMutantsRemoteKindErrorReturnsZero(t *testing.T) {
+	if k, err := RemoteKind("ftp://h/x"); err == nil || k != 0 {
+		t.Fatalf("RemoteKind(ftp) = %v, %v", k, err)
 	}
 }
