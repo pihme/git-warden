@@ -26,6 +26,7 @@ import (
 // file as output; run-out is printed by run --all, which then sleeps
 // run-sleep seconds or exits run-exit.
 const mut2FakeScript = `#!/bin/sh
+if [ "$1" = -C ] && [ -z "$2" ]; then echo "fake everref: empty -C directory" >&2; exit 9; fi
 echo "$*" >> "@DIR@/calls.log"
 dir=$2
 case " $* " in *" --version "*) echo "everref version v1.0.0"; exit 0;; esac
@@ -214,6 +215,9 @@ func TestMutantsTailAndTruncate(t *testing.T) {
 		if got := tail(c.s, c.n); got != c.want {
 			t.Errorf("tail(%q, %d) = %q, want %q", c.s, c.n, got, c.want)
 		}
+	}
+	if got := truncate("\x80\x80\x80\x80", 2); got != "…" {
+		t.Errorf("truncate of continuation bytes = %q", got)
 	}
 	if got := truncate("abc", 3); got != "abc" {
 		t.Errorf("truncate(abc, 3) = %q", got)
@@ -593,5 +597,89 @@ func TestMutantsListRefsErrorIsWrapped(t *testing.T) {
 	var ge *gitx.Error
 	if !errors.As(err, &ge) || !strings.HasPrefix(err.Error(), "list remote refs: ") {
 		t.Errorf("runRepo: %v", err)
+	}
+}
+
+func TestMutantsCreateOnceStatAndRemoveErrors(t *testing.T) {
+	skipIfRoot(t)
+	built := false
+	build := func(string) error { built = true; return nil }
+	// the marker can't be checked (no search permission): no listing either
+	b := t.TempDir()
+	target := filepath.Join(b, "r")
+	testutil.WriteFiles(t, target, map[string]string{"x": ""})
+	if err := os.Chmod(target, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(target, 0o700) })
+	if err := createOnce(b, target, "HEAD", build); !errors.Is(err, os.ErrPermission) || built {
+		t.Errorf("unsearchable dir: err %v, built %v", err, built)
+	}
+	// an empty dir that can't be removed is not built over
+	ro := t.TempDir()
+	empty := filepath.Join(ro, "empty")
+	if err := os.Mkdir(empty, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(ro, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(ro, 0o700) })
+	if err := createOnce(t.TempDir(), empty, "HEAD", build); !errors.Is(err, os.ErrPermission) || built {
+		t.Errorf("unremovable empty dir: err %v, built %v", err, built)
+	}
+}
+
+func TestMutantsLockPathIsDirectory(t *testing.T) {
+	sd := t.TempDir()
+	if err := os.MkdirAll(lockPath(sd, "r"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if unlock, err := lock(sd, "r"); err == nil || !strings.Contains(err.Error(), "is a directory") {
+		if unlock != nil {
+			unlock()
+		}
+		t.Errorf("lock on a directory: %v", err)
+	}
+}
+
+// Only a credential readable by group or others gets a note; known_hosts may be.
+func TestREQ_BG_097_CredentialModeNote(t *testing.T) {
+	bin, _ := fakeEverref(t)
+	d := t.TempDir()
+	cred, hosts := filepath.Join(d, "key"), filepath.Join(d, "known_hosts")
+	if err := os.WriteFile(cred, []byte("k"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hosts, []byte("h"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := writeConfig(t, "everref:\n  path: "+bin+"\n  version: 1.0.0\n", map[string]string{
+		"s": "remote: ssh://git@example.invalid/s.git\ncredential: " + cred + "\nknown_hosts: " + hosts + "\n",
+	})
+	var out strings.Builder
+	if err := CheckConfig(context.Background(), dir, false, &out); err != nil {
+		t.Fatalf("%v\n%s", err, &out)
+	}
+	if strings.Contains(out.String(), "note: repos/") {
+		t.Errorf("unexpected note:\n%s", &out)
+	}
+	// any group/other bit counts, down to execute for others
+	if err := os.Chmod(cred, 0o601); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := CheckConfig(context.Background(), dir, false, &out); err != nil || !strings.Contains(out.String(), "note: repos/s: credential "+cred+" is readable by group or others\n") {
+		t.Errorf("mode 0601: %v\n%s", err, &out)
+	}
+}
+
+func TestMutantsRepoFileIsDirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "repos", "r", RepoFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadRepo(dir, "r"); err == nil || !strings.Contains(err.Error(), "is a directory") {
+		t.Errorf("LoadRepo: %v", err)
 	}
 }

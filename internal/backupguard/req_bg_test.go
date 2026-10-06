@@ -28,6 +28,7 @@ import (
 // the protection everref would (origin/bad is refused), run --all prints
 // QA_RUN_OUT / QA_RUN_LINES lines and exits QA_RUN_EXIT.
 const qaFakeScript = `#!/bin/sh
+if [ "$1" = -C ] && [ -z "$2" ]; then echo "fake everref: empty -C directory" >&2; exit 9; fi
 echo "$*" >> "@LOG@"
 env | grep -E '^(GIT_SSH_COMMAND|GIT_CONFIG_[A-Z0-9_]+|GIT_TERMINAL_PROMPT)=' >> "@ENVLOG@"
 dir=$2

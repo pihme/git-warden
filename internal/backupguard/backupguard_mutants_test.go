@@ -287,10 +287,13 @@ func TestMutantsRunRepoSetupFailures(t *testing.T) {
 	if res := g.RunRepo(ctx, "r"); res.OK || !strings.Contains(res.Error, "refusing to continue") {
 		t.Errorf("wrong backup remote: %+v", res)
 	}
+	if _, err := qaGitIn(t, bridge, "remote", "set-url", "backup", BackupPath(g.Defaults.StateDir, "r")); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := qaGitIn(t, bridge, "remote", "remove", "origin"); err != nil {
 		t.Fatal(err)
 	}
-	if res := g.RunRepo(ctx, "r"); res.OK {
+	if res := g.RunRepo(ctx, "r"); res.OK || !strings.Contains(res.Error, "No such remote") {
 		t.Errorf("bridge without origin: %+v", res)
 	}
 	// a lock that cannot be taken (locks/ is a file) fails the repo

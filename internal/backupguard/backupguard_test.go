@@ -33,6 +33,7 @@ func fakeEverref(t *testing.T) (bin, log string) {
 	dir := t.TempDir()
 	bin, log = filepath.Join(dir, "git-everref"), filepath.Join(dir, "calls.log")
 	script := `#!/bin/sh
+if [ "$1" = -C ] && [ -z "$2" ]; then echo "fake everref: empty -C directory" >&2; exit 9; fi
 echo "$*" >> "` + log + `"
 case " $* " in *" --version "*) echo "everref version ${FAKE_EVERREF_VERSION:-v1.0.0}"; exit 0;; esac
 case " $* " in *" origin/bad "*) echo "error: cannot protect origin/bad: reserved name" >&2; exit 2;; esac
