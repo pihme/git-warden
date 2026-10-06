@@ -156,7 +156,8 @@ func (r *Rule) Int(key string) (int64, error) {
 		}
 		n = int64(x)
 	case float64:
-		if x > float64(math.MaxInt64) || x < float64(math.MinInt64) {
+		// float64(MaxInt64) rounds up to 2^63, which is already out of range.
+		if x >= float64(math.MaxInt64) || x < float64(math.MinInt64) {
 			return 0, fmt.Errorf("rule %s: limit %s is out of range: %v", r.ID, key, v)
 		}
 		if x != float64(int64(x)) {

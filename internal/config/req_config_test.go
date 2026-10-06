@@ -287,3 +287,16 @@ func TestRemoteSettingMismatch(t *testing.T) {
 		t.Errorf("known_hosts for ssh: %v", err)
 	}
 }
+
+// 2^63 written as a float is out of range, not "not an integer" (the old
+// check let it reach an implementation-defined float→int64 conversion).
+func TestREQ_PG_032_FloatTwoPow63OutOfRange(t *testing.T) {
+	r := &Rule{ID: "X", Limits: map[string]any{"k": float64(1 << 63)}}
+	if n, err := r.Int("k"); err == nil || n != 0 || !strings.Contains(err.Error(), "out of range") {
+		t.Fatalf("Int(2^63 as float) = %d, %v; want out of range", n, err)
+	}
+	if _, err := loadRepo(t, map[string]string{"defaults.yaml": wall,
+		"repos/demo/warden.yaml": repoOK + "rules:\n  REF-COUNT: {max_refs: 9.223372036854775808e18}\n"}); err == nil || !strings.Contains(err.Error(), "out of range") {
+		t.Fatalf("load 2^63: err = %v; want out of range", err)
+	}
+}
