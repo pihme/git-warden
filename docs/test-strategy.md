@@ -89,6 +89,46 @@ Survivors that remain after targeted tests and cannot change observable behaviou
 | journal.go:212 `continue`→`break` | INVERT_LOOP_CTRL | Inside a `switch` that is the last statement of the loop body, `break` leaves the switch and the iteration ends just as with `continue`. |
 | journal.go:231 `i >= 0`→`i >= -1` in ApprovalLease | INTEGER_DECREMENT | OpenApproval just confirmed an approve entry of (ref, sha), so the loop returns before reaching index -1. |
 
+#### internal/rules
+
+| Location | Mutator | Why equivalent |
+|---|---|---|
+| rules.go:104 `a.Ref < b.Ref`→`<=` | CONDITIONALS_BOUNDARY | Only reached when the refs differ, so `<=` and `<` agree. |
+| rules.go:254 `break`→`continue` (invalid UTF-8 scan) | INVERT_LOOP_CTRL | Later invalid lines set the same `binary` and message again. |
+| rules.go:330 `PagesBranch == ""` return | BRANCH_IF | Without it the Pages ref is `refs/heads/`, which is not a valid ref name and never in a push. |
+| rules.go:343 `FindAllStringSubmatch(…, -1)`→`-2` | INTEGER_INCREMENT | Any negative n means "all matches". |
+| rules.go:359 `known[host] = seen` | STATEMENT_REMOVE | Cache only: the host is looked up again with the same result. |
+| rules.go:383 hostInTree `return false, err`→`true, err` | RETURN_TRUE | The caller returns on the error and drops the bool. |
+| rules.go:404 (RANGE_BREAK), :405, :432 `parentTimes[…] = …` | RANGE_BREAK, STATEMENT_REMOVE | Cache of committer times only; a missing entry is read from Git with the same value. |
+| rules.go:457 `rd.Kind == TagMove`→false, `rd.IsTag()`→false, `\|\|`→`&&` | EXPRESSION_REMOVE, INVERT_LOGICAL | TagMove only occurs for tags, and a tag with commits and an old commit is always a TagMove, so each operand alone decides the same. |
+| rules.go:459 `e.d.DefaultBranch == ""`→false | EXPRESSION_REMOVE | With an empty default branch, `Remote[""]` is never present, so `!ok` already returns. |
+| rules.go:463 peel error ignored; :464, :469 `return false, err`→`true, err` | BRANCH_IF, RETURN_TRUE | Ignoring the peel error leaves `start` empty and `rev-list ""` fails; on errors the caller drops the bool. |
+| rules.go:576 `len(oid) > 12`→`>= 12`, `12`→`11` | CONDITIONALS_BOUNDARY, INTEGER_DECREMENT | For a 12-character oid, `oid[:12]` is the oid. |
+| delta.go:218 isAncestor `return false, err`→`true, err` | RETURN_TRUE | The caller returns on the error. |
+| delta.go:241 `d.DefaultBranch != ""`→true | EXPRESSION_REMOVE | `Remote[""]` is never present, so `ok` already implies a non-empty name. |
+| delta.go:282–283 append of the annotated tag object (6 mutants) | EXPRESSION_REMOVE, INVERT_LOGICAL, CONDITIONALS_NEGATION, BRANCH_IF, STATEMENT_REMOVE | `rev-list --objects` already lists a tag object given as input, and `check` sums a map keyed by oid, so adding or dropping the extra id (or the commit for a lightweight tag) changes nothing. |
+| delta.go:309 `if !ok { continue }` | BRANCH_IF | Without it a missing numstat entry assigns zero values to fields that are already zero. |
+| delta.go:422 initial scanner buffer `64*1024` (5 mutants) | INTEGER_*, ARITHMETIC_BASE | Starting allocation only; bufio grows it up to the maximum. |
+| delta.go:423 `no := 0`→`1`/`-1` | INTEGER_* | Every added line follows a hunk header, which sets `no` first. |
+| delta.go:456 `j >= 0`→`> 0`, `0`→`1` in hunkStart | CONDITIONALS_BOUNDARY, INTEGER_INCREMENT | j = 0 means s starts with `,` or space; Atoi of `""` or of that string both give 0. |
+| delta.go:484 `return sizes, nil`→`nil, nil` for no oids | RETURN_ZERO | Callers only read from or range over the map; a nil map behaves the same. |
+| delta.go:511 `f.Status != 'D'`→true, `!gitx.IsZero(f.NewBlob)`→true | EXPRESSION_REMOVE | Exactly the deleted files have a zero new blob, so either check alone excludes them. |
+| delta.go:528 totalSize `return 0, err`→`±1, err` | INTEGER_* | Normalize returns the error and drops the delta. |
+| delta.go:539 `len(oids) == 0` shortcut (2 mutants) | INTEGER_DECREMENT, BRANCH_IF | `cat-file --batch` with an empty line prints ` missing` and the read loop runs zero times. |
+| delta.go:587, :593 ParseCommit `return c, err`→zero commit | RETURN_ZERO | Both callers (batch.commits, pushguard replay) drop the commit on error. |
+| secret.go:50 generated config temp file error | BRANCH_IF | The ignore file is created next in the same temp dir and fails with the same error. |
+| secret.go:113 `report.Close()` | STATEMENT_REMOVE | Leaks one file descriptor; gitleaks writes the report by path. |
+| secret.go:182 refOf `len(e.d.Refs) > 0`→`>= 0`/`> -1` | CONDITIONALS_BOUNDARY, INTEGER_DECREMENT | refOf runs only for leaks, which need new commits, so there is always at least one ref. |
+| secret.go:205 firstLine `i >= 0`→`> 0`, `0`→`1` | CONDITIONALS_BOUNDARY, INTEGER_INCREMENT | s is trimmed first, so it never starts with a newline. |
+| secret.go:208 `len(s) > 300`→`>= 300`, `300`→`299` | CONDITIONALS_BOUNDARY, INTEGER_DECREMENT | The cut is `s[:300]`, which is a no-op for a 300-byte string. |
+
+Not equivalent but not killed in rules (deliberately):
+
+- delta.go:422 maximum token size `256*1024*1024` ±1 in any factor (8 mutants), :443 `sc.Err()` branch and :444 (not covered): killing them needs a single diff line of about 256 MiB; too heavy for the shared box and CI.
+- secret.go:73 temp file `WriteString` error: needs a write failure on a freshly created temp file (disk full or fault injection).
+- rules.go:475–476 `b.commits` error after `rev-list` succeeded: needs an object that disappears or is corrupt between two git calls.
+- delta.go:320 (INFRA ERROR) parseRaw `i++`→`i--`, and the timeouts at rules.go:300 and delta.go:358/384: infinite loops; a timeout counts as detected.
+
 Mutants that removed a loop's `i++`/`i--` time out (infinite loop); gomutants counts them as detected.
 
 ## Fuzzing and property tests
