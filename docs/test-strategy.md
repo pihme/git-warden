@@ -129,6 +129,36 @@ Not equivalent but not killed in rules (deliberately):
 - rules.go:475–476 `b.commits` error after `rev-list` succeeded: needs an object that disappears or is corrupt between two git calls.
 - delta.go:320 (INFRA ERROR) parseRaw `i++`→`i--`, and the timeouts at rules.go:300 and delta.go:358/384: infinite loops; a timeout counts as detected.
 
+#### internal/backupguard
+
+| Location | Mutator | Why equivalent |
+|---|---|---|
+| bridge.go:52 `MkdirAll(base)` error | BRANCH_IF | removeSetupLeftovers reads the same directory next and fails with the same error. |
+| bridge.go:67 `git init` error of the temporary bridge | BRANCH_IF | `remote add` then runs in a directory that is not a repository and fails. |
+| bridge.go:83 `remote add backup` error | BRANCH_IF | checkRemoteURL of `backup` runs next and fails on the same missing remote. |
+| bridge.go:94 `[2]string`→`[3]string` | INTEGER_INCREMENT | Only the array type changes; the third element is empty and never read. |
+| bridge.go:193 `b != key`→true | EXPRESSION_REMOVE | The config regexp anchors `everref.remotes/origin/`, so the prefix is always trimmed and `b` never equals `key`. |
+| bridge.go:274 `MkdirAll(locks)` error, :333 `MkdirAll(state_dir)` error | BRANCH_IF | OpenFile on a path inside the same directory runs next and fails with the same error. |
+| bridge.go:282, :290, :345 `f.Close()` | STATEMENT_REMOVE | Leaks a file descriptor only (the lock is released by `LOCK_UN` or the failed Flock). |
+| bridge.go:315, :337 `json.Marshal` error | BRANCH_IF | Warning and Result hold only strings, ints, bools, a time and a string map; Marshal cannot fail. |
+| bridge.go:348 `return f.Close()`→`nil` | RETURN_ERROR_NIL | Close of a regular file after a successful write does not fail on local file systems. |
+| bridge.go:362 `i >= 0`→true, `0`→`-1` in tail | EXPRESSION_REMOVE, INTEGER_DECREMENT | For i = -1 the condition is `cut < len(s)` and `cut += 0`: no change. |
+| check.go:25 `SplitN(…, 2)`→`3` | INTEGER_INCREMENT | Only element 0 (the major version) is used. |
+| check.go:35, :73 LoadRepo / newRemote error | BRANCH_IF | Preflight has just loaded every repo with the same checks, so these errors are unreachable. |
+| config.go:169 `if !e.IsDir() { continue }` | BRANCH_IF | For a file, the Stat of `<file>/backup.yaml` fails and the entry is skipped anyway. |
+| config.go:206, run.go:90 `%w`→`%v` | ERRORF_WRAP | The wrapped errors are plain `errors.New`/`fmt.Errorf` values with nothing to unwrap to. |
+| everref.go:134 `len(lines) > n`→`>=` | CONDITIONALS_BOUNDARY | For len = n, `lines[0:]` is the whole slice. |
+| run.go:130 `return …, d, nil`→`nil` | RETURN_ZERO | PreflightRun only uses the Defaults when the preflight failed. |
+
+Not equivalent but not killed in internal/backupguard (deliberately):
+
+- bridge.go:71, :91, :95, :100, :186, run.go:212, :245 (BRANCH_IF), plus the 16 not-covered mutants in the same error branches (bridge.go:53, :68, :72, :84, :92, :96, :101, :187, :286, :316, :338; check.go:36–37, :74; run.go:213, :246): git config or remote commands that fail in a healthy bridge, Flock errors other than EWOULDBLOCK, and NewRemote errors that LoadRepo already ruled out. They need fault injection between two git calls.
+- Timing constants: everref.go:40 (30 s), everref.go:43, :114 and bridge.go:324 WaitDelay 5 s ±1. The WaitDelay itself is tested (a child that keeps the pipe open), but not its exact length.
+- run.go:206 `err != nil`→true: only differs if a run succeeds and the deadline passes before the deferred check runs. That's a race, not testable reliably.
+- Timeouts at bridge.go:213 (2), :216, :360 and :374: infinite loops; a timeout counts as detected.
+
+Test fakes for git-everref refuse an empty `-C` directory: mutants that lose the bridge path would otherwise run git in the package directory and write `everref.*` keys into the repository's own `.git/config`.
+
 #### cmd/backup-guard
 
 No equivalent mutants remain (98.82% efficacy before d621f98, which killed the last survivor, main.go:45 `fs.SetOutput`). Not killed:
