@@ -274,3 +274,36 @@ func TestMutantsIdentTimeAndParseCommit(t *testing.T) {
 		}
 	}
 }
+
+func TestMutantsNormalizeRound2(t *testing.T) {
+	f := newReqFixture(t, "")
+	base := f.repo.Commit("base", map[string]string{"a.txt": "a\n"})
+	head := f.repo.Commit("x", map[string]string{"x.txt": "x\n", "y.txt": "y\ny\n"})
+	run := func(g *gitx.Git, remote map[string]string, def string, u Update) (*Delta, error) {
+		return Normalize(context.Background(), g, Input{Updates: []Update{u}, Remote: remote, DefaultBranch: def, Now: f.now})
+	}
+	plain := &gitx.Git{Dir: f.repo.Dir}
+	// a default branch that does not peel fails closed even when its oid is
+	// not among the remote's heads and tags
+	if _, err := run(plain, map[string]string{"refs/x/main": bogusOID}, "refs/x/main", push("refs/heads/new", head)); err == nil {
+		t.Error("unpeelable default branch ignored")
+	}
+	// a failing merge-base (not "no common ancestor") fails closed
+	f.repo.Git("checkout", "-q", "-b", "side", base)
+	side := f.repo.Commit("side", map[string]string{"s.txt": "s\n"})
+	g := wrapGit(t, f.repo.Dir, " merge-base ", 2, "", true, 128)
+	if _, err := run(g, map[string]string{main: head}, main, push(main, side)); !strings.Contains(gitErrArgs(err), " merge-base ") {
+		t.Errorf("merge-base failure: %v", err)
+	}
+	// a file missing from numstat keeps zero counts; later files still get theirs
+	g = wrapGit(t, f.repo.Dir, "--numstat", 1, "2\t0\ty.txt\x00", false, 0)
+	d, err := run(g, map[string]string{main: base}, main, push(main, head))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fc := range d.Refs[0].Files {
+		if want := map[string]int{"x.txt": 0, "y.txt": 2}[fc.Path]; fc.Added != want {
+			t.Errorf("%s: Added %d, want %d", fc.Path, fc.Added, want)
+		}
+	}
+}

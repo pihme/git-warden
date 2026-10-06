@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/pihme/git-warden/internal/config"
@@ -217,5 +218,34 @@ func TestMutantsFirstLineTruncation(t *testing.T) {
 		if got := firstLine(in); got != want {
 			t.Errorf("firstLine(%.20q…) = %d chars %.20q…, want %d chars", in, len(got), got, len(want))
 		}
+	}
+}
+
+// A .gitleaksignore that cannot be checked (here: the path is too long) fails
+// closed, even if the scanner itself could run in the directory.
+func TestREQ_PG_020_UncheckableDotGitleaksIgnoreFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	for len(dir) < 4080-200 {
+		dir = filepath.Join(dir, strings.Repeat("d", 200))
+	}
+	dir = filepath.Join(dir, strings.Repeat("e", 4085-len(dir)))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Skipf("cannot create a long path: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, ".gitleaksignore")); !errors.Is(err, syscall.ENAMETOOLONG) {
+		t.Skipf("Lstat of the long path: %v", err)
+	}
+	bin, _ := recScanner(t, "[]", 0)
+	f := newReqFixture(t, "gitleaks: {path: '"+bin+"'}\n")
+	base := f.repo.Commit("base", nil)
+	head := f.repo.Commit("x", map[string]string{"x.txt": "x\n"})
+	sc, err := NewScanner(f.cfg, f.repo.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sc.Close()
+	sc.RepoDir = dir
+	if _, err := f.evalErr(map[string]string{main: base}, Options{Scanner: sc}, push(main, head)); !errors.Is(err, syscall.ENAMETOOLONG) {
+		t.Fatalf("REQ-PG-020: err = %v, want ENAMETOOLONG", err)
 	}
 }
