@@ -99,10 +99,10 @@ func TestMutantsTruncateAndRunErrorUnwrap(t *testing.T) {
 			t.Errorf("truncate(%q, %d) = %q, want %q", c.s, c.n, got, c.want)
 		}
 	}
-	ev := &Everref{Bin: "/bin/false"}
+	ev := &Everref{Bin: filepath.Join(qaFakeProgram(t, "fail", "exit 3"), "fail")}
 	_, err := ev.Run(context.Background(), t.TempDir(), "x")
 	var ee *exec.ExitError
-	if !errors.As(err, &ee) {
+	if !errors.As(err, &ee) || ee.ExitCode() != 3 {
 		t.Errorf("RunError does not unwrap to the exec error: %v", err)
 	}
 }
