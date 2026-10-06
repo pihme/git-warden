@@ -62,7 +62,34 @@ Do **not** disable `ERRORF_WRAP` (`%w` → `%v`): that breaks `errors.Is` / `err
 
 ### Equivalent mutants
 
-None yet. Survivors that remain after targeted tests and that truly cannot change observable behaviour are listed here with file:line, mutator, and a one-line reason.
+Survivors that remain after targeted tests and cannot change observable behaviour, with file:line (as of the commit that added the entry), gomutants mutator and a one-line reason. Re-check the list when the code moves.
+
+#### internal/config
+
+| Location | Mutator | Why equivalent |
+|---|---|---|
+| config.go:45 `rank` `2`→`3` | INTEGER_INCREMENT | rank is only compared in `Worse`; the order red > yellow > green is kept. |
+| config.go:49 `rank` `0`→`-1` | INTEGER_DECREMENT | Same: only the relative order of ranks matters. |
+| config.go:160 `x < float64(MinInt64)`→`<=` | CONDITIONALS_BOUNDARY | Only -2^63 changes branch, and it is rejected either way (out of range vs. must not be negative). |
+| config.go:370 `indexOf` `return -1`→`-2` | INTEGER_INCREMENT | Callers only test `< 0`. |
+| config.go:410, :413 `if err != nil` on the embedded defaults | BRANCH_IF | The embedded defaults.yaml always parses and applies (TestBuiltinDefaults); the error is unreachable. |
+| config.go:472 `m.timeout = "60s"` | BRANCH_IF | The embedded defaults set `timeout: 60s`, so `m.timeout` is never empty here. |
+| config.go:552 `p == ""`→false in ResolveProgram | EXPRESSION_REMOVE | For `""`, `filepath.Base("") == "."` sends it to `resolve(dir, "")`, which returns `""` too. |
+| config.go:610 `case`/`return KindLocal` and :620 `KindLocal`→zero value | BRANCH_CASE, RETURN_ZERO | `KindLocal` is the zero value of `Kind`, and the emptied case falls through to the same return. |
+
+#### internal/journal
+
+| Location | Mutator | Why equivalent |
+|---|---|---|
+| journal.go:83 `json.Marshal` error | BRANCH_IF | An `Entry` has only strings, ints, bools, times and slices of those; Marshal cannot fail. |
+| journal.go:86 `MkdirAll` error | BRANCH_IF | If MkdirAll fails, the OpenFile below fails on the same path with the same error. |
+| journal.go:94 `Flock` error | BRANCH_IF | `flock(LOCK_EX)` on a freshly opened regular file (or char device) has no reachable failure (EINTR is retried by the runtime). |
+| journal.go:116 initial buffer `64*1024` (5 mutants: 63, 65, `/`, 1023, 1025) | INTEGER_*/ARITHMETIC_BASE | Only the starting allocation changes; the 64 MiB maximum (tested) is untouched and bufio grows the buffer. |
+| journal.go:136 `i >= 0`→`> 0`, `0`→`1` in lastEnd | CONDITIONALS_BOUNDARY, INTEGER_INCREMENT | Both callers scan from the returned index + 1; when entry 0 is the approve/reset, returning -1 also scans entry 0, which is not a streak or push and never counts. |
+| journal.go:212 `continue`→`break` | INVERT_LOOP_CTRL | Inside a `switch` that is the last statement of the loop body, `break` leaves the switch and the iteration ends just as with `continue`. |
+| journal.go:231 `i >= 0`→`i >= -1` in ApprovalLease | INTEGER_DECREMENT | OpenApproval just confirmed an approve entry of (ref, sha), so the loop returns before reaching index -1. |
+
+Mutants that removed a loop's `i++`/`i--` time out (infinite loop); gomutants counts them as detected.
 
 ## Fuzzing and property tests
 
