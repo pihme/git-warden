@@ -104,3 +104,41 @@ func TestPropDurationLimitKinds(t *testing.T) {
 		}
 	})
 }
+
+// Negative limits are refused when the configuration loads, in every spelling:
+// counts as integers or whole floats, durations however Go or a human writes
+// them. Zero stays allowed.
+func TestPropNegativeLimitsRefused(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		l := countLimit.Draw(rt, "count limit")
+		n := rapid.Int64Max(-1).Draw(rt, "n")
+		for _, v := range []string{fmt.Sprint(n), fmt.Sprintf("%d.0", n), fmt.Sprintf("%g", float64(n))} {
+			if _, err := loadLimit(t, l.rule, l.key, v); err == nil {
+				rt.Errorf("%s: negative count %s loads", l.key, v)
+			}
+		}
+
+		d := durationKey.Draw(rt, "duration limit")
+		neg := time.Duration(rapid.Int64Max(-1).Draw(rt, "ns"))
+		unit := rapid.SampledFrom([]string{"ns", "us", "µs", "ms", "s", "m", "h"}).Draw(rt, "unit")
+		k := rapid.IntRange(1, 1000).Draw(rt, "k")
+		for _, v := range []string{neg.String(), fmt.Sprintf("-%d%s", k, unit), fmt.Sprintf("-%d.5%s", k, unit), fmt.Sprintf("-1h%dm", k)} {
+			if _, err := loadLimit(t, d.rule, d.key, "'"+v+"'"); err == nil {
+				rt.Errorf("%s: negative duration %s loads", d.key, v)
+			}
+		}
+
+		for _, z := range []string{"'0s'", "'0'", "'-0s'"} {
+			c, err := loadLimit(t, d.rule, d.key, z)
+			if err != nil {
+				rt.Fatalf("%s: zero duration %s refused: %v", d.key, z, err)
+			}
+			if got, _ := c.Rule(d.rule).Duration(d.key); got != 0 {
+				rt.Fatalf("%s: %s reads as %s", d.key, z, got)
+			}
+		}
+		if _, err := loadLimit(t, l.rule, l.key, "0"); err != nil {
+			rt.Fatalf("%s: zero count refused: %v", l.key, err)
+		}
+	})
+}
