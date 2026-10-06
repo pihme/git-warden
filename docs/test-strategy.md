@@ -129,6 +129,13 @@ Not equivalent but not killed in rules (deliberately):
 - rules.go:475–476 `b.commits` error after `rev-list` succeeded: needs an object that disappears or is corrupt between two git calls.
 - delta.go:320 (INFRA ERROR) parseRaw `i++`→`i--`, and the timeouts at rules.go:300 and delta.go:358/384: infinite loops; a timeout counts as detected.
 
+#### cmd/backup-guard
+
+No equivalent mutants remain (98.82% efficacy before d621f98, which killed the last survivor, main.go:45 `fs.SetOutput`). Not killed:
+
+- main.go:33 `os.Exit(run(…))` (3 mutants, not covered): `main` exits the process; the tests call `run` instead.
+- main.go:99 `break`→`continue` and main.go:102 `args = fs.Args()[1:]` (4 mutants): infinite flag-parsing loops; the timeouts count as detected.
+
 Mutants that removed a loop's `i++`/`i--` time out (infinite loop); gomutants counts them as detected.
 
 ## Fuzzing and property tests
