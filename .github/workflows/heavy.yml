@@ -18,7 +18,7 @@ on:
       covmap:
         description: "Mutation: per-test coverage routing on, off (every mutant runs all package tests) or both"
         type: choice
-        options: [on, off, both]
+        options: ["on", "off", "both"]
         default: "on"
       workers:
         description: "gomutants workers per package"
