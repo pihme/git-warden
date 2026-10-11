@@ -149,8 +149,8 @@ func LoadDefaults(dir string) (*Defaults, error) {
 	}
 	if raw.Timeout != nil {
 		t, err := time.ParseDuration(*raw.Timeout)
-		if err != nil || t <= 0 {
-			return nil, fmt.Errorf("%s: timeout %q is not a positive duration", path, *raw.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("%s: timeout %q is not a duration", path, *raw.Timeout)
 		}
 		if t < MinTimeout || t > MaxTimeout {
 			return nil, fmt.Errorf("%s: timeout %s is out of range 1m to 24h", path, *raw.Timeout)

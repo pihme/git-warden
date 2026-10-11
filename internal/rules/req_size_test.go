@@ -2,6 +2,9 @@ package rules
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -124,6 +127,46 @@ func TestREQ_PG_032_MaxBytes(t *testing.T) {
 	over := f.withRules(fmt.Sprintf("rules:\n  SIZE-LIMIT: {max_bytes: %d}\n", n-1))
 	expectTotal(t, over.eval(map[string]string{main: base}, push(main, head)), "SIZE-LIMIT",
 		fmt.Sprintf("%d bytes of new objects (limit %d)", n, n-1), true)
+}
+
+// NewBytes is the sum of the sizes of all new objects, not the size of any
+// single one: checked against git's own count with several new blobs.
+func TestREQ_PG_032_NewBytesSumsAllNewObjects(t *testing.T) {
+	f := newReqFixture(t, "")
+	base := f.repo.Commit("base", nil)
+	head := f.repo.Commit("blobs", map[string]string{
+		"a.txt": strings.Repeat("a", 1000) + "\n",
+		"b.txt": strings.Repeat("b", 3000) + "\n",
+		"c.txt": strings.Repeat("c", 5000) + "\n",
+	})
+	objs := f.repo.Git("rev-list", "--objects", base+".."+head)
+	var ids []string
+	for _, l := range strings.Split(strings.TrimSpace(objs), "\n") {
+		id, _, _ := strings.Cut(l, " ")
+		ids = append(ids, id)
+	}
+	cmd := exec.Command("git", "cat-file", "--batch-check=%(objectsize)")
+	cmd.Dir, cmd.Env = f.repo.Dir, append(os.Environ(), f.repo.Env...)
+	cmd.Stdin = strings.NewReader(strings.Join(ids, "\n") + "\n")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want, largest int64
+	for _, l := range strings.Fields(string(out)) {
+		s, err := strconv.ParseInt(l, 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want += s
+		largest = max(largest, s)
+	}
+	if len(ids) < 5 || want <= largest {
+		t.Fatalf("fixture: %d objects, sum %d, largest %d", len(ids), want, largest)
+	}
+	if got := f.normalize(map[string]string{main: base}, push(main, head)).Refs[0].NewBytes; got != want {
+		t.Errorf("NewBytes = %d; want %d (sum of %d new objects)", got, want, len(ids))
+	}
 }
 
 func TestREQ_PG_033_MaxCommits(t *testing.T) {

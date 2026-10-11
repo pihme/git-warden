@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"syscall"
@@ -2181,6 +2182,15 @@ func TestREQ_BG_115_EventsCountedForLargeOutput(t *testing.T) {
 	j := readJournal(t, g.Defaults.StateDir)
 	if last := j[len(j)-1]; last.New != 7 || last.Rewritten != 3 || last.Deleted != 2 {
 		t.Errorf("journal counts: %+v", last)
+	}
+	// the last event line has no trailing newline: it is still counted
+	ev := &Everref{Bin: fakeProg(t, `printf ' * [new] a\n * [new] b'`)}
+	var lines []string
+	if _, err := ev.RunEach(ctx, t.TempDir(), func(l string) { lines = append(lines, l) }, "run"); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{" * [new] a", " * [new] b"}; !reflect.DeepEqual(lines, want) {
+		t.Errorf("last event line without trailing newline: lines %q; want %q", lines, want)
 	}
 }
 
