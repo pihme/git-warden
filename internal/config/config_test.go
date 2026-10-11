@@ -459,3 +459,23 @@ func TestExamplesLoad(t *testing.T) {
 		t.Fatalf("unexpected example config: %+v", c)
 	}
 }
+
+func TestFmtDur(t *testing.T) {
+	cases := []struct {
+		d    time.Duration
+		want string
+	}{
+		{time.Second, "1s"},
+		{time.Minute, "1m"},
+		{10 * time.Minute, "10m"},
+		{time.Hour, "1h"},
+		{8760 * time.Hour, "8760h"},
+		{0, "0s"},
+		{90 * time.Second, "1m30s"},
+	}
+	for _, c := range cases {
+		if got := fmtDur(c.d); got != c.want {
+			t.Errorf("fmtDur(%v) = %q, want %q", c.d, got, c.want)
+		}
+	}
+}

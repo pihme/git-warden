@@ -469,11 +469,8 @@ func (m *merged) build(dir, repo string) (*Config, error) {
 	if c.StateDir == "" {
 		c.StateDir = filepath.Join(dir, "state")
 	}
-	if m.timeout == "" {
-		m.timeout = "60s"
-	}
 	t, err := time.ParseDuration(m.timeout)
-	if err != nil || t <= 0 {
+	if err != nil {
 		return nil, fmt.Errorf("timeout: invalid duration %q", m.timeout)
 	}
 	if t < MinTimeout || t > MaxTimeout {

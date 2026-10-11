@@ -80,12 +80,18 @@ Survivors that remain after targeted tests and cannot change observable behaviou
 |---|---|---|
 | config.go:45 `rank` `2`→`3` | INTEGER_INCREMENT | rank is only compared in `Worse`; the order red > yellow > green is kept. |
 | config.go:49 `rank` `0`→`-1` | INTEGER_DECREMENT | Same: only the relative order of ranks matters. |
-| config.go:160 `x < float64(MinInt64)`→`<=` | CONDITIONALS_BOUNDARY | Only -2^63 changes branch, and it is rejected either way (out of range vs. must not be negative). |
+| config.go:160 `Int` `x < float64(MinInt64)`→`<=` | CONDITIONALS_BOUNDARY | Only -2^63 changes branch, and it is rejected either way (out of range vs. must not be negative). |
+| config.go:309 `apply` `sort.Strings(ids)` removed | STATEMENT_REMOVE | Only the order of errors when applying a layer changes; success builds a map. |
 | config.go:370 `indexOf` `return -1`→`-2` | INTEGER_INCREMENT | Callers only test `< 0`. |
-| config.go:410, :413 `if err != nil` on the embedded defaults | BRANCH_IF | The embedded defaults.yaml always parses and applies (TestBuiltinDefaults); the error is unreachable. |
-| config.go:472 `m.timeout = "60s"` | BRANCH_IF | The embedded defaults set `timeout: 60s`, so `m.timeout` is never empty here. |
-| config.go:552 `p == ""`→false in ResolveProgram | EXPRESSION_REMOVE | For `""`, `filepath.Base("") == "."` sends it to `resolve(dir, "")`, which returns `""` too. |
-| config.go:610 `case`/`return KindLocal` and :620 `KindLocal`→zero value | BRANCH_CASE, RETURN_ZERO | `KindLocal` is the zero value of `Kind`, and the emptied case falls through to the same return. |
+| config.go:410, :413 `load` `if err != nil` on the embedded defaults | BRANCH_IF | The embedded defaults.yaml always parses and applies (TestBuiltinDefaults); the branches stay as defence in depth. |
+| config.go:522 `compile` `continue`→`break` after a duration limit | INVERT_LOOP_CTRL | An unparseable number becomes 0 in `checkBounds` and is rejected as out of range. |
+| config.go:549 `countBounds` lookback lower `0`→`-1` | INTEGER_DECREMENT | Negatives are rejected earlier by `Int`. |
+| config.go:557 `durationBounds` max_skew lower `0`→`-1` | INTEGER_DECREMENT | Negatives are rejected earlier by `Duration`. |
+| config.go:569 `checkBounds` `sort.Strings(keys)` removed | STATEMENT_REMOVE | Only the order of out-of-range errors changes. |
+| config.go:573, :583 `checkBounds` `if !ok { continue }` removed | BRANCH_IF | Every configured limit key has an entry in `countBounds` or `durationBounds`. |
+| config.go:580 `checkBounds` `continue`→`break` after a duration limit | INVERT_LOOP_CTRL | Equivalent only because `window` sorts last among duration keys; revisit when duration keys are added. |
+| config.go:627 `ResolveProgram` `p == ""`→false | EXPRESSION_REMOVE | `resolve(dir, "")` returns `""` anyway. |
+| config.go:685, :695 `RemoteKind` `KindLocal`→zero value | RETURN_ZERO | `KindLocal` is the zero value of `Kind` (`iota` 0). |
 
 #### internal/journal
 
