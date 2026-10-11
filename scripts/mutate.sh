@@ -27,10 +27,6 @@
 #                          Push Guard packages below). Set to
 #                          './internal/backupguard' when QA mutates Backup Guard.
 #   GOMUTANTS_VERSION    go install version pin (default: v0.6.1)
-#   TEST_FLAGS           --test-flags: extra go test flags, appended last. TEST_FLAGS=-run=.
-#                          disables per-test coverage routing (every mutant runs
-#                          all tests of its package); the default (empty) routes
-#                          each mutant to the tests that cover its line.
 #   OUTPUT               --output JSON report path (default: mutation-report.json)
 #   MEM_LIMIT_KB         per-process data limit in KiB for gomutants and every
 #                          test binary it starts (default: 4000000, about 4 GB;
@@ -82,9 +78,6 @@ args=(
 )
 if [[ "${TEST_CPU}" != "0" ]]; then
 	args+=(--test-cpu="${TEST_CPU}")
-fi
-if [[ -n "${TEST_FLAGS:-}" ]]; then
-	args+=(--test-flags="${TEST_FLAGS}")
 fi
 if [[ "${ADAPTIVE_TIMEOUT}" == "0" ]]; then
 	args+=(--adaptive-timeout=false)

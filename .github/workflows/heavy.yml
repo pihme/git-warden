@@ -15,11 +15,6 @@ on:
         description: "Duration per fuzz target (go test -fuzztime)"
         type: string
         default: 10m
-      covmap:
-        description: "Mutation: per-test coverage routing on, off (every mutant runs all package tests) or both"
-        type: choice
-        options: ["on", "off", "both"]
-        default: "on"
       workers:
         description: "gomutants workers per package"
         type: string
@@ -36,7 +31,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        covmap: ${{ fromJSON(inputs.covmap == 'both' && '["on","off"]' || format('["{0}"]', inputs.covmap)) }}
         package:
           - internal/rules
           - internal/journal
@@ -61,16 +55,12 @@ jobs:
           sudo scripts/install-everref.sh /usr/local/bin
       - name: Set names
         id: n
-        run: echo "slug=$(echo '${{ matrix.package }}' | tr '/' '-')-covmap-${{ matrix.covmap }}" >> "$GITHUB_OUTPUT"
+        run: echo "slug=$(echo '${{ matrix.package }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
       - name: Mutation run
         env:
           PACKAGES: ./${{ matrix.package }}
           WORKERS: ${{ inputs.workers }}
           OUTPUT: mutation-report.json
-          # off: a trailing -run=. overrides gomutants' per-test filter, and
-          # adaptive timeouts (sized for the covering tests only) are disabled.
-          TEST_FLAGS: ${{ matrix.covmap == 'off' && '-run=.' || '' }}
-          ADAPTIVE_TIMEOUT: ${{ matrix.covmap == 'off' && '0' || '1' }}
         run: |
           (while true; do free -m | awk -v t="$(date +%T)" '/^Mem:/{print t, $3}'; sleep 5; done) > mem.log &
           sampler=$!
@@ -85,7 +75,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "### Mutation ${{ matrix.package }} (coverage map ${{ matrix.covmap }})"
+            echo "### Mutation ${{ matrix.package }}"
             cat result.txt 2>/dev/null
             echo "peak used memory (system, MB): $(sort -k2 -n mem.log 2>/dev/null | tail -1 | awk '{print $2}')"
             echo "peak RSS gomutants itself (KB): $(grep 'Maximum resident' time.txt 2>/dev/null | awk '{print $NF}')"
