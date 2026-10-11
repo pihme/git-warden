@@ -542,8 +542,9 @@ func TestREQ_BG_074_TimeoutIsNamed(t *testing.T) {
 	bare, _ := remoteWith(t, "main")
 	dir := writeConfig(t, "", map[string]string{"r": "remote: " + bare + "\n"})
 	warning := notifyScript(t, dir, "notify.sh")
-	testutil.WriteFiles(t, dir, map[string]string{DefaultsFile: f.config("timeout: 2s\nnotify:\n  command: [./notify.sh]\n")})
+	testutil.WriteFiles(t, dir, map[string]string{DefaultsFile: f.config("timeout: 1m\nnotify:\n  command: [./notify.sh]\n")})
 	g, _ := qaGuard(t, dir)
+	g.Defaults.Timeout = 2 * time.Second // below the 1m minimum (REQ-BG-114), set in-process to keep the test short
 	t.Setenv("QA_RUN_SLEEP", "120")
 	res := g.RunRepo(context.Background(), "r")
 	if res.OK || !strings.Contains(res.Error, "timeout 2s (defaults.yaml) exceeded") {
@@ -627,8 +628,9 @@ func TestREQ_BG_074_081_RunOutputAndTimeout(t *testing.T) {
 		f.set(t, "run-exit", "")
 		f.set(t, "run-out", "partial\n")
 		f.set(t, "run-sleep", "10")
-		dir = writeConfig(t, f.config("timeout: 2s\n"), map[string]string{"r": "remote: " + bare + "\n"})
+		dir = writeConfig(t, f.config("timeout: 1m\n"), map[string]string{"r": "remote: " + bare + "\n"})
 		g, _ = qaGuard(t, dir)
+		g.Defaults.Timeout = 2 * time.Second // below the 1m minimum (REQ-BG-114), set in-process
 		res = g.RunRepo(ctx, "r")
 		if res.OK || !strings.HasPrefix(res.Error, "timeout 2s (defaults.yaml) exceeded, killed: ") || res.Output != "partial" {
 			t.Errorf("timeout: error %q, output %q", res.Error, res.Output)

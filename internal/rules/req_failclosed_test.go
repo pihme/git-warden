@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -446,5 +447,100 @@ func TestREQ_PG_004_ScannerTempFilesFailClosed(t *testing.T) {
 	testutil.WriteFiles(t, f.cfg.Dir, map[string]string{"gitleaks.toml": "# wall\n"})
 	if _, err := NewScanner(f.cfg, f.repo.Dir); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("generated ignore file: err = %v", err)
+	}
+}
+
+const mib = 1 << 20
+
+// REQ-PG-049: an added line of exactly 16 MiB is evaluated; one byte more
+// fails closed.
+func TestREQ_PG_049_DiffLineLimit(t *testing.T) {
+	for n, fail := range map[int]bool{16 * mib: false, 16*mib + 1: true} {
+		f := newReqFixture(t, "")
+		base := f.repo.Commit("base", nil)
+		head := f.repo.Commit("big", map[string]string{"big.txt": strings.Repeat("a", n) + "\n"})
+		_, err := f.evalErr(map[string]string{main: base}, Options{SkipScanner: true}, push(main, head))
+		if (err != nil) != fail {
+			t.Errorf("added line of %d bytes: err = %v, want failure %v", n, err, fail)
+		}
+	}
+}
+
+// sizedScanner is a gitleaks stand-in writing out bytes to stdout, errBytes
+// to stderr and a report of reportBytes ("[]" padded with spaces). Its stdout
+// starts with the "commits scanned" line. -1 for out writes without end.
+func sizedScanner(t *testing.T, out, errBytes, reportBytes int) string {
+	t.Helper()
+	pad := func(n int, stream string) string {
+		if n <= 0 {
+			return ""
+		}
+		return fmt.Sprintf("head -c %d /dev/zero | tr '\\0' x %s; ", n, stream)
+	}
+	script := "#!/bin/sh\nwhile [ $# -gt 0 ]; do [ \"$1\" = -r ] && r=$2; shift; done\n" +
+		fmt.Sprintf("printf '[]' > \"$r\"; head -c %d /dev/zero | tr '\\0' ' ' >> \"$r\"\n", reportBytes-2)
+	if out < 0 {
+		script += "printf '" + strings.TrimSuffix(scanned, "\n") + "\\n'; yes\n"
+	} else {
+		script += "printf '" + strings.TrimSuffix(scanned, "\n") + "\\n'; " + pad(out-len(scanned), "") + pad(errBytes, ">&2") + "exit 0\n"
+	}
+	p := filepath.Join(t.TempDir(), "gitleaks")
+	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// REQ-PG-050: gitleaks' stdout, stderr and report are read up to 1 MiB
+// each; one byte more fails closed. Output without end fails closed quickly.
+func TestREQ_PG_050_EvaluatedOutputBounded(t *testing.T) {
+	for name, c := range map[string]struct{ out, errB, report int }{
+		"stdout": {mib, 0, 2}, "stderr": {len(scanned), mib, 2}, "report": {len(scanned), 0, mib},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err, _, _ := scanWith(t, sizedScanner(t, c.out, c.errB, c.report)); err != nil {
+				t.Errorf("exactly 1 MiB: %v", err)
+			}
+			over := c
+			switch name {
+			case "stdout":
+				over.out++
+			case "stderr":
+				over.errB++
+			default:
+				over.report++
+			}
+			_, err, _, _ := scanWith(t, sizedScanner(t, over.out, over.errB, over.report))
+			if err == nil || !strings.Contains(err.Error(), "1 MiB") {
+				t.Errorf("1 MiB + 1: err = %v; want fail closed naming 1 MiB", err)
+			}
+		})
+	}
+	t.Run("without end", func(t *testing.T) {
+		start := time.Now()
+		_, err, _, _ := scanWith(t, sizedScanner(t, -1, 0, 2))
+		if err == nil {
+			t.Error("endless output passes")
+		}
+		if d := time.Since(start); d > 20*time.Second {
+			t.Errorf("endless output took %v", d)
+		}
+	})
+}
+
+// REQ-PG-052: a SHA in messages is shortened to 12 characters, a program's
+// error text to 300.
+func TestREQ_PG_052_ShortenedTexts(t *testing.T) {
+	if got := short(strings.Repeat("a", 12)); got != strings.Repeat("a", 12) {
+		t.Errorf("12-character SHA: %q", got)
+	}
+	if got := short(strings.Repeat("b", 13)); got != strings.Repeat("b", 12) {
+		t.Errorf("13-character SHA: %q", got)
+	}
+	if got := firstLine(strings.Repeat("e", 300)); got != strings.Repeat("e", 300) {
+		t.Errorf("300-character error text cut to %d", len(got))
+	}
+	if got := firstLine(strings.Repeat("e", 301)); len(got) != 300 {
+		t.Errorf("301-character error text kept %d", len(got))
 	}
 }

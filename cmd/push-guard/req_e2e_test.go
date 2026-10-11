@@ -5,8 +5,11 @@ package main
 // docs/push-guard-testspec.md. They use the harness from e2e_test.go.
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -246,7 +249,7 @@ func TestREQ_PG_004_ScannerTimeoutIsInternalError(t *testing.T) {
 }
 
 func TestREQ_PG_036_RateLimitedPushIsRedWithFixedMessage(t *testing.T) {
-	e := setup(t, "RATE-LIMIT: {max_pushes: 1, window: 3s}")
+	e := setup(t, "RATE-LIMIT: {max_pushes: 1, window: 1m}") // 1m: the smallest window (REQ-PG-046)
 	e.agent.Commit("c1", map[string]string{"n.txt": "1"})
 	e.mustPush("origin", "main")
 	head := e.agent.Commit("c2", map[string]string{"n.txt": "2"})
@@ -259,8 +262,9 @@ func TestREQ_PG_036_RateLimitedPushIsRedWithFixedMessage(t *testing.T) {
 		len(p.Findings) != 1 || p.Findings[0].Rule != "RATE-LIMIT" {
 		t.Fatalf("REQ-PG-036: journal entry %+v", p)
 	}
-	// after the window has passed, pushes go through again
-	time.Sleep(3500 * time.Millisecond)
+	// after the window has passed, pushes go through again: move every
+	// journal entry 61 s into the past instead of waiting a minute
+	e.ageJournal(61 * time.Second)
 	assertContains(t, e.mustPush("origin", "main"), "forwarded")
 	if e.remoteRef("refs/heads/main") != head {
 		t.Fatal("REQ-PG-036: push after the window not forwarded")
@@ -311,5 +315,40 @@ func TestREQ_PG_037_ApprovalEndsStreak(t *testing.T) {
 	assertContains(t, e.mustPush("origin", "main"), "forwarded")
 	if e.remoteRef("refs/heads/main") != next {
 		t.Fatal("REQ-PG-037: streak still active after approve")
+	}
+}
+
+// REQ-PG-046: check-config reports a limit outside its range with rule, key
+// and range, and exits 1.
+func TestREQ_PG_046_CheckConfigReportsOutOfRange(t *testing.T) {
+	e := setup(t, "")
+	e.writeRepoConfig("rules:\n  REF-COUNT: {max_refs: 1001}\n")
+	cmd := exec.Command(binary, "check-config", "--config", e.config)
+	out, err := cmd.CombinedOutput()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+		t.Fatalf("check-config: err = %v, want exit 1\n%s", err, out)
+	}
+	for _, want := range []string{"REF-COUNT", "max_refs", "1 to 1000"} {
+		assertContains(t, string(out), want)
+	}
+}
+
+// ageJournal moves the time of every journal entry d into the past.
+func (e *env) ageJournal(d time.Duration) {
+	e.t.Helper()
+	j := journal.Open(e.state)
+	es := e.entries()
+	var b strings.Builder
+	for _, x := range es {
+		x.Time = x.Time.Add(-d)
+		line, err := json.Marshal(x)
+		if err != nil {
+			e.t.Fatal(err)
+		}
+		b.Write(append(line, '\n'))
+	}
+	if err := os.WriteFile(j.Path, []byte(b.String()), 0o600); err != nil {
+		e.t.Fatal(err)
 	}
 }

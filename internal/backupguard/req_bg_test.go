@@ -332,7 +332,7 @@ func TestREQ_BG_020_RelativeStateDir(t *testing.T) {
 }
 
 func TestREQ_BG_022_Timeout(t *testing.T) {
-	for v, want := range map[string]time.Duration{"30m": 30 * time.Minute, "1h30m": 90 * time.Minute, "1s": time.Second, "1ns": 1} {
+	for v, want := range map[string]time.Duration{"30m": 30 * time.Minute, "1h30m": 90 * time.Minute, "1m": time.Minute} {
 		d, err := LoadDefaults(writeConfig(t, "timeout: "+v+"\n", nil))
 		if err != nil || d.Timeout != want {
 			t.Errorf("timeout %s: %v %v", v, d, err)
@@ -1106,8 +1106,9 @@ func TestREQ_BG_073_ExampleTimer(t *testing.T) {
 func TestREQ_BG_074_TimeoutKillsEverref(t *testing.T) {
 	f := qaFake(t)
 	bare, _ := remoteWith(t, "main")
-	dir := writeConfig(t, f.config("timeout: 3s\n"), map[string]string{"r": "remote: " + bare + "\n"})
+	dir := writeConfig(t, f.config("timeout: 1m\n"), map[string]string{"r": "remote: " + bare + "\n"})
 	g, _ := qaGuard(t, dir)
+	g.Defaults.Timeout = 3 * time.Second // below the 1m minimum (REQ-BG-114), set in-process to keep the test short
 	t.Setenv("QA_RUN_SLEEP", "120")
 	start := time.Now()
 	res := g.RunRepo(context.Background(), "r")
@@ -1797,7 +1798,7 @@ func TestREQ_BG_009_010_011_EverrefErrorMessages(t *testing.T) {
 
 // A child that keeps the output pipe open must not hold up the guard beyond
 // the WaitDelay.
-func TestREQ_BG_074_ChildHoldingThePipeDoesNotBlock(t *testing.T) {
+func TestREQ_BG_074_118_ChildHoldingThePipeDoesNotBlock(t *testing.T) {
 	ctx := context.Background()
 	limit := 15 * time.Second
 	t.Run("FindEverref", func(t *testing.T) {
@@ -2110,4 +2111,147 @@ func TestREQ_BG_075_LockThatCannotBeTakenFailsTheRepo(t *testing.T) {
 			t.Errorf("lock failure: %+v", res)
 		}
 	})
+}
+
+// ---------- Limits (REQ-BG-114 to 118) ----------
+
+const mib = 1 << 20
+
+// REQ-BG-114: timeout from 1m to 24h; check-config reports anything else.
+func TestREQ_BG_114_TimeoutBounds(t *testing.T) {
+	for v, want := range map[string]time.Duration{"1m": time.Minute, "24h": 24 * time.Hour} {
+		d, err := LoadDefaults(writeConfig(t, "timeout: "+v+"\n", nil))
+		if err != nil || d.Timeout != want {
+			t.Errorf("timeout %s: %v %v", v, d, err)
+		}
+	}
+	for _, bad := range []string{"59s", "24h0m1s"} {
+		_, err := LoadDefaults(writeConfig(t, "timeout: "+bad+"\n", nil))
+		if err == nil || !strings.Contains(err.Error(), "1m") || !strings.Contains(err.Error(), "24h") {
+			t.Errorf("timeout %s: err = %v; want refused naming the range 1m to 24h", bad, err)
+		}
+		f := qaFake(t)
+		dir := writeConfig(t, f.config("timeout: "+bad+"\n"), map[string]string{"r": "remote: /srv/git/r.git\n"})
+		var out strings.Builder
+		if err := CheckConfig(context.Background(), dir, false, &out); err == nil || !strings.Contains(err.Error(), "timeout") {
+			t.Errorf("check-config with timeout %s: err = %v", bad, err)
+		}
+	}
+}
+
+// eventOutput is everref run output of about size bytes: the events come
+// first, filler follows, a marker ends it.
+func eventOutput(newN, rewrittenN, deletedN, size int) string {
+	var b strings.Builder
+	for i := 0; i < newN; i++ {
+		fmt.Fprintf(&b, "[new] refs/heads/n%d\n", i)
+	}
+	for i := 0; i < rewrittenN; i++ {
+		fmt.Fprintf(&b, "[new lineage] refs/heads/r%d\n", i)
+	}
+	for i := 0; i < deletedN; i++ {
+		fmt.Fprintf(&b, "[deleted] refs/heads/d%d\n", i)
+	}
+	filler := strings.Repeat("f", 99) + "\n"
+	for b.Len() < size {
+		b.WriteString(filler)
+	}
+	b.WriteString("error: END-OF-OUTPUT\n")
+	return b.String()
+}
+
+// REQ-BG-115: the event counts are taken while everref run's output is read,
+// so they are exact for 3 MiB of output whose events all come first; output
+// still holds the end.
+func TestREQ_BG_115_EventsCountedForLargeOutput(t *testing.T) {
+	ctx := context.Background()
+	f := newScriptedEverref(t)
+	bare, _ := remoteWith(t, "main")
+	dir := writeConfig(t, f.config(""), map[string]string{"r": "remote: " + bare + "\n"})
+	g, _ := qaGuard(t, dir)
+	f.set(t, "run-out", eventOutput(7, 3, 2, 3*mib))
+	f.set(t, "run-exit", "1")
+	res := g.RunRepo(ctx, "r")
+	if res.New != 7 || res.Rewritten != 3 || res.Deleted != 2 {
+		t.Errorf("counts new %d rewritten %d deleted %d; want 7 3 2", res.New, res.Rewritten, res.Deleted)
+	}
+	if !strings.Contains(res.Output, "END-OF-OUTPUT") || len(res.Output) > 4000+len("…") {
+		t.Errorf("output: %d bytes, ends %q", len(res.Output), res.Output[max(0, len(res.Output)-40):])
+	}
+	j := readJournal(t, g.Defaults.StateDir)
+	if last := j[len(j)-1]; last.New != 7 || last.Rewritten != 3 || last.Deleted != 2 {
+		t.Errorf("journal counts: %+v", last)
+	}
+}
+
+// REQ-BG-116: a --version answer of exactly 1 MiB is read; one byte more
+// fails the preflight.
+func TestREQ_BG_116_VersionOutputBounded(t *testing.T) {
+	head := "everref version v1.0.0\n"
+	prog := func(n int) string {
+		return fakeProg(t, fmt.Sprintf("printf '%s'; head -c %d /dev/zero | tr '\\0' x", strings.TrimSuffix(head, "\n")+`\n`, n-len(head)))
+	}
+	if _, v, err := FindEverref(context.Background(), prog(mib), ""); err != nil || v != "v1.0.0" {
+		t.Errorf("1 MiB answer: %q, %v", v, err)
+	}
+	if _, _, err := FindEverref(context.Background(), prog(mib+1), ""); err == nil || !strings.Contains(err.Error(), "1 MiB") {
+		t.Errorf("1 MiB + 1 answer: err = %v; want the preflight to fail naming 1 MiB", err)
+	}
+}
+
+// bigOutput is size bytes of output that starts with FIRST-MARKER and ends
+// with LAST-MARKER.
+func bigOutput(size int) string {
+	first, last := "FIRST-MARKER\n", "\nLAST-MARKER"
+	return first + strings.Repeat("y", size-len(first)-len(last)) + last
+}
+
+// REQ-BG-117: of a failing add's 3 MiB output only the end is kept; a
+// notify.command writing 3 MiB doesn't change the result.
+func TestREQ_BG_117_AddAndNotifyOutputKeepTail(t *testing.T) {
+	ctx := context.Background()
+	f := newScriptedEverref(t)
+	bare, _ := remoteWith(t, "main", "bad")
+	dir := writeConfig(t, f.config(""), map[string]string{"r": "remote: " + bare + "\n"})
+	g, _ := qaGuard(t, dir)
+	f.set(t, "add-bad", bigOutput(3*mib))
+	res := g.RunRepo(ctx, "r")
+	if !strings.Contains(res.Output, "LAST-MARKER") || strings.Contains(res.Output, "FIRST-MARKER") {
+		t.Errorf("output ends %q", res.Output[max(0, len(res.Output)-40):])
+	}
+	if r := res.AddFailed["bad"]; !strings.Contains(r, "LAST-MARKER") {
+		t.Errorf("add_failed[bad] = %q", r)
+	}
+	ev := &Everref{Bin: fakeProg(t, fmt.Sprintf("head -c %d /dev/zero | tr '\\0' z; printf 'LAST-MARKER'; exit 1", 3*mib))}
+	out, err := ev.Run(ctx, t.TempDir(), "add")
+	if err == nil || len(out) > mib || !strings.HasSuffix(out, "LAST-MARKER") {
+		t.Errorf("Run kept %d bytes (err %v); want at most 1 MiB ending in the marker", len(out), err)
+	}
+
+	noisy := fakeProg(t, fmt.Sprintf("cat >/dev/null; head -c %d /dev/zero | tr '\\0' n; exit 0", 3*mib))
+	ng := &Guard{Defaults: &Defaults{NotifyCommand: []string{noisy}}}
+	if err := ng.notify(ctx, &Result{Repo: "r"}); err != nil {
+		t.Errorf("notify writing 3 MiB: %v", err)
+	}
+	failing := fakeProg(t, "cat >/dev/null; printf 'FIRST-MARKER\\n'; "+fmt.Sprintf("head -c %d /dev/zero | tr '\\0' n", 3*mib)+"; printf '\\nLAST-MARKER'; exit 4")
+	ng = &Guard{Defaults: &Defaults{NotifyCommand: []string{failing}}}
+	if err := ng.notify(ctx, &Result{Repo: "r"}); err == nil || !strings.Contains(err.Error(), "LAST-MARKER") || strings.Contains(err.Error(), "FIRST-MARKER") {
+		t.Errorf("failing notify: err = %.200v; want the end of its output", err)
+	}
+}
+
+// REQ-BG-118: a program's error text is kept whole up to 300 characters and
+// shortened above.
+func TestREQ_BG_118_ShortErrorText(t *testing.T) {
+	for n, cut := range map[int]bool{300: false, 301: true} {
+		bin := fakeProg(t, fmt.Sprintf("head -c %d /dev/zero | tr '\\0' e; exit 3", n))
+		_, _, err := FindEverref(context.Background(), bin, "")
+		if err == nil {
+			t.Fatalf("%d: no error", n)
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, strings.Repeat("e", 300)) || strings.Contains(msg, strings.Repeat("e", 301)) || strings.Contains(msg, "…") != cut {
+			t.Errorf("%d characters: want 300 kept, shortened %v: %q", n, cut, msg)
+		}
+	}
 }

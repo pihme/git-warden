@@ -216,7 +216,10 @@ func TestREQ_PG_035_ShareOnRenamesNotDeletes(t *testing.T) {
 // REQ-PG-032 to 034: size rules check updated refs only, never deleted or
 // unchanged ones, and never size deleted files.
 func TestREQ_PG_032_033_034_SizeRulesPerRef(t *testing.T) {
-	f := newFixture(t, "rules:\n  SIZE-MASS-DELETE: {max_deleted_files: 0}\n  SIZE-LARGE: {max_files: 0}\n")
+	f := newFixture(t, "")
+	// zero is below the configurable range (REQ-PG-046); set in-process so any file fires
+	f.cfg.Rule("SIZE-MASS-DELETE").Limits["max_deleted_files"] = 0
+	f.cfg.Rule("SIZE-LARGE").Limits["max_files"] = 0
 	gone := FileChange{Status: 'D', Path: "a", NewSize: 2000000}
 	fs := f.evalDOK(&Delta{Refs: []*RefDelta{refD("refs/heads/x", Delete, gone), refD("refs/heads/y", Noop, gone),
 		refD("refs/heads/a", FF, FileChange{Status: 'M', Path: "m"}), refD(main, FF, gone)}})

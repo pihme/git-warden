@@ -284,20 +284,6 @@ func TestReadLinesFailClosed(t *testing.T) {
 		t.Errorf("err = %v, want a wrapped *json.SyntaxError on line 2", err)
 	}
 
-	t.Run("just under / over 64 MiB", func(t *testing.T) {
-		const max = 64 * 1024 * 1024
-		line := func(n int) string {
-			head, tail := `{"event":"push","repo":"r","error":"`, `"}`
-			return head + strings.Repeat("x", n-len(head)-len(tail)) + tail
-		}
-		es, err := writeJournal(t, line(max-16*1024)).Read()
-		if err != nil || len(es) != 1 || es[0].Repo != "r" {
-			t.Fatalf("line just under 64 MiB: %d entries, %v", len(es), err)
-		}
-		if _, err := writeJournal(t, line(max+16*1024)).Read(); !errors.Is(err, bufio.ErrTooLong) {
-			t.Fatalf("line over 64 MiB: %v, want bufio.ErrTooLong", err)
-		}
-	})
 }
 
 func writeJournal(t *testing.T, lines ...string) *Journal {
@@ -380,5 +366,22 @@ func TestConcurrentAppends(t *testing.T) {
 	}
 	if len(seen) != n {
 		t.Errorf("%d distinct entries, want %d", len(seen), n)
+	}
+}
+
+// REQ-PG-048: a push.jsonl line of exactly 64 MiB (without its newline) is
+// read; one byte more fails with an error, so the push fails closed.
+func TestREQ_PG_048_JournalLineLimit(t *testing.T) {
+	const max = 64 << 20
+	line := func(n int) string {
+		head, tail := `{"event":"push","repo":"r","error":"`, `"}`
+		return head + strings.Repeat("x", n-len(head)-len(tail)) + tail
+	}
+	es, err := writeJournal(t, line(max)).Read()
+	if err != nil || len(es) != 1 || es[0].Repo != "r" {
+		t.Fatalf("line of exactly 64 MiB: %d entries, %v", len(es), err)
+	}
+	if _, err := writeJournal(t, line(max+1)).Read(); !errors.Is(err, bufio.ErrTooLong) {
+		t.Fatalf("line of 64 MiB + 1: %v, want bufio.ErrTooLong", err)
 	}
 }

@@ -171,7 +171,7 @@ func TestREQ_PG_032_CountLimitOutOfRange(t *testing.T) {
 
 // Negative duration limits must be refused when the configuration loads
 // (REQ-PG-032 kind check). Zero is allowed (same as count limits): the
-// strictest finite window / skew / age. A negative max_age would make
+// smallest max_skew (REQ-PG-046: zero is allowed only for max_skew among durations). A negative max_age would make
 // META-BACKDATED fire on every commit.
 func TestREQ_PG_032_NegativeDurationRejected(t *testing.T) {
 	for name, rule := range map[string]string{
@@ -236,10 +236,7 @@ func TestTimeout(t *testing.T) {
 	if c := mustLoad(t, map[string]string{"defaults.yaml": wall + "timeout: 5s\n", "repos/demo/warden.yaml": repoOK}); c.Timeout != 5*time.Second {
 		t.Errorf("timeout 5s = %v", c.Timeout)
 	}
-	if c := mustLoad(t, map[string]string{"defaults.yaml": wall + "timeout: 1ns\n", "repos/demo/warden.yaml": repoOK}); c.Timeout != time.Nanosecond {
-		t.Errorf("timeout 1ns = %v; the smallest positive duration is allowed", c.Timeout)
-	}
-	for _, v := range []string{"soon", "0s", "-1s"} {
+	for _, v := range []string{"soon", "0s", "-1s", "1ns"} { // 1ns: below 1s (REQ-PG-047)
 		_, err := loadRepo(t, map[string]string{"defaults.yaml": wall + "timeout: " + v + "\n", "repos/demo/warden.yaml": repoOK})
 		if err == nil || !strings.Contains(err.Error(), "timeout") {
 			t.Errorf("timeout %s: err = %v", v, err)
@@ -411,6 +408,96 @@ func TestREQ_PG_032_EveryLimitOfARuleIsChecked(t *testing.T) {
 			"repos/demo/warden.yaml": repoOK + "rules:\n  RATE-LIMIT: {window: 1h, max_pushes: -1}\n"})
 		if err == nil {
 			t.Fatalf("run %d: negative max_pushes next to a duration loads", i)
+		}
+	}
+}
+
+// limitBound is one row of the "Limit bounds" table in
+// docs/push-guard-rules.md, written out independently of the code.
+type limitBound struct {
+	rule, key string
+	lo, hi    string // YAML values at the bounds
+	below     string // just below lo; "" when the negative-limit check covers it
+	above     string // just above hi
+}
+
+var limitBounds = []limitBound{
+	{"REF-COUNT", "max_refs", "1", "1000", "0", "1001"},
+	{"CONTENT-BLOB", "min_base64", "20", "1000000", "19", "1000001"},
+	{"CONTENT-BLOB", "min_hex", "20", "1000000", "19", "1000001"},
+	{"META-UNSIGNED", "lookback", "0", "1000", "-1", "1001"},
+	{"META-BACKDATED", "max_age", "'1m'", "'8760h'", "'59s'", "'8760h0m1s'"},
+	{"META-FUTURE", "max_skew", "'0s'", "'24h'", "'-1s'", "'24h0m1s'"},
+	{"SIZE-LIMIT", "max_files", "1", "10000000", "0", "10000001"},
+	{"SIZE-LIMIT", "max_lines", "1", "10000000", "0", "10000001"},
+	{"SIZE-LARGE", "max_files", "1", "10000000", "0", "10000001"},
+	{"SIZE-LARGE", "max_lines", "1", "10000000", "0", "10000001"},
+	{"SIZE-LARGE", "max_commits", "1", "10000000", "0", "10000001"},
+	{"SIZE-LIMIT", "max_bytes", "1", "10737418240", "0", "10737418241"},
+	{"SIZE-LIMIT", "max_file_bytes", "1", "10737418240", "0", "10737418241"},
+	{"SIZE-LARGE", "max_file_bytes", "1", "10737418240", "0", "10737418241"},
+	{"SIZE-MASS-DELETE", "max_deleted_files", "1", "10000000", "0", "10000001"},
+	{"SIZE-MASS-DELETE", "max_deleted_share", "1", "100", "0", "101"},
+	{"SIZE-MASS-DELETE", "min_lines", "0", "1000000", "-1", "1000001"},
+	{"RATE-LIMIT", "max_pushes", "1", "10000", "0", "10001"},
+	{"RATE-LIMIT", "window", "'1m'", "'168h'", "'59s'", "'168h0m1s'"},
+	{"RATE-YELLOW-STREAK", "max_yellow", "1", "1000", "0", "1001"},
+	{"RATE-YELLOW-STREAK", "window", "'1m'", "'720h'", "'59s'", "'720h0m1s'"},
+}
+
+// REQ-PG-046: every configurable limit loads at its minimum and maximum and
+// is refused just outside, in the wall and in a repo layer. The error names
+// rule, key and range; nothing is clamped.
+func TestREQ_PG_046_LimitBounds(t *testing.T) {
+	for _, b := range limitBounds {
+		for _, layer := range []string{"wall", "repo"} {
+			files := func(v string) map[string]string {
+				rule := "rules:\n  " + b.rule + ": {" + b.key + ": " + v + "}\n"
+				if layer == "wall" {
+					return map[string]string{"defaults.yaml": wall + rule, "repos/demo/warden.yaml": repoOK}
+				}
+				return map[string]string{"defaults.yaml": wall, "repos/demo/warden.yaml": repoOK + rule}
+			}
+			name := b.rule + "/" + b.key + "/" + layer
+			t.Run(name, func(t *testing.T) {
+				for _, v := range []string{b.lo, b.hi} {
+					if _, err := loadRepo(t, files(v)); err != nil {
+						t.Errorf("%s = %s refused: %v", b.key, v, err)
+					}
+				}
+				for _, v := range []string{b.below, b.above} {
+					c, err := loadRepo(t, files(v))
+					if err == nil {
+						r := c.Rule(b.rule)
+						t.Errorf("%s = %s loads (as %v); want refused, never clamped", b.key, v, r.Limits[b.key])
+						continue
+					}
+					if v == b.below && (strings.HasPrefix(v, "-") || strings.HasPrefix(v, "'-")) {
+						continue // the negative-limit check words it differently
+					}
+					msg := err.Error()
+					if !strings.Contains(msg, b.rule) || !strings.Contains(msg, b.key) || !strings.Contains(msg, "range") ||
+						!strings.Contains(msg, strings.Trim(b.lo, "'")) {
+						t.Errorf("%s = %s: err %q must name rule, key and range", b.key, v, msg)
+					}
+				}
+			})
+		}
+	}
+}
+
+// REQ-PG-047: timeout from 1s to 1h.
+func TestREQ_PG_047_TimeoutBounds(t *testing.T) {
+	for v, want := range map[string]time.Duration{"1s": time.Second, "1h": time.Hour} {
+		c, err := loadRepo(t, map[string]string{"defaults.yaml": wall + "timeout: " + v + "\n", "repos/demo/warden.yaml": repoOK})
+		if err != nil || c.Timeout != want {
+			t.Errorf("timeout %s: %v, %v; want %v", v, c, err, want)
+		}
+	}
+	for _, v := range []string{"999ms", "1h0m1s", "1ns"} {
+		_, err := loadRepo(t, map[string]string{"defaults.yaml": wall + "timeout: " + v + "\n", "repos/demo/warden.yaml": repoOK})
+		if err == nil || !strings.Contains(err.Error(), "timeout") || !strings.Contains(err.Error(), "1s to 1h") {
+			t.Errorf("timeout %s: err = %v; want refused naming the range 1s to 1h", v, err)
 		}
 	}
 }

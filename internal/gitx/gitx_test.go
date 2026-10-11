@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseLsRemote(t *testing.T) {
@@ -105,5 +106,25 @@ func TestParseGitVersion(t *testing.T) {
 	}
 	if _, _, ok := ParseGitVersion("hello"); ok {
 		t.Error("parsed garbage")
+	}
+}
+
+// REQ-PG-053: a killed program whose child keeps the output pipe open
+// returns about 5 s after the kill, not when the child ends.
+func TestREQ_PG_053_ChildHoldingThePipe(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "git")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nsleep 30 &\nsleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	start := time.Now()
+	_, err := (&Git{Bin: bin}).Run(ctx, "status")
+	d := time.Since(start)
+	if err == nil {
+		t.Fatal("killed program: no error")
+	}
+	if d < 5*time.Second || d > 15*time.Second {
+		t.Errorf("returned after %v; want about 1 s timeout + 5 s", d)
 	}
 }
