@@ -1,6 +1,10 @@
 package journal
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -20,6 +24,44 @@ func TestAppendRead(t *testing.T) {
 	es, err := j.Read()
 	if err != nil || len(es) != 2 || es[1].SHA != "abc" || es[0].Time.IsZero() {
 		t.Fatalf("read back: %+v %v", es, err)
+	}
+	// a malformed line fails closed
+	if err := os.WriteFile(j.Path, []byte("{\"event\":\"push\"}\nNOTJSON\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := j.Read(); err == nil {
+		t.Fatal("malformed line: no error")
+	}
+}
+
+// linkedJournal returns a journal whose push.jsonl is a symlink to target.
+func linkedJournal(t *testing.T, target string) *Journal {
+	t.Helper()
+	if _, err := os.Stat(target); err != nil {
+		t.Skipf("%s not available: %v", target, err)
+	}
+	dir := t.TempDir()
+	if err := os.Symlink(target, filepath.Join(dir, "push.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	return Open(dir)
+}
+
+// Append returns the error of the step that failed (fail closed).
+func TestAppend_ReportsOpenWriteAndSyncErrors(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "push.jsonl"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := Open(dir).Append(Entry{Event: EventPush, Repo: "r"}); !errors.Is(err, syscall.EISDIR) {
+		t.Errorf("journal is a directory: %v, want EISDIR from open", err)
+	}
+	if err := linkedJournal(t, "/dev/full").Append(Entry{Event: EventPush, Repo: "r"}); !errors.Is(err, syscall.ENOSPC) {
+		t.Errorf("write to /dev/full: %v, want ENOSPC", err)
+	}
+	// /dev/null takes the write but cannot be synced: the entry is not durable.
+	if err := linkedJournal(t, "/dev/null").Append(Entry{Event: EventPush, Repo: "r"}); err == nil {
+		t.Error("fsync failure on the journal was swallowed")
 	}
 }
 

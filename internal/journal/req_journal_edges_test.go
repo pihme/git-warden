@@ -4,6 +4,9 @@ package journal
 // rate-limit notice (REQ-PG-036); see docs/push-guard-testspec.md.
 
 import (
+	"bufio"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,6 +61,29 @@ func TestREQ_PG_005_FindRejectedByPrefix(t *testing.T) {
 	if e, _ := FindRejected(es, "r", mainRef, "abcd1"); e == nil || e.ID != "3" {
 		t.Errorf("same SHA twice: %+v, want push 3", e)
 	}
+	// a 4-digit prefix is long enough
+	if e, _ := FindRejected([]Entry{rejected("1", mainRef, "", shaA)}, "r", mainRef, "abcd"); e == nil {
+		t.Error("4-digit prefix found nothing")
+	}
+	// after a push of another ref, the scan goes on
+	es = []Entry{rejected("1", "refs/heads/x", "", shaA), rejected("2", mainRef, "", shaB)}
+	if e, full := FindRejected(es, "r", mainRef, "abcd2"); e == nil || e.ID != "2" || full != shaB {
+		t.Errorf("scan after a non-match: %+v %q", e, full)
+	}
+	// a later update of the same push still matches
+	two := Entry{Event: EventPush, ID: "2", Repo: "r", Updates: []rules.Update{{Ref: "refs/heads/x", New: shaB}, {Ref: mainRef, New: shaA}}}
+	if e, full := FindRejected([]Entry{two}, "r", mainRef, "abcd1"); e == nil || full != shaA {
+		t.Errorf("second update: %v %q", e, full)
+	}
+	// only push entries count, before or after the rejected push
+	es = []Entry{{Event: EventApprove, Repo: "r", Ref: mainRef, SHA: shaA}, rejected("2", mainRef, "", shaA)}
+	if e, _ := FindRejected(es, "r", mainRef, "abcd1"); e == nil || e.ID != "2" {
+		t.Errorf("approve entry before the push: %+v", e)
+	}
+	reset := Entry{Event: EventReset, Repo: "r", Updates: []rules.Update{{Ref: mainRef, New: shaB}}}
+	if e, _ := FindRejected([]Entry{rejected("1", mainRef, "", shaA), reset}, "r", mainRef, "abcd"); e == nil {
+		t.Error("a non-push entry made the prefix ambiguous")
+	}
 }
 
 // A prefix that matches two different rejected SHAs of the ref must not pick one.
@@ -88,6 +114,112 @@ func TestREQ_PG_005_AmbiguousPrefixApprovesNothing(t *testing.T) {
 			t.Errorf("AmbiguousRejectedPrefix(%q) = %v, want %v", c.prefix, got, c.want)
 		}
 	}
+	// non-push entries are skipped, not counted
+	reset := Entry{Event: EventReset, Repo: "r", Updates: []rules.Update{{Ref: mainRef, New: shaB}}}
+	if AmbiguousRejectedPrefix([]Entry{rejected("1", mainRef, "", shaA), reset}, "r", mainRef, "abcd") {
+		t.Error("a non-push entry counted as a rejected SHA")
+	}
+	es3 := []Entry{{Event: EventApprove, Repo: "r", Ref: mainRef, SHA: shaA}, rejected("1", mainRef, "", shaA), rejected("2", mainRef, "", shaB)}
+	if !AmbiguousRejectedPrefix(es3, "r", mainRef, "abcd") {
+		t.Error("an approve entry before the pushes stopped the count")
+	}
+	// a SHA exactly as long as the prefix counts; a shorter one does not
+	es4 := []Entry{rejected("1", mainRef, "", "abcd1234"), rejected("2", mainRef, "", "abcd12345678")}
+	if !AmbiguousRejectedPrefix(es4, "r", mainRef, "abcd1234") {
+		t.Error("SHA equal to the prefix was not counted")
+	}
+	es4 = []Entry{rejected("1", mainRef, "", "abcd1111"), rejected("2", mainRef, "", "abcd")}
+	if AmbiguousRejectedPrefix(es4, "r", mainRef, "abcd1111") {
+		t.Error("a SHA shorter than the prefix was counted")
+	}
+}
+
+// REQ-PG-005: an approval is open only for the same ref and SHA.
+func TestREQ_PG_005_OpenApprovalNeedsRefAndSHA(t *testing.T) {
+	es := []Entry{
+		{Event: EventApprove, Repo: "r", Ref: mainRef, SHA: shaA},
+		{Event: EventApprove, Repo: "r", Ref: "refs/heads/x", SHA: shaA},
+		{Event: EventApprove, Repo: "r", Ref: mainRef, SHA: shaB},
+	}
+	if !OpenApproval(es, "r", mainRef, shaA) {
+		t.Fatal("approve main/shaA should be open")
+	}
+	if OpenApproval(es[:1], "r", "refs/heads/other", shaA) {
+		t.Error("wrong ref reported open")
+	}
+	if OpenApproval(es[:1], "r", mainRef, shaB) {
+		t.Error("wrong SHA reported open")
+	}
+	appr := es[0]
+	for name, c := range map[string]struct {
+		es   []Entry
+		want bool
+	}{
+		"remote moved on another ref": {[]Entry{appr, {Event: EventPush, Repo: "r", Reason: ReasonRemoteMoved,
+			Updates: []rules.Update{{Ref: "refs/heads/x", New: shaA}}}}, true},
+		"non-forwarded push before the approval": {[]Entry{{Event: EventPush, Repo: "r"}, appr}, true},
+		"forwarded other ref": {[]Entry{appr, {Event: EventPush, Repo: "r", Forwarded: true,
+			Approved: []RefSHA{{Ref: "refs/heads/x", SHA: shaA}}}}, true},
+		"forwarded other sha": {[]Entry{appr, {Event: EventPush, Repo: "r", Forwarded: true,
+			Approved: []RefSHA{{Ref: mainRef, SHA: shaB}}}}, true},
+		"forwarded same": {[]Entry{appr, {Event: EventPush, Repo: "r", Forwarded: true,
+			Approved: []RefSHA{{Ref: mainRef, SHA: shaA}}}}, false},
+	} {
+		if got := OpenApproval(c.es, "r", mainRef, shaA); got != c.want {
+			t.Errorf("%s: OpenApproval = %v, want %v", name, got, c.want)
+		}
+	}
+}
+
+// REQ-PG-003, REQ-PG-005: an approval ends when a push using it is forwarded
+// or the remote moved for that ref and SHA; nothing else ends it.
+func TestREQ_PG_003_005_ApprovalEndsOnForwardOrRemoteMoved(t *testing.T) {
+	base := []Entry{{Event: EventApprove, Repo: "r", Ref: mainRef, SHA: shaA}}
+	with := func(e Entry) []Entry { return append(append([]Entry{}, base...), e) }
+	if !OpenApproval(base, "r", mainRef, shaA) {
+		t.Fatal("setup")
+	}
+	if OpenApproval(with(Entry{Event: EventPush, Repo: "r", Forwarded: true,
+		Approved: []RefSHA{{Ref: mainRef, SHA: shaA}}}), "r", mainRef, shaA) {
+		t.Error("forwarded approval must close")
+	}
+	if !OpenApproval(with(Entry{Event: EventPush, Repo: "r", Forwarded: false,
+		Approved: []RefSHA{{Ref: mainRef, SHA: shaA}}}), "r", mainRef, shaA) {
+		t.Error("non-forwarded push closed the approval")
+	}
+	if OpenApproval(with(Entry{Event: EventPush, Repo: "r", Reason: ReasonRemoteMoved,
+		Updates: []rules.Update{{Ref: mainRef, New: shaA}}}), "r", mainRef, shaA) {
+		t.Error("remote_moved must close the matching approval")
+	}
+	if !OpenApproval(with(Entry{Event: EventPush, Repo: "r", Reason: ReasonRemoteMoved,
+		Updates: []rules.Update{{Ref: mainRef, New: shaB}}}), "r", mainRef, shaA) {
+		t.Error("remote_moved for another SHA must not close")
+	}
+}
+
+// REQ-PG-003: the lease is the old OID of the newest approve of that repo,
+// ref and SHA; other repos, refs and events do not count.
+func TestREQ_PG_003_ApprovalLeaseFromNewestApproveOfThatRef(t *testing.T) {
+	es := []Entry{
+		{Event: EventApprove, Repo: "r", Ref: mainRef, SHA: shaA, Old: "oldA"},
+		{Event: EventApprove, Repo: "other", Ref: mainRef, SHA: shaA, Old: "wrong"},
+		{Event: EventApprove, Repo: "r", Ref: "refs/heads/x", SHA: shaA, Old: "other-ref"},
+		{Event: EventReset, Repo: "r", Ref: mainRef, SHA: shaA, Old: "not-an-approval"},
+		{Event: EventApprove, Repo: "r", Ref: mainRef, SHA: shaB, Old: "oldB"},
+	}
+	if old, ok := ApprovalLease(es, "r", mainRef, shaA); !ok || old != "oldA" {
+		t.Errorf("lease = %q, %v; want oldA", old, ok)
+	}
+	if _, ok := ApprovalLease(es, "r", mainRef, "deadbeef"); ok {
+		t.Error("lease without an open approval")
+	}
+	es2 := []Entry{
+		{Event: EventApprove, Repo: "r", Ref: mainRef, SHA: shaA, Old: "first"},
+		{Event: EventApprove, Repo: "r", Ref: mainRef, SHA: shaA, Old: "second"},
+	}
+	if old, ok := ApprovalLease(es2, "r", mainRef, shaA); !ok || old != "second" {
+		t.Errorf("newest lease = %q, %v; want second", old, ok)
+	}
 }
 
 // LastPush is the agent's newest push in any repo (used to send the rate-limit
@@ -107,6 +239,14 @@ func TestREQ_PG_036_LastPush(t *testing.T) {
 	}
 	if e := LastPush(es, "c"); e != nil {
 		t.Errorf("LastPush(c) = %+v", e)
+	}
+	// the walk starts at the last entry and reaches the first
+	if e := LastPush([]Entry{{Event: EventPush, ID: "only", Agent: "a"}}, "a"); e == nil || e.ID != "only" {
+		t.Errorf("single entry: %v", e)
+	}
+	es = []Entry{{Event: EventPush, ID: "1", Agent: "a"}, {Event: EventPush, ID: "2", Agent: "a"}}
+	if e := LastPush(es, "a"); e == nil || e.ID != "2" {
+		t.Errorf("last entry: %v", e)
 	}
 }
 
@@ -137,6 +277,36 @@ func TestReadLinesFailClosed(t *testing.T) {
 	if _, err := j.Read(); err == nil || !strings.Contains(err.Error(), "push.jsonl:5") {
 		t.Errorf("broken line 5: err = %v", err)
 	}
+	// the JSON error stays in the chain
+	_, err = writeJournal(t, `{"event":"push"}`, `{nope`).Read()
+	var se *json.SyntaxError
+	if !errors.As(err, &se) || !strings.Contains(err.Error(), ":2:") {
+		t.Errorf("err = %v, want a wrapped *json.SyntaxError on line 2", err)
+	}
+
+	t.Run("just under / over 64 MiB", func(t *testing.T) {
+		const max = 64 * 1024 * 1024
+		line := func(n int) string {
+			head, tail := `{"event":"push","repo":"r","error":"`, `"}`
+			return head + strings.Repeat("x", n-len(head)-len(tail)) + tail
+		}
+		es, err := writeJournal(t, line(max-16*1024)).Read()
+		if err != nil || len(es) != 1 || es[0].Repo != "r" {
+			t.Fatalf("line just under 64 MiB: %d entries, %v", len(es), err)
+		}
+		if _, err := writeJournal(t, line(max+16*1024)).Read(); !errors.Is(err, bufio.ErrTooLong) {
+			t.Fatalf("line over 64 MiB: %v, want bufio.ErrTooLong", err)
+		}
+	})
+}
+
+func writeJournal(t *testing.T, lines ...string) *Journal {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "push.jsonl"), []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return Open(dir)
 }
 
 // An unreadable journal is an error, not an empty journal.

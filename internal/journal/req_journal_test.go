@@ -55,6 +55,15 @@ func TestREQ_PG_037_YellowCountWindowAndScope(t *testing.T) {
 	if n := YellowCount(es, "r", now, w); n != 0 {
 		t.Fatalf("REQ-PG-037: YellowCount after approve = %d", n)
 	}
+	// only yellow pushes count: a streak entry with a yellow verdict is not a push
+	es = []Entry{
+		{Event: EventApprove, Repo: "r", Time: now.Add(-2 * time.Hour)},
+		{Event: EventPush, Repo: "r", Verdict: "yellow", Time: now.Add(-30 * time.Minute)},
+		{Event: EventStreak, Repo: "r", Verdict: "yellow", Time: now.Add(-10 * time.Minute)},
+	}
+	if n := YellowCount(es, "r", now, time.Hour); n != 1 {
+		t.Fatalf("REQ-PG-037: YellowCount = %d, want 1 (a streak entry is not a push)", n)
+	}
 }
 
 func TestREQ_PG_037_StreakEndsOnlyByApproveOrReset(t *testing.T) {
