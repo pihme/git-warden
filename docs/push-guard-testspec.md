@@ -30,10 +30,13 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | --- | --- | --- | --- | --- |
 | `REQ-PG-001` | Verdict | `TestREQ_PG_001_RedResponseIsOnlyTheWaitingLine` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-002` | Verdict | `TestREQ_PG_002_FindingString` | `internal/rules/req_config_test.go` | green |
+| `REQ-PG-002` | Verdict | `TestREQ_PG_002_FindingsSortedByRefThenRule` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-003` | Verdict | `TestREQ_PG_003_AllowedTagMoveIsForwarded` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-003` | Verdict | `TestREQ_PG_003_GreenForwardsExactlyTheCheckedSHAs` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-003` | Verdict | `TestREQ_PG_003_MixedPushForwardsNothing` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-003` | Verdict / A15 | `TestREQ_PG_003_ApprovedRewriteRemoteMovedSinceApproval` | `cmd/push-guard/req_e2e_test.go` | green |
+| `REQ-PG-003` | Verdict / A15 | `TestREQ_PG_003_005_ApprovalEndsOnForwardOrRemoteMoved` | `internal/journal/req_journal_edges_test.go` | green |
+| `REQ-PG-003` | Verdict / A15 | `TestREQ_PG_003_ApprovalLeaseFromNewestApproveOfThatRef` | `internal/journal/req_journal_edges_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_BadLimitsFailClosed` | `internal/rules/req_failclosed_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_BadObjectsFailClosed` | `internal/rules/req_failclosed_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_InternalErrorThenFreshCheck` | `cmd/push-guard/req_e2e_test.go` | green |
@@ -45,25 +48,38 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_CatFileMissingOrUnexpectedFailsClosed` | `internal/rules/req_edges_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_ScannerTimeoutIsInternalError` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_UnknownCommitInReportGoesToFirstRef` | `internal/rules/req_failclosed_test.go` | green |
+| `REQ-PG-004` | Verdict | `TestREQ_PG_004_DiffBaseFailsClosed` | `internal/rules/req_failclosed_test.go` | green |
+| `REQ-PG-004` | Verdict | `TestREQ_PG_004_MissingLimitFailsClosed` | `internal/rules/req_failclosed_test.go` | green |
+| `REQ-PG-004` | Verdict | `TestREQ_PG_004_NormalizeFailsClosedAtEveryGitStep` | `internal/rules/req_failclosed_test.go` | green |
+| `REQ-PG-004` | Verdict | `TestREQ_PG_004_ScannerReportErrorsFailClosed` | `internal/rules/req_failclosed_test.go` | green |
+| `REQ-PG-004` | Verdict | `TestREQ_PG_004_ScannerStartErrorWrapped` | `internal/rules/req_failclosed_test.go` | green |
+| `REQ-PG-004` | Verdict | `TestREQ_PG_004_ScannerTempFilesFailClosed` | `internal/rules/req_failclosed_test.go` | green |
 | `REQ-PG-005` | Verdict | `TestREQ_PG_005_ApprovalIsPerRefAndSHA` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-005` | Verdict | `TestREQ_PG_005_ApprovedRewriteIsForwardedWithoutRecheck` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-005` | Verdict | `TestREQ_PG_005_FindRejectedByPrefix` | `internal/journal/req_journal_edges_test.go` | green |
 | `REQ-PG-005` | Verdict | `TestREQ_PG_005_AmbiguousPrefixApprovesNothing` | `internal/journal/req_journal_edges_test.go` | green |
+| `REQ-PG-005` | Verdict | `TestREQ_PG_005_OpenApprovalNeedsRefAndSHA` | `internal/journal/req_journal_edges_test.go` | green |
 | `REQ-PG-006` | `REF-DELETE` | `TestREQ_PG_006_RefDeleteBranchAndTag` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-007` | `REF-NON-FF` | `TestREQ_PG_007_RefNonFastForward` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-008` | `REF-TAG-MOVE` | `TestREQ_PG_008_RefTagMove` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-009` | `REF-TAG-NEW` | `TestREQ_PG_009_RefTagNew` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-010` | `REF-NAMESPACE` | `TestREQ_PG_010_RefNamespace` | `internal/rules/req_ref_path_mode_test.go` | green |
+| `REQ-PG-010` | `REF-NAMESPACE` | `TestREQ_PG_010_NamespaceMessages` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-011` | `REF-COUNT` | `TestREQ_PG_011_RefCountDefaultBoundary` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-012` | `PATH-RED` | `TestREQ_PG_012_PathRedAddedModifiedDeletedRenamed` | `internal/rules/req_ref_path_mode_test.go` | green |
+| `REQ-PG-012` | `PATH-RED` | `TestREQ_PG_012_013_PathMessages` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-013` | `PATH-YELLOW` | `TestREQ_PG_013_PathYellowAddedModifiedDeleted` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-014` | `PATH-RED`, `PATH-YELLOW` | `TestREQ_PG_014_RenameCheckedUnderBothNames` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-015` | `PATH-RED`, `PATH-YELLOW` | `TestREQ_PG_015_PathOnBothListsIsRed` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-016` | `MODE-EXEC` | `TestREQ_PG_016_ModeExecOnlyWhenBecomingExecutable` | `internal/rules/req_ref_path_mode_test.go` | green |
+| `REQ-PG-016` | `MODE-EXEC` | `TestREQ_PG_016_017_018_ModeTargetsAndMessages` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-017` | `MODE-SYMLINK` | `TestREQ_PG_017_ModeSymlinkAddedOrChanged` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-018` | `MODE-SUBMODULE` | `TestREQ_PG_018_ModeSubmoduleAddedOrChanged` | `internal/rules/req_ref_path_mode_test.go` | green |
 | `REQ-PG-019` | `CONTENT-SECRET` | `TestREQ_PG_019_SecretOnlyInPushedRangeAndAttributedToRef` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-019` | `CONTENT-SECRET` | `TestREQ_PG_019_ScannerReportDuplicatesAndUnknownCommit` | `internal/rules/req_edges_test.go` | green |
+| `REQ-PG-019` | `CONTENT-SECRET` | `TestREQ_PG_019_NoNewCommitsNotScanned` | `internal/rules/req_content_test.go` | green |
+| `REQ-PG-019` | `CONTENT-SECRET` | `TestREQ_PG_019_ScannerLogOptsWithoutRemote` | `internal/rules/req_content_test.go` | green |
+| `REQ-PG-019` | `CONTENT-SECRET` | `TestREQ_PG_019_ScannerScansExactlyTheNewTips` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_ScannerFilesComeFromTheWall` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_ScannerIgnoresIgnoreFileInScannedDir` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-020` | `CONTENT-SECRET` | `TestREQ_PG_020_ScannerIgnoresRepoConfiguration` | `internal/rules/req_content_test.go` | green |
@@ -72,22 +88,30 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-021` | `CONTENT-SCANNER-ALLOW` | `TestREQ_PG_021_ScannerAllowInAddedLinesAnyCase` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-021` | `CONTENT-SCANNER-ALLOW` | `TestREQ_PG_021_ScannerAllowInOddFileNames` | `internal/rules/req_pathnames_test.go` | green |
 | `REQ-PG-021` | `CONTENT-SCANNER-ALLOW` | `TestREQ_PG_021_DiffHeaderPath` | `internal/rules/req_edges_test.go` | green |
+| `REQ-PG-021` | `CONTENT-SCANNER-ALLOW` | `TestREQ_PG_021_ScannerAllowOnlyInMarkedFile` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-022` | `CONTENT-INVISIBLE` | `TestREQ_PG_022_ByteOrderMarkOnlyAllowedAtTheStart` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-022` | `CONTENT-INVISIBLE` | `TestREQ_PG_022_InvisibleCharacterRanges` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-022` | `CONTENT-INVISIBLE` | `TestREQ_PG_022_InvisibleInOddFileNames` | `internal/rules/req_pathnames_test.go` | green |
+| `REQ-PG-022` | `CONTENT-INVISIBLE` | `TestREQ_PG_022_InvisibleAtLineStart` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-023` | `CONTENT-BINARY` | `TestREQ_PG_023_BinaryAddedOrChangedAlsoInTestDirs` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-024` | `CONTENT-BINARY` (SPEC settled) | `TestREQ_PG_024_InvalidUTF8InAddedLinesIsBinary` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-025` | `CONTENT-BLOB` | `TestREQ_PG_025_BlobThresholds` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-025` | `CONTENT-BLOB` | `TestREQ_PG_025_BlobInOddFileNames` | `internal/rules/req_pathnames_test.go` | green |
+| `REQ-PG-025` | `CONTENT-BLOB` | `TestREQ_PG_025_LongLiteralCharacterClasses` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` | `TestREQ_PG_026_PagesScriptOnConfiguredBranchOnly` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` | `TestREQ_PG_026_PagesScriptInOddFileNames` | `internal/rules/req_pathnames_test.go` | green |
 | `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` | `TestREQ_PG_026_EmptyPagesBranchDisablesRule` | `internal/rules/req_edges_test.go` | green |
+| `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` | `TestREQ_PG_026_PagesScriptHosts` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-027` | `CONTENT-PAGES-SCRIPT` (SPEC settled) | `TestREQ_PG_027_PagesHostKnownFromOldTreeCaseInsensitive` | `internal/rules/req_content_test.go` | green |
 | `REQ-PG-028` | `META-UNSIGNED` | `TestREQ_PG_028_DefaultLookbackIs20` | `internal/rules/req_meta_test.go` | green |
 | `REQ-PG-028` | `META-UNSIGNED` | `TestREQ_PG_028_UnsignedAfterSignedHistory` | `internal/rules/req_meta_test.go` | green |
+| `REQ-PG-028` | `META-UNSIGNED` | `TestREQ_PG_028_LookbackZeroAndOne` | `internal/rules/req_meta_test.go` | green |
+| `REQ-PG-028` | `META-UNSIGNED` | `TestREQ_PG_028_SignedHistoryErrorsAndDisable` | `internal/rules/req_meta_test.go` | green |
 | `REQ-PG-029` | `META-UNSIGNED` (SPEC settled) | `TestREQ_PG_029_LookbackFollowsFirstParents` | `internal/rules/req_meta_test.go` | green |
 | `REQ-PG-029` | `META-UNSIGNED` (SPEC settled) | `TestREQ_PG_029_LookbackSource` | `internal/rules/req_meta_test.go` | green |
+| `REQ-PG-029` | `META-UNSIGNED` (SPEC settled) | `TestREQ_PG_029_BranchUsesOwnHistory` | `internal/rules/req_meta_test.go` | green |
 | `REQ-PG-030` | `META-BACKDATED` | `TestREQ_PG_030_BackdatedBoundaries` | `internal/rules/req_meta_test.go` | green |
+| `REQ-PG-030` | `META-BACKDATED` | `TestREQ_PG_030_031_DateRulesPerRefAndFailClosed` | `internal/rules/req_meta_test.go` | green |
 | `REQ-PG-031` | `META-FUTURE` | `TestREQ_PG_031_FutureBoundaries` | `internal/rules/req_meta_test.go` | green |
 | `REQ-PG-032` | `SIZE-LIMIT` | `TestREQ_PG_032_033_FileAndLineTotals` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-032` | `SIZE-LIMIT` | `TestREQ_PG_032_033_SizeDefaults` | `internal/rules/req_size_test.go` | green |
@@ -95,11 +119,16 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-032` | `SIZE-LIMIT` | `TestREQ_PG_032_SizeSkipsDeletions` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-032` | Configuration | `TestREQ_PG_032_WholeNumberLimitForms` | `internal/config/req_config_test.go` | green |
 | `REQ-PG-032` | Configuration | `TestREQ_PG_032_LimitKindCheckedOnLoad` | `internal/config/req_config_test.go` | green |
+| `REQ-PG-032` | Configuration | `TestREQ_PG_032_033_034_SizeRulesPerRef` | `internal/rules/req_size_test.go` | green |
+| `REQ-PG-032` | Configuration | `TestREQ_PG_032_EveryLimitOfARuleIsChecked` | `internal/config/req_config_test.go` | green |
+| `REQ-PG-032` | Configuration | `TestREQ_PG_032_LimitAccessorErrors` | `internal/config/req_config_test.go` | green |
+| `REQ-PG-032` | Configuration | `TestREQ_PG_032_SubmoduleNotSized` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-033` | `SIZE-LARGE` | `TestREQ_PG_033_MaxCommits` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-034` | `SIZE-MASS-DELETE` | `TestREQ_PG_034_DeletedFiles` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-034` | `SIZE-MASS-DELETE` | `TestREQ_PG_034_DeletedShare` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-034` | `SIZE-MASS-DELETE` | `TestREQ_PG_034_DeletedShareDefaults` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-035` | `SIZE-MASS-DELETE` (SPEC settled) | `TestREQ_PG_035_ShareOnRenamesNotDeletes` | `internal/rules/req_size_test.go` | green |
+| `REQ-PG-035` | `SIZE-MASS-DELETE` (SPEC settled) | `TestREQ_PG_035_MassDeleteShareEdges` | `internal/rules/req_size_test.go` | green |
 | `REQ-PG-036` | `RATE-LIMIT` | `TestREQ_PG_036_PushCountWindow` | `internal/journal/req_journal_test.go` | green |
 | `REQ-PG-036` | `RATE-LIMIT` | `TestREQ_PG_036_LastPush` | `internal/journal/req_journal_edges_test.go` | green |
 | `REQ-PG-036` | `RATE-LIMIT` | `TestREQ_PG_036_RateLimitedPushIsRedWithFixedMessage` | `cmd/push-guard/req_e2e_test.go` | green |
@@ -109,13 +138,17 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-037` | `RATE-YELLOW-STREAK` | `TestREQ_PG_037_YellowCountWindowAndScope` | `internal/journal/req_journal_test.go` | green |
 | `REQ-PG-038` | Configuration | `TestREQ_PG_038_039_EveryRuleOnByDefaultWithDocumentedColor` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-038` | Configuration | `TestREQ_PG_038_DisabledRulesNeverFire` | `internal/rules/req_config_test.go` | green |
+| `REQ-PG-038` | Configuration | `TestREQ_PG_038_DisabledRuleAllowsNothing` | `internal/config/req_config_test.go` | green |
 | `REQ-PG-039` | Configuration | `TestREQ_PG_039_ColorOverrides` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-040` | Configuration | `TestREQ_PG_040_AllowPerSubject` | `internal/rules/req_config_test.go` | green |
+| `REQ-PG-040` | Configuration | `TestREQ_PG_040_041_FiresWithAllowDenyAndTrigger` | `internal/config/req_config_test.go` | green |
+| `REQ-PG-040` | Configuration | `TestREQ_PG_040_AllowRecordedOnlyWhenTriggeredAndEnabled` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-041` | Configuration | `TestREQ_PG_041_DenyWinsOverAllow` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-041` | Configuration / A16 | `TestREQ_PG_041_EventDenyNeedsTrigger` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-042` | Configuration | `TestREQ_PG_042_PatternsMatchWholeSubject` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-043` | Configuration | `TestREQ_PG_043_Subjects` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-044` | What a rule sees | `TestREQ_PG_044_CumulativeDiffAndPerCommitMeta` | `internal/rules/req_config_test.go` | green |
+| `REQ-PG-044` | What a rule sees | `TestREQ_PG_044_045_DiffBaseAndCommitList` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-045` | What a rule sees | `TestREQ_PG_045_KindAndOldFromRemote` | `internal/rules/req_config_test.go` | green |
 
 ## Tests found by mutation testing
@@ -158,11 +191,11 @@ The two files overlap; each pair below is one test afterwards.
 | `TestMutantsLastPushWalksFromEnd`, `TestMutantsLastPushFirstAndLastEntry` | `REQ-PG-036` | merge into `TestREQ_PG_036_LastPush` | `internal/journal/req_journal_edges_test.go` |
 | `TestMutantsOpenApprovalRefAndSHA`, `TestMutantsOpenApprovalMatchesRefAndSHA` | `REQ-PG-005` | `TestREQ_PG_005_OpenApprovalNeedsRefAndSHA` (merged) | `internal/journal/req_journal_edges_test.go` |
 | `TestMutantsOpenApprovalConsumedByForwardAndRemoteMoved` | `REQ-PG-003`, `005` | `TestREQ_PG_003_005_ApprovalEndsOnForwardOrRemoteMoved` | `internal/journal/req_journal_edges_test.go` |
-| `TestMutantsApprovalLeaseMatches`, `TestMutantsApprovalLeaseOnlyFromApproveOfThatRef` | `REQ-PG-003` | `TestREQ_PG_003_ApprovalLeaseFromNewestApproveOfThatRef` (merged; check against `TestApprovalLeaseAndRemoteMovedInvalidation` and merge there if it is the same) | `internal/journal/req_journal_edges_test.go` |
+| `TestMutantsApprovalLeaseMatches`, `TestMutantsApprovalLeaseOnlyFromApproveOfThatRef` | `REQ-PG-003` | `TestREQ_PG_003_ApprovalLeaseFromNewestApproveOfThatRef` (merged; kept apart from `TestApprovalLeaseAndRemoteMovedInvalidation`, which checks the remote-moved invalidation) | `internal/journal/req_journal_edges_test.go` |
 | `TestMutantsFindRejectedPrefixMinAndContinue`, `TestMutantsFindRejectedEdges` | `REQ-PG-005` | merge into `TestREQ_PG_005_FindRejectedByPrefix` | `internal/journal/req_journal_edges_test.go` |
 | `TestMutantsAmbiguousRejectedPrefixSkipsNonPush` | `REQ-PG-005` | merge into `TestREQ_PG_005_AmbiguousPrefixApprovesNothing` | `internal/journal/req_journal_edges_test.go` |
 | `TestMutantsAppendAndReadRoundTrip` | none | merge into `TestAppendRead` | `internal/journal/journal_test.go` |
-| `TestMutantsAppendReportsOpenWriteAndSyncErrors` | none | `TestAppend_ReportsOpenWriteAndSyncErrors` (check against the append-error test in `req_journal_edges_test.go` and merge if it is the same) | `internal/journal/journal_test.go` |
+| `TestMutantsAppendReportsOpenWriteAndSyncErrors` | none | `TestAppend_ReportsOpenWriteAndSyncErrors` (kept apart from `TestAppendDirectoryAndErrors`: it checks which error each step returns) | `internal/journal/journal_test.go` |
 | `TestMutantsReadKeepsJSONError` | none | merge into the broken-line test ("fails closed with its line number") | `internal/journal/req_journal_edges_test.go` |
 | `TestMutantsReadLineLimit` | none | merge into the 1 MB-line test as `just under / over 64 MiB` | `internal/journal/req_journal_edges_test.go` |
 
@@ -174,7 +207,7 @@ Tests already named `TestREQ_PG_…` keep their name and only move.
 | --- | --- | --- | --- |
 | `TestMutantsFindingStringAndShort` | `REQ-PG-002` | merge into `TestREQ_PG_002_FindingString` | `internal/rules/req_config_test.go` |
 | `TestMutantsFindingsSortedByRefThenRule` | `REQ-PG-002` | `TestREQ_PG_002_FindingsSortedByRefThenRule` | `internal/rules/req_config_test.go` |
-| `TestMutantsAllowedOnlyWhenTriggeredAndExempt` | `REQ-PG-040` | `TestREQ_PG_040_AllowRecordedOnlyWhenTriggeredAndEnabled` (check against `TestAllowedRecordedForLease`) | `internal/rules/req_config_test.go` |
+| `TestMutantsAllowedOnlyWhenTriggeredAndExempt` | `REQ-PG-040` | `TestREQ_PG_040_AllowRecordedOnlyWhenTriggeredAndEnabled` (kept apart from `TestAllowedRecordedForLease`, which checks the positive case) | `internal/rules/req_config_test.go` |
 | `TestREQ_PG_004_MissingLimitFailsClosed` | `REQ-PG-004` | keep | `internal/rules/req_failclosed_test.go` |
 | `TestMutantsRefAndPathMessages` | `REQ-PG-010`, `012`, `013` | split: `TestREQ_PG_010_NamespaceMessages`, `TestREQ_PG_012_013_PathMessages` | `internal/rules/req_ref_path_mode_test.go` |
 | `TestMutantsModeRules` | `REQ-PG-016`–`018` | `TestREQ_PG_016_017_018_ModeTargetsAndMessages` | `internal/rules/req_ref_path_mode_test.go` |
@@ -192,7 +225,7 @@ Tests already named `TestREQ_PG_…` keep their name and only move.
 | `TestMutantsPathsAndRemoteOIDs` | none | `TestPathsAndRemoteOIDs` | `internal/rules/delta_test.go` (new) |
 | `TestMutantsParseRaw`, `TestMutantsParseNumstat`, `TestMutantsHeaderAndHunkParsing`, `TestMutantsIdentTimeAndParseCommit` | `REQ-PG-004` for the rejected inputs | rejected inputs: merge into `TestREQ_PG_004_Parsers`; accepted inputs: `TestParseRaw`, `TestParseNumstat`, `TestDiffHeaderPathAndHunkStart`, `TestParseCommit` | `internal/rules/req_failclosed_test.go` / `internal/rules/delta_test.go` (new) |
 | `TestREQ_PG_004_ScannerInvocation`, `TestREQ_PG_004_ScannerLogOptsWithoutRemote`, `TestREQ_PG_004_NoNewCommitsNotScanned` | `REQ-PG-019` | rename to `TestREQ_PG_019_ScannerScansExactlyTheNewTips`, `TestREQ_PG_019_ScannerLogOptsWithoutRemote`, `TestREQ_PG_019_NoNewCommitsNotScanned`: they check what is scanned, not failing closed | `internal/rules/req_content_test.go` |
-| `TestREQ_PG_004_ScannerReportErrorsFailClosed`, `TestREQ_PG_004_ScannerStartErrorWrapped`, `TestREQ_PG_004_ScannerTempFilesFailClosed` | `REQ-PG-004` | keep (check `ScannerReportErrorsFailClosed` against `TestREQ_PG_004_ScannerFailuresFailClosed` and merge if the same) | `internal/rules/req_failclosed_test.go` |
+| `TestREQ_PG_004_ScannerReportErrorsFailClosed`, `TestREQ_PG_004_ScannerStartErrorWrapped`, `TestREQ_PG_004_ScannerTempFilesFailClosed` | `REQ-PG-004` | keep (`ScannerReportErrorsFailClosed` checks the wrapped error types, `TestREQ_PG_004_ScannerFailuresFailClosed` the messages: not merged) | `internal/rules/req_failclosed_test.go` |
 | `TestREQ_PG_020_GeneratedScannerFiles` | `REQ-PG-020` | merge into `TestREQ_PG_020_ScannerDefaultsAndWallOnlyConfig` | `internal/rules/req_edges_test.go` |
 | `TestREQ_PG_020_UncheckableDotGitleaksIgnoreFailsClosed` | `REQ-PG-020` | merge into `TestREQ_PG_020_DotGitleaksIgnoreDirectoryFailsClosed` | `internal/rules/req_edges_test.go` |
 | `TestMutantsFirstLineTruncation` | `REQ-PG-004` | merge into `TestREQ_PG_004_ScannerErrorMessageIsShortened` | `internal/rules/req_edges_test.go` |

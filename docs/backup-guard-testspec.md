@@ -28,6 +28,8 @@ Statement coverage from `go test -cover`, before (`2be85f0`, numbering only), on
 | `REQ-BG-001` | Preflight | `TestRunFailsClosedWithoutEverref` | `cmd/backup-guard/main_test.go` | green |
 | `REQ-BG-002` | Preflight | `TestRunFailsClosedWithoutEverref` | `cmd/backup-guard/main_test.go` | green |
 | `REQ-BG-003` | Preflight | `TestREQ_BG_003_ConfigDirMustBeADirectory` | `internal/backupguard/req_bg_test.go` | green |
+| `REQ-BG-003` | Preflight | `TestREQ_BG_003_004_023_UnreadableConfigEntries` | `internal/backupguard/req_bg_test.go` | green |
+| `REQ-BG-003` | Preflight | `TestREQ_BG_003_RelativeConfigDirWithoutWorkingDir` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-004` | Preflight | `TestREQ_BG_004_BrokenDefaultsFailPreflight` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-005` | Prerequisites | `TestREQ_BG_005_GitMissing` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-006` | Prerequisites | `TestREQ_BG_006_007_GitVersion` | `internal/backupguard/req_bg_test.go` | green |
@@ -35,6 +37,7 @@ Statement coverage from `go test -cover`, before (`2be85f0`, numbering only), on
 | `REQ-BG-008` | Prerequisites | `TestREQ_BG_008_018_EverrefLookup` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-009` | Prerequisites | `TestREQ_BG_009_EverrefNotFound` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-009` | Prerequisites | `TestPreflightFailsClosed` | `internal/backupguard/backupguard_test.go` | green |
+| `REQ-BG-009` | Prerequisites | `TestREQ_BG_009_010_011_EverrefErrorMessages` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-010` | Prerequisites | `TestREQ_BG_010_VersionCommandFails` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-011` | Prerequisites | `TestREQ_BG_011_VersionLineFormat` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-012` | Prerequisites | `TestREQ_BG_012_OnlyTheMajorVersionIsCompared` | `internal/backupguard/req_decisions_test.go` | green |
@@ -44,6 +47,7 @@ Statement coverage from `go test -cover`, before (`2be85f0`, numbering only), on
 | `REQ-BG-014` | Preflight | `TestPreflightFailsClosed` | `internal/backupguard/backupguard_test.go` | green |
 | `REQ-BG-015` | Preflight | `TestREQ_BG_015_FailedPreflightIsRecordedAndWarned` | `internal/backupguard/req_decisions_test.go` | green |
 | `REQ-BG-015` | Preflight | `TestREQ_BG_015_RunRecordsFailedPreflight` | `cmd/backup-guard/req_test.go` | green |
+| `REQ-BG-015` | Preflight | `TestREQ_BG_015_PreflightRunOutcomes` | `internal/backupguard/req_decisions_test.go` | green |
 | `REQ-BG-016` | Configuration | `TestLoadDefaults` | `internal/backupguard/backupguard_test.go` | green |
 | `REQ-BG-017` | Configuration | `TestREQ_BG_017_OnlyKnownDefaultsKeys` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-017` | Configuration | `TestLoadDefaults` | `internal/backupguard/backupguard_test.go` | green |
@@ -92,7 +96,9 @@ Statement coverage from `go test -cover`, before (`2be85f0`, numbering only), on
 | `REQ-BG-043` | Branches and tags | `TestREQ_BG_043_LsRemoteFailureFails` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-044` | Branches and tags | `TestREQ_BG_044_OnlyHeadsAreBranches` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-045` | Branches and tags | `TestREQ_BG_045_AddOnFirstSight` | `internal/backupguard/req_bg_test.go` | green |
+| `REQ-BG-045` | Branches and tags | `TestREQ_BG_045_ProtectedBranchesIgnoreEmptyNames` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-046` | Branches and tags | `TestREQ_BG_046_AddBatchesOf100` | `internal/backupguard/req_bg_test.go` | green |
+| `REQ-BG-046` | Branches and tags | `TestREQ_BG_046_048_BranchesSortedAndFailuresListed` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-047` | Branches and tags | `TestAddRetriesSinglyAndRunFailureNotifies` | `internal/backupguard/backupguard_test.go` | green |
 | `REQ-BG-048` | Branches and tags | `TestAddRetriesSinglyAndRunFailureNotifies` | `internal/backupguard/backupguard_test.go` | green |
 | `REQ-BG-049` | Branches and tags | `TestAddRetriesSinglyAndRunFailureNotifies` | `internal/backupguard/backupguard_test.go` | green |
@@ -109,24 +115,32 @@ Statement coverage from `go test -cover`, before (`2be85f0`, numbering only), on
 | `REQ-BG-058` | Branches and tags | `TestEndToEndWithEverref` | `internal/backupguard/backupguard_test.go` | green |
 | `REQ-BG-059` | Setup and state | `TestREQ_BG_059_060_061_BridgeLayout` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-060` | Setup and state | `TestREQ_BG_059_060_061_BridgeLayout` | `internal/backupguard/req_bg_test.go` | green |
+| `REQ-BG-060` | Setup and state | `TestREQ_BG_060_BrokenBridgeRemoteIsRestored` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-061` | Setup and state | `TestREQ_BG_059_060_061_BridgeLayout` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-062` | Setup and state | `TestBridgeRefusesChangedRemote` | `internal/backupguard/backupguard_test.go` | green |
 | `REQ-BG-063` | Setup and state | `TestREQ_BG_063_SetupInTempDirs` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-063` | Setup and state | `TestInterruptedFirstRun` | `internal/backupguard/interrupt_test.go` | green |
+| `REQ-BG-063` | Setup and state | `TestREQ_BG_063_065_SetupErrorsLeaveNoHalfBuiltRepo` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-064` | Setup and state | `TestREQ_BG_064_LeftoversRemoved` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-064` | Setup and state | `TestInterruptedFirstRun` | `internal/backupguard/interrupt_test.go` | green |
 | `REQ-BG-065` | Setup and state | `TestREQ_BG_065_IncompleteDirs` | `internal/backupguard/req_bg_test.go` | green |
+| `REQ-BG-065` | Setup and state | `TestREQ_BG_065_UnreadableStateDirFailsTheRepo` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-066` | Setup and state | `TestREQ_BG_066_RefsOnlyGrow` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-067` | Run | `TestREQ_BG_067_068_088_RunSelection` | `cmd/backup-guard/req_cmd_test.go` | green |
 | `REQ-BG-068` | Run | `TestREQ_BG_067_068_088_RunSelection` | `cmd/backup-guard/req_cmd_test.go` | green |
+| `REQ-BG-068` | Run | `TestREQ_BG_068_UnknownRepoFailsTheRun` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-069` | Run | `TestREQ_BG_069_FailedRepoDoesNotStopOthers` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-070` | Run | `TestREQ_BG_070_072_RunAllWithoutTrigger` | `internal/backupguard/req_bg_test.go` | green |
+| `REQ-BG-070` | Run | `TestREQ_BG_070_080_RunAllOutputIsCounted` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-071` | Trigger | every `backup-guard run` test in `cmd/backup-guard` (one pass, then exit) | `cmd/backup-guard` | green (implicit) |
 | `REQ-BG-072` | Trigger | `TestREQ_BG_070_072_RunAllWithoutTrigger` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-073` | Trigger | `TestREQ_BG_073_ExampleTimer` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-074` | Run | `TestREQ_BG_074_TimeoutKillsEverref` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-074` | Run | `TestREQ_BG_074_TimeoutIsNamed` | `internal/backupguard/req_decisions_test.go` | green |
+| `REQ-BG-074` | Run | `TestREQ_BG_074_081_RunOutputAndTimeout` | `internal/backupguard/req_decisions_test.go` | green |
+| `REQ-BG-074` | Run | `TestREQ_BG_074_ChildHoldingThePipeDoesNotBlock` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-075` | Locking | `TestREQ_BG_075_LockedRepoIsSkippedWithoutWaiting` | `internal/backupguard/req_decisions_test.go` | green |
+| `REQ-BG-075` | Locking | `TestREQ_BG_075_LockThatCannotBeTakenFailsTheRepo` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-076` | Locking | `TestREQ_BG_076_LockReleasedOnKill` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-077` | Interrupted runs | `TestInterruptedFirstRun` | `internal/backupguard/interrupt_test.go` | green |
 | `REQ-BG-078` | State | `TestREQ_BG_078_079_JournalLine` | `internal/backupguard/req_bg_test.go` | green |
@@ -144,6 +158,7 @@ Statement coverage from `go test -cover`, before (`2be85f0`, numbering only), on
 | `REQ-BG-087` | Commands | `TestREQ_BG_087_Version` | `cmd/backup-guard/req_cmd_test.go` | green |
 | `REQ-BG-088` | Commands | `TestREQ_BG_067_068_088_RunSelection` | `cmd/backup-guard/req_cmd_test.go` | green |
 | `REQ-BG-089` | Commands | `TestREQ_BG_089_090_ExitCodes` | `cmd/backup-guard/req_cmd_test.go` | green |
+| `REQ-BG-089` | Commands | `TestREQ_BG_089_SubcommandHelpIsNotAnError` | `cmd/backup-guard/req_cmd_test.go` | green |
 | `REQ-BG-090` | Commands | `TestREQ_BG_089_090_ExitCodes` | `cmd/backup-guard/req_cmd_test.go` | green |
 | `REQ-BG-090` | Commands | `TestREQ_BG_090_InvalidRepoConfigExitsOne` | `cmd/backup-guard/req_test.go` | green |
 | `REQ-BG-091` | Commands | `TestREQ_BG_091_UsageErrors` | `cmd/backup-guard/req_cmd_test.go` | green |
@@ -151,11 +166,15 @@ Statement coverage from `go test -cover`, before (`2be85f0`, numbering only), on
 | `REQ-BG-093` | check-config | `TestREQ_BG_092_093_CheckConfigPreflightNoState` | `cmd/backup-guard/req_cmd_test.go` | green |
 | `REQ-BG-094` | check-config | `TestREQ_BG_094_CheckConfigReportsEveryBrokenBackupYaml` | `cmd/backup-guard/req_cmd_test.go` | green |
 | `REQ-BG-095` | check-config | `TestREQ_BG_095_096_099_CheckConfigProblems` | `cmd/backup-guard/req_cmd_test.go` | green |
+| `REQ-BG-095` | check-config | `TestREQ_BG_095_096_099_CheckConfigProblemsListed` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-096` | check-config | `TestREQ_BG_095_096_099_CheckConfigProblems` | `cmd/backup-guard/req_cmd_test.go` | green |
 | `REQ-BG-097` | check-config | `TestREQ_BG_097_CheckConfigNotes` | `cmd/backup-guard/req_cmd_test.go` | green |
 | `REQ-BG-097` | check-config | `TestREQ_BG_097_CheckConfigNotesDefaultEverrefVersion` | `internal/backupguard/req_decisions_test.go` | green |
+| `REQ-BG-097` | check-config | `TestREQ_BG_097_098_CheckConfigNotesAndRemote` | `internal/backupguard/req_bg_test.go` | green |
+| `REQ-BG-097` | check-config | `TestREQ_BG_097_CredentialModeNote` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-098` | check-config | `TestREQ_BG_098_CheckConfigRemote` | `cmd/backup-guard/req_cmd_test.go` | green |
 | `REQ-BG-099` | check-config | `TestREQ_BG_095_096_099_CheckConfigProblems` | `cmd/backup-guard/req_cmd_test.go` | green |
+| `REQ-BG-099` | check-config | `TestREQ_BG_099_EveryRepoProblemListed` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-100` | Looking and restoring | `TestREQ_BG_100_101_EverrefToolsWorkAndRemoteUntouched` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-101` | Looking and restoring | `TestREQ_BG_100_101_EverrefToolsWorkAndRemoteUntouched` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-102` | No runtime downloads | `TestREQ_BG_102_NoRuntimeDownloads` | `internal/backupguard/req_bg_test.go` | green |
@@ -200,11 +219,11 @@ The mutation campaign of October 2026 added tests in `internal/backupguard/backu
 | `TestMutantsProtectedBranchesSkipsEmptyName` | `REQ-BG-045` | `TestREQ_BG_045_ProtectedBranchesIgnoreEmptyNames` | `internal/backupguard/req_bg_test.go` |
 | `TestMutantsTagsCheckedAgainstEveryValue` | `REQ-BG-053` | merge into `TestREQ_BG_053_BridgedTagsOnOnce` | `internal/backupguard/req_bg_test.go` |
 | `TestMutantsListRefsErrorIsWrapped` | `REQ-BG-043` | merge into `TestREQ_BG_043_LsRemoteFailureFails` | `internal/backupguard/req_bg_test.go` |
-| `TestMutantsRunAllOutput` | `REQ-BG-070`, `080` | `TestREQ_BG_070_080_RunAllOutputIsCounted` (check against `TestCountEvents`) | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsRunAllOutput` | `REQ-BG-070`, `080` | `TestREQ_BG_070_080_RunAllOutputIsCounted` (kept apart from `TestCountEvents`, which checks only the event parser) | `internal/backupguard/req_bg_test.go` |
 | `TestMutantsCreateOnceErrorPaths`, `TestMutantsCreateOnceStatAndRemoveErrors` | `REQ-BG-063`, `065` | `TestREQ_BG_063_065_SetupErrorsLeaveNoHalfBuiltRepo` (merged) | `internal/backupguard/req_bg_test.go` |
 | `TestMutantsSetupLeftoverThatCannotBeRemoved` | `REQ-BG-064` | merge into `TestREQ_BG_064_LeftoversRemoved` | `internal/backupguard/req_bg_test.go` |
 | `TestMutantsUnreadableStateDirs` | `REQ-BG-065`, `069` | `TestREQ_BG_065_UnreadableStateDirFailsTheRepo` | `internal/backupguard/req_bg_test.go` |
-| `TestMutantsRunRepoSetupFailures` | `REQ-BG-060`, `068` | `TestREQ_BG_060_BrokenBridgeRemoteIsRestored` (unknown-repo case to `REQ-BG-068`) | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsRunRepoSetupFailures` | `REQ-BG-060`, `068`, `075` | `TestREQ_BG_060_BrokenBridgeRemoteIsRestored`; unknown-repo case: `TestREQ_BG_068_UnknownRepoFailsTheRun`; the lock-failure case checks `REQ-BG-075` and moved to `TestREQ_BG_075_LockThatCannotBeTakenFailsTheRepo` | `internal/backupguard/req_bg_test.go` |
 | `TestMutantsLockAndJournalErrors`, `TestMutantsLockPathIsDirectory`, `TestMutantsAppendJournalOnDirectory` | `REQ-BG-075`, `082` | split: `TestREQ_BG_075_LockThatCannotBeTakenFailsTheRepo`; journal cases merged into `TestREQ_BG_082_JournalAppendFails` | `internal/backupguard/req_bg_test.go` |
 | `TestMutantsNotifyArgsAndFailure` | `REQ-BG-083`, `086` | merge into `TestREQ_BG_086_NotifyFailureRecorded` (argument check as a subtest) | `internal/backupguard/req_bg_test.go` |
 | `TestMutantsStatePermissions` | none | `TestStatePermissions` | `internal/backupguard/backupguard_test.go` |
