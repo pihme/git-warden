@@ -12,7 +12,7 @@ Status is as of `main` @ `0d52412` (Peter's decisions of 2026-10-06 included) pl
 
 ## Coverage
 
-Coverage is measured for the whole module with `make coverage` (see [Test strategy](test-strategy.md#layers)); at `ae5e34a` (2026-10-11) it is **88.5 %**, with `internal/backupguard` and `cmd/backup-guard` between 92 % and 99.6 %. `make coverage` prints the full per-package breakdown.
+Coverage is measured for the whole module with `make coverage` (see [Test strategy](test-strategy.md#layers)); at `e764e9d` (2026-10-11) it is **89.9 %**, with `internal/backupguard` at 96.6 % and `cmd/backup-guard` at 98.3 %. `make coverage` prints the full per-package breakdown.
 
 ### Earlier numbers (old method, not comparable)
 
