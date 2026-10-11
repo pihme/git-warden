@@ -29,6 +29,7 @@ How Git Warden (`push-guard` and `backup-guard`) is tested, and why. The details
   - **gomutants** parallelizes, routes each mutant to covering unit tests only, and keeps the working tree clean via `go test -overlay`.
 - **Scope (default):** `./internal/rules`, `./internal/journal`, `./internal/config`. Each mutant runs only the tests of its own package; end-to-end tests are not run per mutant (about 13 s each). Backup Guard is not in the default set yet; QA can select it with `make mutate PKGS='./internal/backupguard'` (or `PACKAGES=…`).
 - **Command:** `make mutate` on main (not CI). Defaults and exclusions live in [`.gomutants.yml`](../.gomutants.yml); `scripts/mutate.sh` / Make vars override for a single run. The script runs under `nice -n 10`.
+- **Memory cap:** `scripts/mutate.sh` sets `ulimit -d 4000000` (about 4 GB, `MEM_LIMIT_KB`, 0 switches it off) for gomutants and every test binary it starts. Some mutants make a test allocate without bound, up to 4.5 GB within seconds, which aborted three runs on the shared box on 2026-10-11. With the cap such a mutant dies with "out of memory" and counts as killed. It is `-d` and not `-v`: gitleaks (a Go program) reserves far more address space than it uses and panics at start under `ulimit -v 4000000`, so every test that runs gitleaks would fail.
 - **Useful variables:**
 
   | Variable | Default | Meaning |

@@ -28,6 +28,9 @@
 #                          './internal/backupguard' when QA mutates Backup Guard.
 #   GOMUTANTS_VERSION    go install version pin (default: v0.6.1)
 #   OUTPUT               --output JSON report path (default: mutation-report.json)
+#   MEM_LIMIT_KB         per-process data limit in KiB for gomutants and every
+#                          test binary it starts (default: 4000000, about 4 GB;
+#                          0 = no limit). See the comment at `ulimit -d` below.
 #
 # Project defaults also live in .gomutants.yml (workers, exclusions, timeouts).
 # Env / make vars override the YAML for a single run.
@@ -81,6 +84,19 @@ if [[ "${ADAPTIVE_TIMEOUT}" == "0" ]]; then
 fi
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
 	args+=(--dry-run)
+fi
+
+# Some mutants make a test allocate without bound (up to 4.5 GB within
+# seconds was measured), which took the shared box down three times. Cap
+# every process this script starts: such a mutant then dies with "out of
+# memory" and counts as killed. `ulimit -d` (data segment) and not `ulimit
+# -v` (address space): Go programs such as gitleaks reserve much more address
+# space than they use and panic at start under -v 4 GB, which would make
+# every test that runs gitleaks fail. -d counts only memory actually mapped
+# writable, which is what a runaway mutant grows.
+MEM_LIMIT_KB=${MEM_LIMIT_KB:-4000000}
+if [[ "${MEM_LIMIT_KB}" != "0" ]]; then
+	ulimit -d "${MEM_LIMIT_KB}"
 fi
 
 # shellcheck disable=SC2086
