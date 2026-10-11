@@ -83,7 +83,7 @@ jobs:
             grep -iE 'killed|lived|survived|timed out|not covered|efficacy|score|total' mutate.log | tail -20
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          grep -E 'LIVED|SURVIVED' mutate.log > survivors.txt || true
+          jq -r '.files[] | .mutations[] | select(.status == "LIVED") | "\(.id)  line \(.line): \(.original) -> \(.replacement)"' mutation-report.json > survivors.txt || true
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
@@ -131,6 +131,8 @@ jobs:
           rc=${PIPESTATUS[0]}
           kill "$sampler"
           echo "rc=$rc runtime_s=$(( $(date +%s) - start ))" > result.txt
+          # Generated corpus lives in GOCACHE, not testdata/ (only crashers go there).
+          mkdir -p corpus && cp -r "$(go env GOCACHE)/fuzz/." corpus/ 2>/dev/null || true
           exit "$rc"
       - name: Summary
         if: always()
@@ -150,6 +152,7 @@ jobs:
           name: fuzz-${{ matrix.target }}
           path: |
             **/testdata/fuzz/
+            corpus/
             fuzz.log
             mem.log
             time.txt
