@@ -1,0 +1,158 @@
+# Heavy test runs: mutation testing and long fuzzing. Manual only
+# (workflow_dispatch); never runs on push and never blocks a release.
+# Hosted runners for public repos: 4 cores, 16 GB, 6 h per job.
+name: Heavy tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      what:
+        description: "Which runs"
+        type: choice
+        options: [both, mutate, fuzz]
+        default: both
+      fuzztime:
+        description: "Duration per fuzz target (go test -fuzztime)"
+        type: string
+        default: 10m
+      workers:
+        description: "gomutants workers per package"
+        type: string
+        default: "2"
+
+permissions:
+  contents: read
+
+jobs:
+  mutate:
+    if: inputs.what == 'mutate' || inputs.what == 'both'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - internal/rules
+          - internal/journal
+          - internal/config
+          - internal/backupguard
+          - cmd/backup-guard
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install gitleaks and git-everref (pinned)
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          (cd "$RUNNER_TEMP" && curl -fsSLO "$base/$tarball" && curl -fsSLO "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt" &&
+            grep " $tarball\$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum -c - &&
+            tar -xzf "$tarball" gitleaks && sudo install -m 0755 gitleaks /usr/local/bin/gitleaks)
+          sudo scripts/install-everref.sh /usr/local/bin
+      - name: Set names
+        id: n
+        run: echo "slug=$(echo '${{ matrix.package }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+      - name: Mutation run
+        env:
+          PACKAGES: ./${{ matrix.package }}
+          WORKERS: ${{ inputs.workers }}
+          OUTPUT: mutation-report.json
+        run: |
+          (while true; do free -m | awk -v t="$(date +%T)" '/^Mem:/{print t, $3}'; sleep 5; done) > mem.log &
+          sampler=$!
+          start=$(date +%s)
+          set +e
+          /usr/bin/time -v -o time.txt ./scripts/mutate.sh 2>&1 | tee mutate.log
+          rc=${PIPESTATUS[0]}
+          kill "$sampler"
+          echo "rc=$rc runtime_s=$(( $(date +%s) - start ))" > result.txt
+          exit "$rc"
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Mutation ${{ matrix.package }}"
+            cat result.txt 2>/dev/null
+            echo "peak used memory (system, MB): $(sort -k2 -n mem.log 2>/dev/null | tail -1 | awk '{print $2}')"
+            echo "peak RSS gomutants itself (KB): $(grep 'Maximum resident' time.txt 2>/dev/null | awk '{print $NF}')"
+            echo '```'
+            grep -iE 'killed|lived|survived|timed out|not covered|efficacy|score|total' mutate.log | tail -20
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep -E 'LIVED|SURVIVED' mutate.log > survivors.txt || true
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-${{ steps.n.outputs.slug }}
+          path: |
+            mutation-report.json
+            mutate.log
+            survivors.txt
+            mem.log
+            time.txt
+            result.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+  fuzz:
+    if: inputs.what == 'fuzz' || inputs.what == 'both'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { pkg: ./internal/rules, target: FuzzParseNumstat }
+          - { pkg: ./internal/rules, target: FuzzParseNumstatArbitrary }
+          - { pkg: ./internal/rules, target: FuzzParseRaw }
+          - { pkg: ./internal/rules, target: FuzzParseRawArbitrary }
+          - { pkg: ./internal/rules, target: FuzzDiffHeaderPath }
+          - { pkg: ./internal/rules, target: FuzzHunkStart }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Fuzz ${{ matrix.target }}
+        env:
+          FUZZTIME: ${{ inputs.fuzztime }}
+        run: |
+          (while true; do free -m | awk -v t="$(date +%T)" '/^Mem:/{print t, $3}'; sleep 5; done) > mem.log &
+          sampler=$!
+          start=$(date +%s)
+          set +e
+          /usr/bin/time -v -o time.txt go test -tags=fuzz -run '^$' -fuzz="^${{ matrix.target }}\$" -fuzztime="$FUZZTIME" "${{ matrix.pkg }}" 2>&1 | tee fuzz.log
+          rc=${PIPESTATUS[0]}
+          kill "$sampler"
+          echo "rc=$rc runtime_s=$(( $(date +%s) - start ))" > result.txt
+          exit "$rc"
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Fuzz ${{ matrix.target }} (${{ inputs.fuzztime }})"
+            cat result.txt 2>/dev/null
+            echo "peak used memory (system, MB): $(sort -k2 -n mem.log 2>/dev/null | tail -1 | awk '{print $2}')"
+            echo '```'
+            grep -E 'execs|new interesting|FAIL|PASS|ok ' fuzz.log | tail -5
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload corpus and crashers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: |
+            **/testdata/fuzz/
+            fuzz.log
+            mem.log
+            time.txt
+            result.txt
+          if-no-files-found: warn
+          retention-days: 30
