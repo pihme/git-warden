@@ -7,6 +7,7 @@ How Git Warden (`push-guard` and `backup-guard`) is tested, and why. The details
 - Every numbered requirement (`REQ-PG-…` in [push-guard-rules.md](push-guard-rules.md)) has at least one test named after it (`TestREQ_PG_<nnn>_…`). Tests are written against the spec, not against the code: a test that fails because the code does not meet the spec stays red until the code is fixed or the spec is changed.
 - The guards fail closed. For every error path that matters, a test checks that the push is rejected (or the backup run fails), never that it slips through.
 - Statement coverage is a signal, not the target. Mutation testing shows whether the tests actually check what the covered code does.
+- A test is filed and named after the behaviour it checks, never after the tool or campaign that found the gap. Mutation testing, fuzzing and exploratory testing only point at missing tests; the tests that close the gap are ordinary unit or requirement tests (see [Where tests go](#where-tests-go)).
 
 ## Layers
 
@@ -44,7 +45,15 @@ Coverage for `internal/pushguard` should be read with the end-to-end tests inclu
 
   Examples: `make mutate PACKAGES='./internal/config'`, `make mutate PKGS='./internal/backupguard' WORKERS=2`.
 - **Goal:** no surviving mutant in the scoped packages except documented equivalent mutants below. A survivor that the end-to-end tests already catch still gets a unit test in its package, so the mutation run stays meaningful on its own.
-- **Workflow:** QA runs the tool and lists the survivors with file, line and mutation. The maintainer (or QA) adds unit tests until they are killed. A mutant that cannot change behaviour (an equivalent mutant) is listed with location and a one-line reason under Equivalent mutants below instead of being tested. Re-run per package (`make mutate PACKAGES='./internal/…'`) to verify kills.
+- **Workflow:**
+  1. QA (or the maintainer) runs the tool and lists the survivors with file, line and mutation.
+  2. For each survivor, ask which behaviour is untested. Often several survivors point at the same behaviour (an error that is not wrapped, a boundary, a loop that must not stop early).
+  3. If a requirement covers that behaviour, extend or add a `TestREQ_…` test for it. If the requirement is silent or vague, QA updates the test specification first (and, if needed, asks for a spec decision), then the test is written.
+  4. If no requirement covers it (internal helpers, error wrapping, layer merging), add an ordinary unit test next to the existing tests of that function.
+  5. A mutant that cannot change behaviour (an equivalent mutant) is listed with location and a one-line reason under Equivalent mutants below instead of being tested.
+  6. Re-run per package (`make mutate PACKAGES='./internal/…'`) to verify kills.
+
+  Tests never go into files or names that refer to mutation testing (`*_mutants_test.go`, `TestMutants…`). The mapping of the tests written during the October 2026 campaign to their final place is in the test specifications ([Push Guard](push-guard-testspec.md#tests-found-by-mutation-testing), [Backup Guard](backup-guard-testspec.md#tests-found-by-mutation-testing)).
 
 ### Tuning and exclusions
 
@@ -168,12 +177,22 @@ No equivalent mutants remain (98.82% efficacy before d621f98, which killed the l
 
 Mutants that removed a loop's `i++`/`i--` time out (infinite loop); gomutants counts them as detected.
 
+## Where tests go
+
+| Kind of test | Name | File |
+| --- | --- | --- |
+| Checks a numbered requirement | `TestREQ_PG_<nnn>_<Behaviour>` / `TestREQ_BG_<nnn>_<Behaviour>`; several requirements as `_<nnn>_<nnn>_` | the `req_*_test.go` file of that area (see the test specifications) |
+| Checks a function or internal behaviour no requirement names | `Test<Function>` or `Test<Function>_<Behaviour>`; prefer a subtest (`t.Run`) in an existing test of that function over a new top-level test | `<file>_test.go` next to the code (`config_test.go`, `journal_test.go`, `delta_test.go`, …) |
+| Fuzz target or `rapid` property | `Fuzz<Function>…` / `TestProp<Behaviour>` | `*_fuzz_test.go` / `*_prop_test.go` with `//go:build fuzz`; separate files because they run separately (`make fuzz`, CI job `fuzz`), not because of who found them |
+
+When a new test checks what an existing test already checks with other values, add the values to that test (table entry or subtest) instead of adding a test. Two tests that check the same thing are merged.
+
 ## Fuzzing and property tests
 
 Only where testing already found special cases, not as a general net. All of them sit behind the `fuzz` build tag (`//go:build fuzz`) so ordinary `go test ./...` stays fast and free of the test-only `rapid` dependency.
 
 - **Go fuzzing (`go test -tags=fuzz -fuzz=…`):** parsing of diff headers and `git diff --numstat -z` / `--raw -z` output (paths with spaces, TABs, renames, C-quoting). Seeds run with every `go test -tags=fuzz`; long runs use `make fuzz FUZZTIME=5s` (or any duration).
-- **`rapid` property tests:** an ambiguous SHA prefix never approves anything; a limit of the wrong kind never passes `check-config`; a count outside int64 never loads as a wrapped negative. `rapid` (`pgregory.net/rapid`) is test-only and does not end up in the binaries (not listed in `THIRD_PARTY_NOTICES.md`).
+- **`rapid` property tests:** an ambiguous SHA prefix never approves anything; a limit of the wrong kind never passes `check-config`; a count outside int64 never loads as a wrapped negative; a negative count or duration never loads, zero always does. `rapid` (`pgregory.net/rapid`) is test-only and does not end up in the binaries (not listed in `THIRD_PARTY_NOTICES.md`).
 
 **Commands:**
 
@@ -183,7 +202,7 @@ Only where testing already found special cases, not as a general net. All of the
 | `make fuzz FUZZTIME=5s` | Same, then each `Fuzz*` for that duration |
 | CI `fuzz` job | `go test -tags=fuzz ./internal/config ./internal/journal ./internal/rules -rapid.checks=100` (only packages that import rapid; the flag is undefined elsewhere) |
 
-**Finding recorded here:** YAML can decode a count such as `max_files: 9223372036854775808` as `uint64`, and `Rule.Int` used to cast it to `int64` without a range check, wrapping to a negative limit. Load now rejects values above `MaxInt64` and negative counts (`REQ-PG-032`).
+**Finding recorded here:** YAML can decode a count such as `max_files: 9223372036854775808` as `uint64`, and `Rule.Int` used to cast it to `int64` without a range check, wrapping to a negative limit. Load now rejects values above `MaxInt64` and negative counts (`REQ-PG-032`). The follow-up property test found that negative durations still loaded; they are rejected since `c8b32de` (zero stays allowed).
 
 New candidates are added when a bug or clarification shows a class of inputs rather than a single case.
 

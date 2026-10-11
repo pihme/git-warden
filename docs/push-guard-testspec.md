@@ -118,6 +118,87 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-044` | What a rule sees | `TestREQ_PG_044_CumulativeDiffAndPerCommitMeta` | `internal/rules/req_config_test.go` | green |
 | `REQ-PG-045` | What a rule sees | `TestREQ_PG_045_KindAndOldFromRemote` | `internal/rules/req_config_test.go` | green |
 
+## Tests found by mutation testing
+
+The mutation campaign of October 2026 (see [Test strategy § Mutation testing](test-strategy.md#mutation-testing)) added tests in `*_mutants_test.go` files with `TestMutants…` names. They check real behaviour and stay, but are moved to where that behaviour is tested and renamed after it. "Merge" means: add the cases as table entries or subtests to the named test, and drop the old one. Tests that check the same thing twice are merged into one. Where a REQ is given, the test then gets a row in the table above.
+
+The maintainer moves the tests; the REQ fit is QA's proposal and may be corrected while moving if the test body shows a better one.
+
+### internal/config (`config_mutants_test.go`)
+
+| Old test | REQ | New name | Target file |
+| --- | --- | --- | --- |
+| `TestMutantsColorRankUnknownTiedWithGreen` | `REQ-PG-039` | merge into the colour-order test | `internal/config/req_config_test.go` |
+| `TestMutantsFiresAllowAndTrigger` | `REQ-PG-040`, `041` | `TestREQ_PG_040_041_FiresWithAllowDenyAndTrigger` | `internal/config/req_config_test.go` |
+| `TestMutantsAllowedRequiresEnabled` | `REQ-PG-038` | `TestREQ_PG_038_DisabledRuleAllowsNothing` | `internal/config/req_config_test.go` |
+| `TestMutantsIntDurationErrorReturns`, `TestMutantsLimitErrorReasons` | `REQ-PG-032` | `TestREQ_PG_032_LimitAccessorErrors` (merged) | `internal/config/req_config_test.go` |
+| `TestMutantsDurationLimitContinue`, `TestMutantsLimitCheckContinuesAfterDuration` | `REQ-PG-032` | `TestREQ_PG_032_EveryLimitOfARuleIsChecked` (merged) | `internal/config/req_config_test.go` |
+| `TestMutantsTimeoutOneNanosecondIsPositive` | none | merge into the `timeout` test ("must be positive") | `internal/config/req_config_test.go` |
+| `TestMutantsMergeSideEffects`, `TestMutantsEmptyNotifyAndForwardKeepLowerLayer`, `TestMutantsStateDirTimeoutDefaults` | none | merge into `TestMergeLayers` as subtests `every wall key applies`, `empty block keeps lower layer`, `defaults` | `internal/config/config_test.go` |
+| `TestMutantsNullRuleEntryContinue`, `TestMutantsNullRuleDoesNotStopLaterRules` | none | `TestMergeLayers` subtest `rule without settings` (merged) | `internal/config/config_test.go` |
+| `TestMutantsMatchRemoveOnlyNamed` | none | `TestMergeLayers` subtest `match_remove removes only the named pattern` | `internal/config/config_test.go` |
+| `TestMutantsWallRejectsRepoRemoteKeys` | none | `TestErrors` subtest `key in the wrong layer` | `internal/config/config_test.go` |
+| `TestMutantsRemoveErrorWraps`, `TestMutantsRemoveErrorsWrap` | none | `TestErrors` subtest `*_remove of an unknown pattern` (merged) | `internal/config/config_test.go` |
+| `TestMutantsParseLayerWraps`, `TestMutantsParseLayerKeepsYAMLError` | none | `TestErrors` subtest `YAML error is kept` (merged) | `internal/config/config_test.go` |
+| `TestMutantsCheckRemoteWraps`, `TestMutantsCheckRemoteErrorWrapped` | none | `TestErrors` subtest `unsupported remote` (merged) | `internal/config/config_test.go` |
+| `TestMutantsCompileBadRegexWraps`, `TestMutantsBadRegexKeepsSyntaxError` | none | `TestErrors` subtest `bad pattern names the rule and keeps the syntax error` (merged) | `internal/config/config_test.go` |
+| `TestMutantsUnreadableFilesReturnTheReadError` | none | `TestErrors` subtest `read error is returned as is` | `internal/config/config_test.go` |
+| `TestMutantsLoadFailsWithoutWorkingDirectory` | none | `TestErrors` subtest `relative dir without working directory` | `internal/config/config_test.go` |
+| `TestMutantsErrUnknownRepoUnwraps`, `TestMutantsInvalidRepoNameWithFolder` | none | merge into `TestRepoNames` | `internal/config/config_test.go` |
+| `TestMutantsCheckRemoteAndRemoteKind`, `TestMutantsRemoteKindErrorReturnsZero` | none | merge into `TestRemoteKind` (`CheckRemote` cases as a subtest) | `internal/config/config_test.go` |
+| `TestMutantsResolveAndResolveProgram` | none | `TestResolveProgram` | `internal/config/config_test.go` |
+
+### internal/journal (`journal_mutants_test.go`, `journal_mutants2_test.go`)
+
+The two files overlap; each pair below is one test afterwards.
+
+| Old test | REQ | New name | Target file |
+| --- | --- | --- | --- |
+| `TestMutantsYellowCountRequiresPushEvent`, `TestMutantsYellowCountOnlyPushes` | `REQ-PG-037` | merge into `TestREQ_PG_037_YellowCountWindowAndScope` | `internal/journal/req_journal_test.go` |
+| `TestMutantsLastPushWalksFromEnd`, `TestMutantsLastPushFirstAndLastEntry` | `REQ-PG-036` | merge into `TestREQ_PG_036_LastPush` | `internal/journal/req_journal_edges_test.go` |
+| `TestMutantsOpenApprovalRefAndSHA`, `TestMutantsOpenApprovalMatchesRefAndSHA` | `REQ-PG-005` | `TestREQ_PG_005_OpenApprovalNeedsRefAndSHA` (merged) | `internal/journal/req_journal_edges_test.go` |
+| `TestMutantsOpenApprovalConsumedByForwardAndRemoteMoved` | `REQ-PG-003`, `005` | `TestREQ_PG_003_005_ApprovalEndsOnForwardOrRemoteMoved` | `internal/journal/req_journal_edges_test.go` |
+| `TestMutantsApprovalLeaseMatches`, `TestMutantsApprovalLeaseOnlyFromApproveOfThatRef` | `REQ-PG-003` | `TestREQ_PG_003_ApprovalLeaseFromNewestApproveOfThatRef` (merged; check against `TestApprovalLeaseAndRemoteMovedInvalidation` and merge there if it is the same) | `internal/journal/req_journal_edges_test.go` |
+| `TestMutantsFindRejectedPrefixMinAndContinue`, `TestMutantsFindRejectedEdges` | `REQ-PG-005` | merge into `TestREQ_PG_005_FindRejectedByPrefix` | `internal/journal/req_journal_edges_test.go` |
+| `TestMutantsAmbiguousRejectedPrefixSkipsNonPush` | `REQ-PG-005` | merge into `TestREQ_PG_005_AmbiguousPrefixApprovesNothing` | `internal/journal/req_journal_edges_test.go` |
+| `TestMutantsAppendAndReadRoundTrip` | none | merge into `TestAppendRead` | `internal/journal/journal_test.go` |
+| `TestMutantsAppendReportsOpenWriteAndSyncErrors` | none | `TestAppend_ReportsOpenWriteAndSyncErrors` (check against the append-error test in `req_journal_edges_test.go` and merge if it is the same) | `internal/journal/journal_test.go` |
+| `TestMutantsReadKeepsJSONError` | none | merge into the broken-line test ("fails closed with its line number") | `internal/journal/req_journal_edges_test.go` |
+| `TestMutantsReadLineLimit` | none | merge into the 1 MB-line test as `just under / over 64 MiB` | `internal/journal/req_journal_edges_test.go` |
+
+### internal/rules (`rules_mutants_test.go`, `delta_mutants_test.go`, `secret_mutants_test.go`)
+
+Tests already named `TestREQ_PG_…` keep their name and only move.
+
+| Old test | REQ | New name | Target file |
+| --- | --- | --- | --- |
+| `TestMutantsFindingStringAndShort` | `REQ-PG-002` | merge into `TestREQ_PG_002_FindingString` | `internal/rules/req_config_test.go` |
+| `TestMutantsFindingsSortedByRefThenRule` | `REQ-PG-002` | `TestREQ_PG_002_FindingsSortedByRefThenRule` | `internal/rules/req_config_test.go` |
+| `TestMutantsAllowedOnlyWhenTriggeredAndExempt` | `REQ-PG-040` | `TestREQ_PG_040_AllowRecordedOnlyWhenTriggeredAndEnabled` (check against `TestAllowedRecordedForLease`) | `internal/rules/req_config_test.go` |
+| `TestREQ_PG_004_MissingLimitFailsClosed` | `REQ-PG-004` | keep | `internal/rules/req_failclosed_test.go` |
+| `TestMutantsRefAndPathMessages` | `REQ-PG-010`, `012`, `013` | split: `TestREQ_PG_010_NamespaceMessages`, `TestREQ_PG_012_013_PathMessages` | `internal/rules/req_ref_path_mode_test.go` |
+| `TestMutantsModeRules` | `REQ-PG-016`–`018` | `TestREQ_PG_016_017_018_ModeTargetsAndMessages` | `internal/rules/req_ref_path_mode_test.go` |
+| `TestMutantsContentRules` | `REQ-PG-021`, `022` | split: `TestREQ_PG_021_ScannerAllowOnlyInMarkedFile`, `TestREQ_PG_022_InvisibleAtLineStart` | `internal/rules/req_content_test.go` |
+| `TestMutantsLongLiteral` | `REQ-PG-025` | `TestREQ_PG_025_LongLiteralCharacterClasses` | `internal/rules/req_content_test.go` |
+| `TestREQ_PG_026_PagesScriptHosts` | `REQ-PG-026` | keep | `internal/rules/req_content_test.go` |
+| `TestMutantsMetaRulesRefSelection` | `REQ-PG-030`, `031` | `TestREQ_PG_030_031_DateRulesPerRefAndFailClosed` | `internal/rules/req_meta_test.go` |
+| `TestREQ_PG_028_SignedHistoryErrorsAndDisable`, `TestREQ_PG_028_LookbackZeroAndOne`, `TestREQ_PG_029_BranchUsesOwnHistory` | `REQ-PG-028`, `029` | keep | `internal/rules/req_meta_test.go` |
+| `TestMutantsSizeRulesRefSelection` | `REQ-PG-032`–`034` | `TestREQ_PG_032_033_034_SizeRulesPerRef` | `internal/rules/req_size_test.go` |
+| `TestMutantsSubmoduleNotSized` | `REQ-PG-032` | `TestREQ_PG_032_SubmoduleNotSized` | `internal/rules/req_size_test.go` |
+| `TestREQ_PG_035_MassDeleteShareEdges` | `REQ-PG-035` | keep | `internal/rules/req_size_test.go` |
+| `TestREQ_PG_004_NormalizeFailsClosedAtEveryGitStep` | `REQ-PG-004` | keep | `internal/rules/req_failclosed_test.go` |
+| `TestMutantsNormalizeDetails`, `TestMutantsNormalizeRound2` | `REQ-PG-004`, `044`, `045` | split: `TestREQ_PG_044_045_DiffBaseAndCommitList` (same commit on two refs, merge base, empty-tree base, missing numstat entry) into `internal/rules/req_config_test.go`; the fail-closed cases (unpeelable default branch, failing merge-base) as `TestREQ_PG_004_DiffBaseFailsClosed` into `internal/rules/req_failclosed_test.go` | see name |
+| `TestMutantsAddedLinesLongAndPlusLines` | none | `TestAddedLines_LongLinesAndPlusPrefixedContent` | `internal/rules/delta_test.go` (new) |
+| `TestMutantsPathsAndRemoteOIDs` | none | `TestPathsAndRemoteOIDs` | `internal/rules/delta_test.go` (new) |
+| `TestMutantsParseRaw`, `TestMutantsParseNumstat`, `TestMutantsHeaderAndHunkParsing`, `TestMutantsIdentTimeAndParseCommit` | `REQ-PG-004` for the rejected inputs | rejected inputs: merge into `TestREQ_PG_004_Parsers`; accepted inputs: `TestParseRaw`, `TestParseNumstat`, `TestDiffHeaderPathAndHunkStart`, `TestParseCommit` | `internal/rules/req_failclosed_test.go` / `internal/rules/delta_test.go` (new) |
+| `TestREQ_PG_004_ScannerInvocation`, `TestREQ_PG_004_ScannerLogOptsWithoutRemote`, `TestREQ_PG_004_NoNewCommitsNotScanned` | `REQ-PG-019` | rename to `TestREQ_PG_019_ScannerScansExactlyTheNewTips`, `TestREQ_PG_019_ScannerLogOptsWithoutRemote`, `TestREQ_PG_019_NoNewCommitsNotScanned`: they check what is scanned, not failing closed | `internal/rules/req_content_test.go` |
+| `TestREQ_PG_004_ScannerReportErrorsFailClosed`, `TestREQ_PG_004_ScannerStartErrorWrapped`, `TestREQ_PG_004_ScannerTempFilesFailClosed` | `REQ-PG-004` | keep (check `ScannerReportErrorsFailClosed` against `TestREQ_PG_004_ScannerFailuresFailClosed` and merge if the same) | `internal/rules/req_failclosed_test.go` |
+| `TestREQ_PG_020_GeneratedScannerFiles` | `REQ-PG-020` | merge into `TestREQ_PG_020_ScannerDefaultsAndWallOnlyConfig` | `internal/rules/req_edges_test.go` |
+| `TestREQ_PG_020_UncheckableDotGitleaksIgnoreFailsClosed` | `REQ-PG-020` | merge into `TestREQ_PG_020_DotGitleaksIgnoreDirectoryFailsClosed` | `internal/rules/req_edges_test.go` |
+| `TestMutantsFirstLineTruncation` | `REQ-PG-004` | merge into `TestREQ_PG_004_ScannerErrorMessageIsShortened` | `internal/rules/req_edges_test.go` |
+
+Afterwards there is no `*_mutants_test.go` file and no `TestMutants` name left (`rg -l 'TestMutants|_mutants' --glob '*_test.go' .` finds nothing), `go test ./...` passes with at least the same coverage, and `make mutate` gives the same numbers as at `d7679a7`.
+
 ## Red tests
 
 None at the moment.

@@ -172,6 +172,52 @@ Statement coverage from `go test -cover`, before (`2be85f0`, numbering only), on
 | `REQ-BG-112` | Prerequisites | `TestREQ_BG_112_SourceBuildNeedsExplicitDev` | `internal/backupguard/req_decisions_test.go` | green |
 | `REQ-BG-113` | Configuration | `TestREQ_BG_113_EverrefVersionMustBeAVersionOrDev` | `internal/backupguard/req_decisions_test.go` | green |
 
+## Tests found by mutation testing
+
+The mutation campaign of October 2026 added tests in `internal/backupguard/backupguard_mutants_test.go`, `backupguard_mutants2_test.go` and `cmd/backup-guard/main_mutants_test.go`. They stay, but move to where their behaviour is tested and are named after it, the same way as for Push Guard ([Push Guard test specification](push-guard-testspec.md#tests-found-by-mutation-testing), [Test strategy § Where tests go](test-strategy.md#where-tests-go)). "Merge" means: add the cases as table entries or subtests to the named test. The REQ fit is QA's proposal; the maintainer may correct it while moving if the test body shows a better one. Afterwards each REQ test gets a row in the table above.
+
+### internal/backupguard
+
+| Old test | REQ | New name | Target file |
+| --- | --- | --- | --- |
+| `TestREQ_BG_097_CheckConfigReport` | `REQ-BG-097`, `098` | `TestREQ_BG_097_098_CheckConfigNotesAndRemote` | `internal/backupguard/req_bg_test.go` |
+| `TestREQ_BG_097_CheckConfigProblems` | `REQ-BG-095`, `096`, `099` | `TestREQ_BG_095_096_099_CheckConfigProblemsListed` | `internal/backupguard/req_bg_test.go` |
+| `TestREQ_BG_097_CheckConfigLines` | `REQ-BG-099` | `TestREQ_BG_099_EveryRepoProblemListed` (64 repos with a missing credential) | `internal/backupguard/req_bg_test.go` |
+| `TestREQ_BG_097_CredentialModeNote` | `REQ-BG-097` | keep | `internal/backupguard/req_bg_test.go` |
+| `TestREQ_BG_015_PreflightRunOutcomes` | `REQ-BG-015` | keep | `internal/backupguard/req_decisions_test.go` |
+| `TestMutantsPreflightProblemCount` | `REQ-BG-108` | merge into `TestREQ_BG_108_PreflightReportsEveryProblem` | `internal/backupguard/req_decisions_test.go` |
+| `TestMutantsLoadErrors`, `TestMutantsRepoFileIsDirectory` | `REQ-BG-003`, `004`, `023` | `TestREQ_BG_003_004_023_UnreadableConfigEntries` (merged) | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsLoadDefaultsErrors` | `REQ-BG-003`, `016`, `022` | merge into `TestLoadDefaults` | `internal/backupguard/backupguard_test.go` |
+| `TestMutantsRelativeConfigDirWithoutWorkingDir` | `REQ-BG-003` | `TestREQ_BG_003_RelativeConfigDirWithoutWorkingDir` | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsReposAndLoadRepo` | `REQ-BG-023`, `036` | merge into `TestLoadRepo` | `internal/backupguard/backupguard_test.go` |
+| `TestMutantsEverrefConstantsAndMajorVersion` | `REQ-BG-012` | major-version cases: merge into `TestREQ_BG_012_OnlyTheMajorVersionIsCompared`; exit-code constants: `TestEverrefExitCodes` | `internal/backupguard/req_decisions_test.go` / `backupguard_test.go` |
+| `TestMutantsFindEverrefMessages` | `REQ-BG-009`–`011`, `112` | `TestREQ_BG_009_010_011_EverrefErrorMessages` | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsEverrefRun`, `TestMutantsRunOutputLimitsAndTimeout` | `REQ-BG-074`, `081` | `TestREQ_BG_074_081_RunOutputAndTimeout` (merged) | `internal/backupguard/req_decisions_test.go` |
+| `TestMutantsWaitDelay` | `REQ-BG-074`, `086` | `TestREQ_BG_074_ChildHoldingThePipeDoesNotBlock` | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsTruncateAndRunErrorUnwrap`, `TestMutantsTailAndTruncate` | `REQ-BG-081` | tail/truncate cases: merge into `TestREQ_BG_081_TailKeepsTheEnd`; `RunError` unwrap: `TestRunError_UnwrapsExecError` | `internal/backupguard/req_decisions_test.go` / `backupguard_test.go` |
+| `TestMutantsAddFailureReasonsAndOutput` | `REQ-BG-048`, `081` | merge into `TestREQ_BG_081_FailedAddCarriesEverrefOutput` | `internal/backupguard/req_decisions_test.go` |
+| `TestMutantsBranchesSortedAndFailuresListed` | `REQ-BG-046`, `048` | `TestREQ_BG_046_048_BranchesSortedAndFailuresListed` | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsProtectedBranchesSkipsEmptyName` | `REQ-BG-045` | `TestREQ_BG_045_ProtectedBranchesIgnoreEmptyNames` | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsTagsCheckedAgainstEveryValue` | `REQ-BG-053` | merge into `TestREQ_BG_053_BridgedTagsOnOnce` | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsListRefsErrorIsWrapped` | `REQ-BG-043` | merge into `TestREQ_BG_043_LsRemoteFailureFails` | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsRunAllOutput` | `REQ-BG-070`, `080` | `TestREQ_BG_070_080_RunAllOutputIsCounted` (check against `TestCountEvents`) | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsCreateOnceErrorPaths`, `TestMutantsCreateOnceStatAndRemoveErrors` | `REQ-BG-063`, `065` | `TestREQ_BG_063_065_SetupErrorsLeaveNoHalfBuiltRepo` (merged) | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsSetupLeftoverThatCannotBeRemoved` | `REQ-BG-064` | merge into `TestREQ_BG_064_LeftoversRemoved` | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsUnreadableStateDirs` | `REQ-BG-065`, `069` | `TestREQ_BG_065_UnreadableStateDirFailsTheRepo` | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsRunRepoSetupFailures` | `REQ-BG-060`, `068` | `TestREQ_BG_060_BrokenBridgeRemoteIsRestored` (unknown-repo case to `REQ-BG-068`) | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsLockAndJournalErrors`, `TestMutantsLockPathIsDirectory`, `TestMutantsAppendJournalOnDirectory` | `REQ-BG-075`, `082` | split: `TestREQ_BG_075_LockThatCannotBeTakenFailsTheRepo`; journal cases merged into `TestREQ_BG_082_JournalAppendFails` | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsNotifyArgsAndFailure` | `REQ-BG-083`, `086` | merge into `TestREQ_BG_086_NotifyFailureRecorded` (argument check as a subtest) | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsStatePermissions` | none | `TestStatePermissions` | `internal/backupguard/backupguard_test.go` |
+
+### cmd/backup-guard
+
+| Old test | REQ | New name | Target file |
+| --- | --- | --- | --- |
+| `TestMutantsUsageGoesToStderr`, `TestMutantsFlagErrorsUseStderrWriter` | `REQ-BG-091` | merge into `TestREQ_BG_091_UsageErrors` (stdout stays empty) | `cmd/backup-guard/req_cmd_test.go` |
+| `TestMutantsSubcommandHelpExitsZero` | `REQ-BG-089`, `091` | `TestREQ_BG_089_SubcommandHelpIsNotAnError` | `cmd/backup-guard/req_cmd_test.go` |
+| `TestMutantsParseInterleavedPositionals` | `REQ-BG-088` | merge into `TestREQ_BG_067_068_088_RunSelection` | `cmd/backup-guard/req_cmd_test.go` |
+| `TestMutantsPreflightErrorWraps` | none | `TestRun_PreflightErrorKeepsItsCause` | `cmd/backup-guard/main_test.go` |
+
 ## Findings
 
 ### Open
