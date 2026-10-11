@@ -4,9 +4,12 @@ package config
 // "Configuration"; docs/push-guard.md). See docs/push-guard-testspec.md.
 
 import (
+	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +28,7 @@ func TestVerdictColorOrder(t *testing.T) {
 		{Red, Yellow, true}, {Yellow, Green, true}, {Red, Green, true},
 		{Yellow, Red, false}, {Green, Yellow, false}, {Red, Red, false},
 		{Color("purple"), Green, false}, {Yellow, Color(""), true},
+		{Green, Color("purple"), false}, {Red, Color("purple"), true},
 	} {
 		if got := c.a.Worse(c.b); got != c.want {
 			t.Errorf("%q.Worse(%q) = %v, want %v", c.a, c.b, got, c.want)
@@ -232,6 +236,9 @@ func TestTimeout(t *testing.T) {
 	if c := mustLoad(t, map[string]string{"defaults.yaml": wall + "timeout: 5s\n", "repos/demo/warden.yaml": repoOK}); c.Timeout != 5*time.Second {
 		t.Errorf("timeout 5s = %v", c.Timeout)
 	}
+	if c := mustLoad(t, map[string]string{"defaults.yaml": wall + "timeout: 1ns\n", "repos/demo/warden.yaml": repoOK}); c.Timeout != time.Nanosecond {
+		t.Errorf("timeout 1ns = %v; the smallest positive duration is allowed", c.Timeout)
+	}
 	for _, v := range []string{"soon", "0s", "-1s"} {
 		_, err := loadRepo(t, map[string]string{"defaults.yaml": wall + "timeout: " + v + "\n", "repos/demo/warden.yaml": repoOK})
 		if err == nil || !strings.Contains(err.Error(), "timeout") {
@@ -298,5 +305,112 @@ func TestREQ_PG_032_FloatTwoPow63OutOfRange(t *testing.T) {
 	if _, err := loadRepo(t, map[string]string{"defaults.yaml": wall,
 		"repos/demo/warden.yaml": repoOK + "rules:\n  REF-COUNT: {max_refs: 9.223372036854775808e18}\n"}); err == nil || !strings.Contains(err.Error(), "out of range") {
 		t.Fatalf("load 2^63: err = %v; want out of range", err)
+	}
+}
+
+// REQ-PG-040, REQ-PG-041: a triggered rule fires unless the subject is
+// allowed; deny fires even without a trigger.
+func TestREQ_PG_040_041_FiresWithAllowDenyAndTrigger(t *testing.T) {
+	allow := regexp.MustCompile(`^(?:refs/heads/ok)$`)
+	deny := regexp.MustCompile(`^(?:refs/heads/no)$`)
+	r := &Rule{Enabled: true, Allow: []*regexp.Regexp{allow}, Deny: []*regexp.Regexp{deny}}
+	if r.Fires("refs/heads/ok", true) {
+		t.Error("allowed and triggered must not fire")
+	}
+	if !r.Fires("refs/heads/other", true) {
+		t.Error("not allowed and triggered must fire")
+	}
+	if r.Fires("refs/heads/other", false) {
+		t.Error("not triggered must not fire without deny")
+	}
+	if !r.Fires("refs/heads/no", false) {
+		t.Error("deny must fire without trigger")
+	}
+}
+
+// REQ-PG-038: a disabled rule allows nothing.
+func TestREQ_PG_038_DisabledRuleAllowsNothing(t *testing.T) {
+	allow := regexp.MustCompile(`^(?:refs/heads/ok)$`)
+	r := &Rule{Enabled: false, Allow: []*regexp.Regexp{allow}}
+	if r.Allowed("refs/heads/ok") {
+		t.Fatal("disabled rule must not be Allowed")
+	}
+	r.Enabled = true
+	if !r.Allowed("refs/heads/ok") {
+		t.Fatal("enabled rule with a matching allow must be Allowed")
+	}
+}
+
+// REQ-PG-032: Int and Duration return zero and a reason for a limit that is
+// missing, of the wrong kind or out of range.
+func TestREQ_PG_032_LimitAccessorErrors(t *testing.T) {
+	r := &Rule{ID: "R", Limits: map[string]any{
+		"frac": 1.5, "zero": 0, "maxu": uint64(math.MaxInt64), "num": 5, "neg1ns": "-1ns",
+		"struct": struct{}{}, "skew": "not-a-duration", "neg": "-1s",
+		"big": uint64(1 << 63), "negc": int64(-1), "hif": float64(1e19), "lof": float64(-1e19),
+	}}
+	if n, err := r.Int("missing"); err == nil || n != 0 || !strings.Contains(err.Error(), "not set") {
+		t.Errorf("Int missing: %d %v, want 0 and not set", n, err)
+	}
+	if d, err := r.Duration("missing"); err == nil || d != 0 || !strings.Contains(err.Error(), "not set") {
+		t.Errorf("Duration missing: %v %v, want 0 and not set", d, err)
+	}
+	if n, err := r.Int("struct"); err == nil || n != 0 {
+		t.Errorf("Int non-number: %d %v", n, err)
+	}
+	if d, err := r.Duration("num"); err == nil || d != 0 || !strings.Contains(err.Error(), "is not a duration") {
+		t.Errorf("Duration(number): %v %v, want 0 and is not a duration", d, err)
+	}
+	d, err := r.Duration("skew")
+	if err == nil || d != 0 {
+		t.Errorf("Duration parse: %v %v", d, err)
+	} else if errors.Unwrap(err) == nil {
+		t.Error("Duration parse error must wrap the ParseDuration cause")
+	}
+	if d, err := r.Duration("neg"); err == nil || d != 0 || !strings.Contains(err.Error(), "must not be negative") {
+		t.Errorf("Duration negative: %v %v", d, err)
+	}
+	if _, err := r.Duration("neg1ns"); err == nil {
+		t.Error("Duration(-1ns) loads")
+	}
+	if n, err := r.Int("big"); err == nil || n != 0 || !strings.Contains(err.Error(), "out of range") {
+		t.Errorf("Int uint64 overflow: %d %v", n, err)
+	}
+	if n, err := r.Int("negc"); err == nil || n != 0 || !strings.Contains(err.Error(), "must not be negative") {
+		t.Errorf("Int negative: %d %v", n, err)
+	}
+	for _, k := range []string{"hif", "lof", "frac"} {
+		if n, err := r.Int(k); err == nil || n != 0 {
+			t.Errorf("Int(%s) = %d, %v; want 0 and an error", k, n, err)
+		}
+	}
+	if n, err := r.Int("zero"); err != nil || n != 0 {
+		t.Errorf("Int(0) = %d, %v; zero is allowed", n, err)
+	}
+	if n, err := r.Int("maxu"); err != nil || n != math.MaxInt64 {
+		t.Errorf("Int(MaxInt64 as uint64) = %d, %v", n, err)
+	}
+}
+
+// REQ-PG-032: every limit of every rule is checked on load, also after a
+// duration limit or a rule with a duration limit.
+func TestREQ_PG_032_EveryLimitOfARuleIsChecked(t *testing.T) {
+	c := mustLoad(t, map[string]string{
+		"defaults.yaml":          wall,
+		"repos/demo/warden.yaml": repoOK + "rules:\n  META-BACKDATED: {max_age: 12h}\n  REF-COUNT: {max_refs: 7}\n",
+	})
+	if d, err := c.Rule("META-BACKDATED").Duration("max_age"); err != nil || d != 12*time.Hour {
+		t.Fatalf("max_age=%v %v", d, err)
+	}
+	if n, err := c.Rule("REF-COUNT").Int("max_refs"); err != nil || n != 7 {
+		t.Fatalf("max_refs=%d %v", n, err)
+	}
+	// Limits are a map, so repeat the load to cover both iteration orders.
+	for i := 0; i < 32; i++ {
+		_, err := loadRepo(t, map[string]string{"defaults.yaml": wall,
+			"repos/demo/warden.yaml": repoOK + "rules:\n  RATE-LIMIT: {window: 1h, max_pushes: -1}\n"})
+		if err == nil {
+			t.Fatalf("run %d: negative max_pushes next to a duration loads", i)
+		}
 	}
 }
