@@ -24,3 +24,6 @@ result-*
 # Local mutation-testing artifacts (QA; not CI)
 mutation-report.json
 .gomutants-cache.json
+
+# Coverage output (make coverage)
+.cov/

@@ -6,12 +6,13 @@
 #   make mutate PKGS='./internal/backupguard'
 #   make fuzz
 #   make fuzz FUZZTIME=5s
+#   make coverage
 #
 # See scripts/mutate.sh header and .gomutants.yml for tunables.
 # `make fuzz` runs property/fuzz tests under //go:build fuzz (seeds + rapid).
 # With FUZZTIME set, each Go fuzzer also runs for that duration (`-fuzz`).
 
-.PHONY: mutate fuzz
+.PHONY: mutate fuzz coverage
 
 WORKERS ?= 2
 TEST_CPU ?= 1
@@ -42,3 +43,7 @@ ifneq ($(FUZZTIME),)
 		done; \
 	done
 endif
+
+# Module-wide coverage incl. the push-guard binary (see scripts/coverage.sh).
+coverage:
+	./scripts/coverage.sh
