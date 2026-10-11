@@ -84,14 +84,17 @@ Survivors that remain after targeted tests and cannot change observable behaviou
 | config.go `apply` `sort.Strings(ids)` removed | STATEMENT_REMOVE | Only the order of errors when applying a layer changes; success builds a map. |
 | config.go `indexOf` `return -1`→`-2` | INTEGER_INCREMENT | Callers only test `< 0`. |
 | config.go `load` both `if err != nil` on the embedded defaults | BRANCH_IF | The embedded defaults.yaml always parses and applies (TestBuiltinDefaults); the branches stay as defence in depth. |
+| config.go `build` `if err != nil` on ParseDuration | BRANCH_IF | On error `t` is 0, which fails `t < MinTimeout`; only the error message differs. |
 | config.go `compile` `continue`→`break` after a duration limit | INVERT_LOOP_CTRL | An unparseable number becomes 0 in `checkBounds` and is rejected as out of range. |
 | config.go `countBounds` `"lookback"` lower `0`→`-1` | INTEGER_DECREMENT | Negatives are rejected earlier by `Int`. |
+| config.go `countBounds` `"min_lines"` lower `0`→`-1` | INTEGER_DECREMENT | Negatives are rejected earlier by `Int`. |
 | config.go `durationBounds` `"max_skew"` lower `0`→`-1` | INTEGER_DECREMENT | Negatives are rejected earlier by `Duration`. |
 | config.go `checkBounds` `sort.Strings(keys)` removed | STATEMENT_REMOVE | Only the order of out-of-range errors changes. |
 | config.go `checkBounds` both `if !ok { continue }` (duration and count loop) removed | BRANCH_IF | Every configured limit key has an entry in `countBounds` or `durationBounds`. |
 | config.go `checkBounds` `continue`→`break` after a duration limit | INVERT_LOOP_CTRL | Equivalent only because `window` sorts last among duration keys; revisit when duration keys are added. |
 | config.go `ResolveProgram` `p == ""`→false | EXPRESSION_REMOVE | `resolve(dir, "")` returns `""` anyway. |
 | config.go `RemoteKind` `return KindLocal`→zero value (3) | RETURN_ZERO | `KindLocal` is the zero value of `Kind` (`iota` 0). |
+| config.go `RemoteKind` Local case emptied | BRANCH_CASE | The final `return KindLocal` yields the same result. |
 
 #### internal/journal
 
