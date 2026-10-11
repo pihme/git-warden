@@ -80,6 +80,10 @@ func TestREQ_BG_067_068_088_RunSelection(t *testing.T) {
 	if got := qaJournalRepos(t, dir); got != "b,a,c" {
 		t.Fatalf("journal after run a c: %s", got)
 	}
+	// a positional argument before a flag is still seen: check-config takes none
+	if code, out, errOut := runSplit("check-config", "x", "--config", t.TempDir()); code != 2 || out != "" || !strings.Contains(errOut, "check-config takes no arguments") {
+		t.Fatalf("check-config x --config: exit %d stdout %q stderr %q", code, out, errOut)
+	}
 	// REQ-BG-067: no names: every repo, in order
 	if code, out := pg("run", "--config", dir); code != 0 {
 		t.Fatalf("run: exit %d: %s", code, out)
@@ -136,6 +140,33 @@ func TestREQ_BG_091_UsageErrors(t *testing.T) {
 	}
 	if got := qaJournalRepos(t, dir); got != "" {
 		t.Errorf("a usage error ran repos: %s", got)
+	}
+	// Usage and flag errors go to the given stderr; stdout stays empty.
+	code, out, errOut := runSplit()
+	if code != 2 || out != "" || !strings.Contains(errOut, "backup-guard run") {
+		t.Errorf("no args: exit %d stdout %q stderr %q", code, out, errOut)
+	}
+	code, out, errOut = runSplit("frobnicate")
+	if code != 2 || out != "" || !strings.Contains(errOut, `unknown command "frobnicate"`) || !strings.Contains(errOut, "backup-guard run") {
+		t.Errorf("unknown command: exit %d stdout %q stderr %q", code, out, errOut)
+	}
+	code, out, errOut = runSplit("run", "--bogus")
+	if code != 2 || out != "" || !strings.Contains(errOut, "flag provided but not defined: -bogus") ||
+		!strings.Contains(errOut, "Usage of backup-guard run:") || !strings.Contains(errOut, "-config") {
+		t.Errorf("bad flag: exit %d stdout %q stderr %q", code, out, errOut)
+	}
+}
+
+// -h on a subcommand is a help request: exit 0, not a usage error.
+func TestREQ_BG_089_SubcommandHelpIsNotAnError(t *testing.T) {
+	for _, cmd := range []string{"run", "check-config"} {
+		code, _, errOut := runSplit(cmd, "-h")
+		if code != 0 {
+			t.Errorf("%s -h: exit %d, want 0; stderr %q", cmd, code, errOut)
+		}
+		if strings.Contains(errOut, "backup-guard: flag: help requested") {
+			t.Errorf("%s -h: reported as error: %q", cmd, errOut)
+		}
 	}
 }
 

@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +27,25 @@ func pg(args ...string) (int, string) {
 	var out bytes.Buffer
 	code := run(args, &out, &out)
 	return code, out.String()
+}
+
+// runSplit runs the command and keeps stdout and stderr apart.
+func runSplit(args ...string) (code int, stdout, stderr string) {
+	var o, e bytes.Buffer
+	code = run(args, &o, &e)
+	return code, o.String(), e.String()
+}
+
+// A preflight error keeps its cause in the chain ("preflight: %w").
+func TestRun_PreflightErrorKeepsItsCause(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "nope")
+	err := runRepos(context.Background(), missing, nil, &bytes.Buffer{})
+	if err == nil || !strings.HasPrefix(err.Error(), "preflight: ") {
+		t.Fatalf("err = %v", err)
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("preflight error lost its cause: %v", err)
+	}
 }
 
 func TestUsageAndVersion(t *testing.T) {
