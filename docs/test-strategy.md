@@ -72,115 +72,123 @@ Do **not** disable `ERRORF_WRAP` (`%w` → `%v`): that breaks `errors.Is` / `err
 
 ### Equivalent mutants
 
-Survivors that remain after targeted tests and cannot change observable behaviour, with file:line (as of the commit that added the entry), gomutants mutator and a one-line reason. Re-check the list when the code moves.
+Survivors that remain after targeted tests and cannot change observable behaviour, with the function and a short code snippet (no line numbers, so entries don't drift), gomutants mutator and a one-line reason. gomutants reports file:line; match by function and snippet. Re-check the list when the code moves.
 
 #### internal/config
 
 | Location | Mutator | Why equivalent |
 |---|---|---|
-| config.go:45 `rank` `2`→`3` | INTEGER_INCREMENT | rank is only compared in `Worse`; the order red > yellow > green is kept. |
-| config.go:49 `rank` `0`→`-1` | INTEGER_DECREMENT | Same: only the relative order of ranks matters. |
-| config.go:160 `Int` `x < float64(MinInt64)`→`<=` | CONDITIONALS_BOUNDARY | Only -2^63 changes branch, and it is rejected either way (out of range vs. must not be negative). |
-| config.go:309 `apply` `sort.Strings(ids)` removed | STATEMENT_REMOVE | Only the order of errors when applying a layer changes; success builds a map. |
-| config.go:370 `indexOf` `return -1`→`-2` | INTEGER_INCREMENT | Callers only test `< 0`. |
-| config.go:410, :413 `load` `if err != nil` on the embedded defaults | BRANCH_IF | The embedded defaults.yaml always parses and applies (TestBuiltinDefaults); the branches stay as defence in depth. |
-| config.go:522 `compile` `continue`→`break` after a duration limit | INVERT_LOOP_CTRL | An unparseable number becomes 0 in `checkBounds` and is rejected as out of range. |
-| config.go:549 `countBounds` lookback lower `0`→`-1` | INTEGER_DECREMENT | Negatives are rejected earlier by `Int`. |
-| config.go:557 `durationBounds` max_skew lower `0`→`-1` | INTEGER_DECREMENT | Negatives are rejected earlier by `Duration`. |
-| config.go:569 `checkBounds` `sort.Strings(keys)` removed | STATEMENT_REMOVE | Only the order of out-of-range errors changes. |
-| config.go:573, :583 `checkBounds` `if !ok { continue }` removed | BRANCH_IF | Every configured limit key has an entry in `countBounds` or `durationBounds`. |
-| config.go:580 `checkBounds` `continue`→`break` after a duration limit | INVERT_LOOP_CTRL | Equivalent only because `window` sorts last among duration keys; revisit when duration keys are added. |
-| config.go:627 `ResolveProgram` `p == ""`→false | EXPRESSION_REMOVE | `resolve(dir, "")` returns `""` anyway. |
-| config.go:685, :695 `RemoteKind` `KindLocal`→zero value | RETURN_ZERO | `KindLocal` is the zero value of `Kind` (`iota` 0). |
+| config.go `rank` `return 2`→`3` | INTEGER_INCREMENT | rank is only compared in `Worse`; the order red > yellow > green is kept. |
+| config.go `rank` `return 0`→`-1` | INTEGER_DECREMENT | Same: only the relative order of ranks matters. |
+| config.go `Int` `x < float64(math.MinInt64)`→`<=` | CONDITIONALS_BOUNDARY | Only -2^63 changes branch, and it is rejected either way (out of range vs. must not be negative). |
+| config.go `apply` `sort.Strings(ids)` removed | STATEMENT_REMOVE | Only the order of errors when applying a layer changes; success builds a map. |
+| config.go `indexOf` `return -1`→`-2` | INTEGER_INCREMENT | Callers only test `< 0`. |
+| config.go `load` both `if err != nil` on the embedded defaults | BRANCH_IF | The embedded defaults.yaml always parses and applies (TestBuiltinDefaults); the branches stay as defence in depth. |
+| config.go `compile` `continue`→`break` after a duration limit | INVERT_LOOP_CTRL | An unparseable number becomes 0 in `checkBounds` and is rejected as out of range. |
+| config.go `countBounds` `"lookback"` lower `0`→`-1` | INTEGER_DECREMENT | Negatives are rejected earlier by `Int`. |
+| config.go `durationBounds` `"max_skew"` lower `0`→`-1` | INTEGER_DECREMENT | Negatives are rejected earlier by `Duration`. |
+| config.go `checkBounds` `sort.Strings(keys)` removed | STATEMENT_REMOVE | Only the order of out-of-range errors changes. |
+| config.go `checkBounds` both `if !ok { continue }` (duration and count loop) removed | BRANCH_IF | Every configured limit key has an entry in `countBounds` or `durationBounds`. |
+| config.go `checkBounds` `continue`→`break` after a duration limit | INVERT_LOOP_CTRL | Equivalent only because `window` sorts last among duration keys; revisit when duration keys are added. |
+| config.go `ResolveProgram` `p == ""`→false | EXPRESSION_REMOVE | `resolve(dir, "")` returns `""` anyway. |
+| config.go `RemoteKind` `return KindLocal`→zero value (3) | RETURN_ZERO | `KindLocal` is the zero value of `Kind` (`iota` 0). |
 
 #### internal/journal
 
 | Location | Mutator | Why equivalent |
 |---|---|---|
-| journal.go:83 `json.Marshal` error | BRANCH_IF | An `Entry` has only strings, ints, bools, times and slices of those; Marshal cannot fail. |
-| journal.go:86 `MkdirAll` error | BRANCH_IF | If MkdirAll fails, the OpenFile below fails on the same path with the same error. |
-| journal.go:94 `Flock` error | BRANCH_IF | `flock(LOCK_EX)` on a freshly opened regular file (or char device) has no reachable failure (EINTR is retried by the runtime). |
-| journal.go:116 initial buffer `64*1024` (5 mutants: 63, 65, `/`, 1023, 1025) | INTEGER_*/ARITHMETIC_BASE | Only the starting allocation changes; the 64 MiB maximum (tested) is untouched and bufio grows the buffer. |
-| journal.go:136 `i >= 0`→`> 0`, `0`→`1` in lastEnd | CONDITIONALS_BOUNDARY, INTEGER_INCREMENT | Both callers scan from the returned index + 1; when entry 0 is the approve/reset, returning -1 also scans entry 0, which is not a streak or push and never counts. |
-| journal.go:212 `continue`→`break` | INVERT_LOOP_CTRL | Inside a `switch` that is the last statement of the loop body, `break` leaves the switch and the iteration ends just as with `continue`. |
-| journal.go:231 `i >= 0`→`i >= -1` in ApprovalLease | INTEGER_DECREMENT | OpenApproval just confirmed an approve entry of (ref, sha), so the loop returns before reaching index -1. |
+| journal.go `Append` `json.Marshal` error | BRANCH_IF | An `Entry` has only strings, ints, bools, times and slices of those; Marshal cannot fail. |
+| journal.go `Append` `os.MkdirAll` error | BRANCH_IF | If MkdirAll fails, the OpenFile below fails on the same path with the same error. |
+| journal.go `Append` `syscall.Flock(…, LOCK_EX)` error | BRANCH_IF | `flock(LOCK_EX)` on a freshly opened regular file (or char device) has no reachable failure (EINTR is retried by the runtime). |
+| journal.go `Read` initial buffer `64*1024` (5 mutants: 63, 65, `/`, 1023, 1025) | INTEGER_*/ARITHMETIC_BASE | Only the starting allocation changes; the 64 MiB maximum (tested) is untouched and bufio grows the buffer. |
+| journal.go `lastEnd` `i >= 0`→`> 0`, `0`→`1` | CONDITIONALS_BOUNDARY, INTEGER_INCREMENT | Both callers scan from the returned index + 1; when entry 0 is the approve/reset, returning -1 also scans entry 0, which is not a streak or push and never counts. |
+| journal.go `OpenApproval` `continue`→`break` in the `switch` | INVERT_LOOP_CTRL | Inside a `switch` that is the last statement of the loop body, `break` leaves the switch and the iteration ends just as with `continue`. |
+| journal.go `ApprovalLease` `i >= 0`→`i >= -1` | INTEGER_DECREMENT | OpenApproval just confirmed an approve entry of (ref, sha), so the loop returns before reaching index -1. |
 
 #### internal/rules
 
 | Location | Mutator | Why equivalent |
 |---|---|---|
-| rules.go:104 `a.Ref < b.Ref`→`<=` | CONDITIONALS_BOUNDARY | Only reached when the refs differ, so `<=` and `<` agree. |
-| rules.go:254 `break`→`continue` (invalid UTF-8 scan) | INVERT_LOOP_CTRL | Later invalid lines set the same `binary` and message again. |
-| rules.go:330 `PagesBranch == ""` return | BRANCH_IF | Without it the Pages ref is `refs/heads/`, which is not a valid ref name and never in a push. |
-| rules.go:343 `FindAllStringSubmatch(…, -1)`→`-2` | INTEGER_INCREMENT | Any negative n means "all matches". |
-| rules.go:359 `known[host] = seen` | STATEMENT_REMOVE | Cache only: the host is looked up again with the same result. |
-| rules.go:383 hostInTree `return false, err`→`true, err` | RETURN_TRUE | The caller returns on the error and drops the bool. |
-| rules.go:404 (RANGE_BREAK), :405, :432 `parentTimes[…] = …` | RANGE_BREAK, STATEMENT_REMOVE | Cache of committer times only; a missing entry is read from Git with the same value. |
-| rules.go:457 `rd.Kind == TagMove`→false, `rd.IsTag()`→false, `\|\|`→`&&` | EXPRESSION_REMOVE, INVERT_LOGICAL | TagMove only occurs for tags, and a tag with commits and an old commit is always a TagMove, so each operand alone decides the same. |
-| rules.go:459 `e.d.DefaultBranch == ""`→false | EXPRESSION_REMOVE | With an empty default branch, `Remote[""]` is never present, so `!ok` already returns. |
-| rules.go:463 peel error ignored; :464, :469 `return false, err`→`true, err` | BRANCH_IF, RETURN_TRUE | Ignoring the peel error leaves `start` empty and `rev-list ""` fails; on errors the caller drops the bool. |
-| rules.go:576 `len(oid) > 12`→`>= 12`, `12`→`11` | CONDITIONALS_BOUNDARY, INTEGER_DECREMENT | For a 12-character oid, `oid[:12]` is the oid. |
-| delta.go:218 isAncestor `return false, err`→`true, err` | RETURN_TRUE | The caller returns on the error. |
-| delta.go:241 `d.DefaultBranch != ""`→true | EXPRESSION_REMOVE | `Remote[""]` is never present, so `ok` already implies a non-empty name. |
-| delta.go:282–283 append of the annotated tag object (6 mutants) | EXPRESSION_REMOVE, INVERT_LOGICAL, CONDITIONALS_NEGATION, BRANCH_IF, STATEMENT_REMOVE | `rev-list --objects` already lists a tag object given as input, and `check` sums a map keyed by oid, so adding or dropping the extra id (or the commit for a lightweight tag) changes nothing. |
-| delta.go:309 `if !ok { continue }` | BRANCH_IF | Without it a missing numstat entry assigns zero values to fields that are already zero. |
-| delta.go:422 initial scanner buffer `64*1024` (5 mutants) | INTEGER_*, ARITHMETIC_BASE | Starting allocation only; bufio grows it up to the maximum. |
-| delta.go:423 `no := 0`→`1`/`-1` | INTEGER_* | Every added line follows a hunk header, which sets `no` first. |
-| delta.go:456 `j >= 0`→`> 0`, `0`→`1` in hunkStart | CONDITIONALS_BOUNDARY, INTEGER_INCREMENT | j = 0 means s starts with `,` or space; Atoi of `""` or of that string both give 0. |
-| delta.go:484 `return sizes, nil`→`nil, nil` for no oids | RETURN_ZERO | Callers only read from or range over the map; a nil map behaves the same. |
-| delta.go:511 `f.Status != 'D'`→true, `!gitx.IsZero(f.NewBlob)`→true | EXPRESSION_REMOVE | Exactly the deleted files have a zero new blob, so either check alone excludes them. |
-| delta.go:528 totalSize `return 0, err`→`±1, err` | INTEGER_* | Normalize returns the error and drops the delta. |
-| delta.go:539 `len(oids) == 0` shortcut (2 mutants) | INTEGER_DECREMENT, BRANCH_IF | `cat-file --batch` with an empty line prints ` missing` and the read loop runs zero times. |
-| delta.go:587, :593 ParseCommit `return c, err`→zero commit | RETURN_ZERO | Both callers (batch.commits, pushguard replay) drop the commit on error. |
-| secret.go:50 generated config temp file error | BRANCH_IF | The ignore file is created next in the same temp dir and fails with the same error. |
-| secret.go:113 `report.Close()` | STATEMENT_REMOVE | Leaks one file descriptor; gitleaks writes the report by path. |
-| secret.go:182 refOf `len(e.d.Refs) > 0`→`>= 0`/`> -1` | CONDITIONALS_BOUNDARY, INTEGER_DECREMENT | refOf runs only for leaks, which need new commits, so there is always at least one ref. |
-| secret.go:205 firstLine `i >= 0`→`> 0`, `0`→`1` | CONDITIONALS_BOUNDARY, INTEGER_INCREMENT | s is trimmed first, so it never starts with a newline. |
-| secret.go:208 `len(s) > 300`→`>= 300`, `300`→`299` | CONDITIONALS_BOUNDARY, INTEGER_DECREMENT | The cut is `s[:300]`, which is a no-op for a 300-byte string. |
+| rules.go `Evaluate` sort `a.Ref < b.Ref`→`<=` | CONDITIONALS_BOUNDARY | Only reached when the refs differ, so `<=` and `<` agree. |
+| rules.go `contentRules` `break`→`continue` (invalid UTF-8 scan) | INVERT_LOOP_CTRL | Later invalid lines set the same `binary` and message again. |
+| rules.go `pagesRule` `if e.cfg.PagesBranch == ""` return | BRANCH_IF | Without it the Pages ref is `refs/heads/`, which is not a valid ref name and never in a push. |
+| rules.go `pagesRule` `FindAllStringSubmatch(l.Text, -1)`→`-2` | INTEGER_INCREMENT | Any negative n means "all matches". |
+| rules.go `pagesRule` `known[host] = seen` | STATEMENT_REMOVE | Cache only: the host is looked up again with the same result. |
+| rules.go `hostInTree` `return false, err`→`true, err` | RETURN_TRUE | The caller returns on the error and drops the bool. |
+| rules.go `metaRules` `range e.d.Commits` (RANGE_BREAK) and both `parentTimes[…] = …` | RANGE_BREAK, STATEMENT_REMOVE | Cache of committer times only; a missing entry is read from Git with the same value. |
+| rules.go `signedHistory` `rd.Kind == TagMove`→false, `rd.IsTag()`→false, `\|\|`→`&&` | EXPRESSION_REMOVE, INVERT_LOGICAL | TagMove only occurs for tags, and a tag with commits and an old commit is always a TagMove, so each operand alone decides the same. |
+| rules.go `signedHistory` `e.d.DefaultBranch == ""`→false | EXPRESSION_REMOVE | With an empty default branch, `Remote[""]` is never present, so `!ok` already returns. |
+| rules.go `signedHistory` peel error ignored; `return false, err`→`true, err` (2) | BRANCH_IF, RETURN_TRUE | Ignoring the peel error leaves `start` empty and `rev-list ""` fails; on errors the caller drops the bool. |
+| rules.go `short` `len(oid) > 12`→`>= 12`, `12`→`11` | CONDITIONALS_BOUNDARY, INTEGER_DECREMENT | For a 12-character oid, `oid[:12]` is the oid. |
+| delta.go `isAncestor` `return false, err`→`true, err` | RETURN_TRUE | The caller returns on the error. |
+| delta.go `fill` `d.DefaultBranch != ""`→true | EXPRESSION_REMOVE | `Remote[""]` is never present, so `ok` already implies a non-empty name. |
+| delta.go `fill` `if rd.IsTag() && rd.New != rd.NewCommit { ids = append(ids, rd.New) }` (6 mutants) | EXPRESSION_REMOVE, INVERT_LOGICAL, CONDITIONALS_NEGATION, BRANCH_IF, STATEMENT_REMOVE | `rev-list --objects` already lists a tag object given as input, and `check` sums a map keyed by oid, so adding or dropping the extra id (or the commit for a lightweight tag) changes nothing. |
+| delta.go `diffFiles` `if !ok { continue }` | BRANCH_IF | Without it a missing numstat entry assigns zero values to fields that are already zero. |
+| delta.go `addedLines` initial scanner buffer `64*1024` (5 mutants) | INTEGER_*, ARITHMETIC_BASE | Starting allocation only; bufio grows it up to the maximum. |
+| delta.go `addedLines` `no := 0`→`1`/`-1` | INTEGER_* | Every added line follows a hunk header, which sets `no` first. |
+| delta.go `hunkStart` `j >= 0`→`> 0`, `0`→`1` | CONDITIONALS_BOUNDARY, INTEGER_INCREMENT | j = 0 means s starts with `,` or space; Atoi of `""` or of that string both give 0. |
+| delta.go `check` `return sizes, nil`→`nil, nil` for no oids | RETURN_ZERO | Callers only read from or range over the map; a nil map behaves the same. |
+| delta.go `sizes` `f.Status != 'D'`→true, `!gitx.IsZero(f.NewBlob)`→true | EXPRESSION_REMOVE | Exactly the deleted files have a zero new blob, so either check alone excludes them. |
+| delta.go `totalSize` `return 0, err`→`±1, err` | INTEGER_* | Normalize returns the error and drops the delta. |
+| delta.go `commits` `len(oids) == 0` shortcut (2 mutants) | INTEGER_DECREMENT, BRANCH_IF | `cat-file --batch` with an empty line prints ` missing` and the read loop runs zero times. |
+| delta.go `ParseCommit` both `return c, err`→zero commit | RETURN_ZERO | Both callers (batch.commits, pushguard replay) drop the commit on error. |
+| secret.go `NewScanner` generated config temp file error | BRANCH_IF | The ignore file is created next in the same temp dir and fails with the same error. |
+| secret.go `secretRule` `report.Close()` | STATEMENT_REMOVE | Leaks one file descriptor; gitleaks writes the report by path. |
+| secret.go `secretRule` `if errors.Is(runErr, gitx.ErrOutputTooLarge)` removed | BRANCH_IF | RunBounded returns ErrOutputTooLarge without an ExitError, so the next branch (`!errors.As(runErr, &ee)`) returns it wrapped with `%w`: same fail-closed error, `errors.Is` still true, only the message gets a prefix. |
+| secret.go `readBounded` `io.LimitReader(f, gitx.OutputLimit+1)`→`+2` | INTEGER_INCREMENT | One more byte is read; the check `len(data) > OutputLimit` decides unchanged. |
+| secret.go `refOf` `len(e.d.Refs) > 0`→`>= 0`/`> -1` | CONDITIONALS_BOUNDARY, INTEGER_DECREMENT | refOf runs only for leaks, which need new commits, so there is always at least one ref. |
+| secret.go `firstLine` `i >= 0`→`> 0`, `0`→`1` | CONDITIONALS_BOUNDARY, INTEGER_INCREMENT | s is trimmed first, so it never starts with a newline. |
+| secret.go `firstLine` `len(s) > 300`→`>= 300`, `300`→`299` | CONDITIONALS_BOUNDARY, INTEGER_DECREMENT | The cut is `s[:300]`, which is a no-op for a 300-byte string. |
 
 Not equivalent but not killed in rules (deliberately):
 
 - delta.go maximum diff line: was 256 MiB and not killable on the shared box. Since 2026-10-11 it is 16 MiB (`REQ-PG-049`) and `TestREQ_PG_049_DiffLineLimit` tests exactly 16 MiB and one byte more; the next mutation run shows whether these mutants are now killed.
-- secret.go:73 temp file `WriteString` error: needs a write failure on a freshly created temp file (disk full or fault injection).
-- rules.go:475–476 `b.commits` error after `rev-list` succeeded: needs an object that disappears or is corrupt between two git calls.
-- delta.go:320 (INFRA ERROR) parseRaw `i++`→`i--`, and the timeouts at rules.go:300 and delta.go:358/384: infinite loops; a timeout counts as detected.
+- secret.go `temp` `WriteString` error (also `return f.Name(), err`→nil): needs a write failure on a freshly created temp file (disk full or fault injection).
+- secret.go `readBounded` `io.ReadAll` error: a read error on a regular file just opened needs fault injection.
+- rules.go `signedHistory` `b.commits` error after `rev-list` succeeded: needs an object that disappears or is corrupt between two git calls.
+- delta.go `parseRaw` `i++`→`i--` (INFRA ERROR), and the loop timeouts in rules.go `longLiteral` and delta.go `parseNumstat`: infinite loops; a timeout counts as detected.
 
 #### internal/backupguard
 
 | Location | Mutator | Why equivalent |
 |---|---|---|
-| bridge.go:52 `MkdirAll(base)` error | BRANCH_IF | removeSetupLeftovers reads the same directory next and fails with the same error. |
-| bridge.go:67 `git init` error of the temporary bridge | BRANCH_IF | `remote add` then runs in a directory that is not a repository and fails. |
-| bridge.go:83 `remote add backup` error | BRANCH_IF | checkRemoteURL of `backup` runs next and fails on the same missing remote. |
-| bridge.go:94 `[2]string`→`[3]string` | INTEGER_INCREMENT | Only the array type changes; the third element is empty and never read. |
-| bridge.go:193 `b != key`→true | EXPRESSION_REMOVE | The config regexp anchors `everref.remotes/origin/`, so the prefix is always trimmed and `b` never equals `key`. |
-| bridge.go:274 `MkdirAll(locks)` error, :333 `MkdirAll(state_dir)` error | BRANCH_IF | OpenFile on a path inside the same directory runs next and fails with the same error. |
-| bridge.go:282, :290, :345 `f.Close()` | STATEMENT_REMOVE | Leaks a file descriptor only (the lock is released by `LOCK_UN` or the failed Flock). |
-| bridge.go:315, :337 `json.Marshal` error | BRANCH_IF | Warning and Result hold only strings, ints, bools, a time and a string map; Marshal cannot fail. |
-| bridge.go:348 `return f.Close()`→`nil` | RETURN_ERROR_NIL | Close of a regular file after a successful write does not fail on local file systems. |
-| bridge.go:362 `i >= 0`→true, `0`→`-1` in tail | EXPRESSION_REMOVE, INTEGER_DECREMENT | For i = -1 the condition is `cut < len(s)` and `cut += 0`: no change. |
-| check.go:25 `SplitN(…, 2)`→`3` | INTEGER_INCREMENT | Only element 0 (the major version) is used. |
-| check.go:35, :73 LoadRepo / newRemote error | BRANCH_IF | Preflight has just loaded every repo with the same checks, so these errors are unreachable. |
-| config.go:169 `if !e.IsDir() { continue }` | BRANCH_IF | For a file, the Stat of `<file>/backup.yaml` fails and the entry is skipped anyway. |
-| config.go:206, run.go:90 `%w`→`%v` | ERRORF_WRAP | The wrapped errors are plain `errors.New`/`fmt.Errorf` values with nothing to unwrap to. |
-| everref.go:134 `len(lines) > n`→`>=` | CONDITIONALS_BOUNDARY | For len = n, `lines[0:]` is the whole slice. |
-| run.go:130 `return …, d, nil`→`nil` | RETURN_ZERO | PreflightRun only uses the Defaults when the preflight failed. |
+| bridge.go `ensureBridge` `os.MkdirAll(base, …)` error | BRANCH_IF | removeSetupLeftovers reads the same directory next and fails with the same error. |
+| bridge.go `ensureBridge` `git init` error of the temporary bridge | BRANCH_IF | `remote add` then runs in a directory that is not a repository and fails. |
+| bridge.go `ensureBridge` `remote add backup` error | BRANCH_IF | checkRemoteURL of `backup` runs next and fails on the same missing remote. |
+| bridge.go `ensureBridge` `[][2]string{…}`→`[3]string` | INTEGER_INCREMENT | Only the array type changes; the third element is empty and never read. |
+| bridge.go `protectedBranches` `b != key`→true | EXPRESSION_REMOVE | The config regexp anchors `everref.remotes/origin/`, so the prefix is always trimmed and `b` never equals `key`. |
+| bridge.go `lock` `MkdirAll(locks)` error, `appendJournal` `MkdirAll(state_dir)` error | BRANCH_IF | OpenFile on a path inside the same directory runs next and fails with the same error. |
+| bridge.go `lock` `f.Close()` (2), `appendJournal` `f.Close()` | STATEMENT_REMOVE | Leaks a file descriptor only (the lock is released by `LOCK_UN` or the failed Flock). |
+| bridge.go `notify` and `appendJournal` `json.Marshal` error | BRANCH_IF | Warning and Result hold only strings, ints, bools, a time and a string map; Marshal cannot fail. |
+| bridge.go `appendJournal` `return f.Close()`→`nil` | RETURN_ERROR_NIL | Close of a regular file after a successful write does not fail on local file systems. |
+| bridge.go `tail` `i >= 0`→true, `0`→`-1` | EXPRESSION_REMOVE, INTEGER_DECREMENT | For i = -1 the condition is `cut < len(s)` and `cut += 0`: no change. |
+| check.go `CheckConfig` `strings.SplitN(…, ".", 2)`→`3` | INTEGER_INCREMENT | Only element 0 (the major version) is used. |
+| check.go `CheckConfig` LoadRepo error, `checkRemote` newRemote error | BRANCH_IF | Preflight has just loaded every repo with the same checks, so these errors are unreachable. |
+| config.go `Repos` `if !e.IsDir() { continue }` | BRANCH_IF | For a file, the Stat of `<file>/backup.yaml` fails and the entry is skipped anyway. |
+| config.go `LoadRepo`, run.go `PreflightRun` `%w`→`%v` | ERRORF_WRAP | The wrapped errors are plain `errors.New`/`fmt.Errorf` values with nothing to unwrap to. |
+| everref.go `FindEverref` `if errors.Is(err, gitx.ErrOutputTooLarge)` removed | BRANCH_IF | The next branch `if err != nil` returns the error wrapped with `%w`; the preflight fails the same and the message still names 1 MiB. |
+| everref.go `RunEach` `return text, nil`→`"", nil` | RETURN_ZERO | All callers (ensureBridge, addBranches, runRepo) drop the text on success. |
+| everref.go `lineWriter.Write` `if w.each == nil` removed | BRANCH_IF | Without each, `add` only fills `partial` (bounded) and `flush` calls each only when `each != nil`. |
+| everref.go `lineWriter.Write` `len(rest) > 0`→`>= 0`/`> -1` | CONDITIONALS_BOUNDARY, INTEGER_DECREMENT | With an empty `rest`, `add(nil)` runs and then `break`. |
+| everref.go `lineWriter.flush` `w.each != nil && !w.tooLong && len(w.partial) > 0` (9 mutants) | EXPRESSION_REMOVE×4, INVERT_LOGICAL×2, CONDITIONALS_BOUNDARY, INTEGER_DECREMENT, INTEGER_INCREMENT | `add` empties `partial` when `tooLong`, so `!w.tooLong` is redundant; with `each == nil` `partial` is empty; handing on empty or 1-character lines changes nothing, since `countEvent("")` counts nothing and no event is 1 character long. |
+| everref.go `lastLines` `len(lines) > n`→`>=` | CONDITIONALS_BOUNDARY | For len = n, `lines[0:]` is the whole slice. |
+| run.go `preflight` `return &Guard{…}, repos, d, nil`→`nil` | RETURN_ZERO | PreflightRun only uses the Defaults when the preflight failed. |
 
 Not equivalent but not killed in internal/backupguard (deliberately):
 
-- bridge.go:71, :91, :95, :100, :186, run.go:212, :245 (BRANCH_IF), plus the 16 not-covered mutants in the same error branches (bridge.go:53, :68, :72, :84, :92, :96, :101, :187, :286, :316, :338; check.go:36–37, :74; run.go:213, :246): git config or remote commands that fail in a healthy bridge, Flock errors other than EWOULDBLOCK, and NewRemote errors that LoadRepo already ruled out. They need fault injection between two git calls.
-- Timing constants: everref.go:40 (30 s), everref.go:43, :114 and bridge.go:324 WaitDelay 5 s ±1. The WaitDelay itself is tested (a child that keeps the pipe open), but not its exact length.
-- run.go:206 `err != nil`→true: only differs if a run succeeds and the deadline passes before the deferred check runs. That's a race, not testable reliably.
-- Timeouts at bridge.go:213 (2), :216, :360 and :374: infinite loops; a timeout counts as detected.
+- The BRANCH_IF mutants on git config / remote errors in `ensureBridge` (`remote add origin`, `--unset-all remote.backup.fetch`, the `user.*`/`commit.gpgSign` config loop, the protected-branch lookup) and `protectedBranches`, the error branches of `runRepo`, plus the not-covered mutants in the same error branches (`ensureBridge`, `protectedBranches`, `lock`, `notify`, `appendJournal`, `CheckConfig`, `checkRemote`, `runRepo`): git config or remote commands that fail in a healthy bridge, Flock errors other than EWOULDBLOCK, and NewRemote errors that LoadRepo already ruled out. They need fault injection between two git calls.
+- Timing constants: `FindEverref` 30 s timeout and its `WaitDelay` 5 s, the `killWait = 5 * time.Second` constant and `notify`'s WaitDelay 5 s, ±1. The WaitDelay itself is tested (a child that keeps the pipe open), but not its exact length.
+- run.go `runRepo` `err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded)`, `err != nil`→true: only differs if a run succeeds and the deadline passes before the deferred check runs. That's a race, not testable reliably.
+- Loop timeouts in bridge.go `addBranches` (3), `tail` and `truncate`: infinite loops; a timeout counts as detected.
 
 Test fakes for git-everref refuse an empty `-C` directory: mutants that lose the bridge path would otherwise run git in the package directory and write `everref.*` keys into the repository's own `.git/config`.
 
 #### cmd/backup-guard
 
-No equivalent mutants remain (98.82% efficacy before d621f98, which killed the last survivor, main.go:45 `fs.SetOutput`). Not killed:
+No equivalent mutants remain (98.82% efficacy before d621f98, which killed the last survivor, `run`'s `fs.SetOutput`). Not killed:
 
-- main.go:33 `os.Exit(run(…))` (3 mutants, not covered): `main` exits the process; the tests call `run` instead.
-- main.go:99 `break`→`continue` and main.go:102 `args = fs.Args()[1:]` (4 mutants): infinite flag-parsing loops; the timeouts count as detected.
+- main.go `main` `os.Exit(run(…))` (3 mutants, not covered): `main` exits the process; the tests call `run` instead.
+- main.go `run` flag-parsing loop `break`→`continue` and `args = fs.Args()[1:]` (4 mutants): infinite flag-parsing loops; the timeouts count as detected.
 
 Mutants that removed a loop's `i++`/`i--` time out (infinite loop); gomutants counts them as detected.
 
