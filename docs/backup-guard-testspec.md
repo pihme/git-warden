@@ -12,6 +12,12 @@ Status is as of `main` @ `0d52412` (Peter's decisions of 2026-10-06 included) pl
 
 ## Coverage
 
+Coverage is measured for the whole module with `make coverage` (see [Test strategy](test-strategy.md#layers)); at `ae5e34a` (2026-10-11) it is **88.5 %**, with `internal/backupguard` and `cmd/backup-guard` between 92 % and 99.6 %. `make coverage` prints the full per-package breakdown.
+
+### Earlier numbers (old method, not comparable)
+
+Measured per package with plain `go test -cover`:
+
 Statement coverage from `go test -cover`, before (`2be85f0`, numbering only), on `main` (`0d52412`, with Maintainer's decision tests) and with `qa/backup-guard-tests`:
 
 | Package | `2be85f0` | `main` `0d52412` | + `qa/backup-guard-tests` |
@@ -262,7 +268,7 @@ None.
 ```sh
 go test ./internal/backupguard ./cmd/backup-guard            # all tests
 go test ./internal/backupguard -run 'TestREQ_BG_0[78]'        # REQ-BG-070 to 089
-go test ./internal/backupguard ./cmd/backup-guard -cover      # coverage
+make coverage                                                 # coverage (module-wide)
 ```
 
 Tests that call `realEverref(t)` use the installed `git-everref` (v1.x); all others use a shell stand-in for everref (`qaFake`, `qaEverref`) that logs its arguments and environment.

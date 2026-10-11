@@ -11,6 +11,12 @@ Status is as of `main` @ `f223de4` plus branch `qa/journal-tests` (5.10.2026). *
 
 ## Coverage
 
+Coverage is measured with `make coverage` (see [Test strategy](test-strategy.md#layers) for what it counts). At `ae5e34a` (2026-10-11) the whole module is at **88.5 %**: `internal/rules`, `internal/config`, `internal/journal`, `internal/gitx` and the Backup Guard packages between 92 % and 99.6 %, `internal/pushguard` 74.4 %, `cmd/push-guard` 41.8 %. `make coverage` prints the full per-package breakdown.
+
+### Earlier numbers (old method, not comparable)
+
+The numbers below were measured per package with plain `go test -cover` (and, for the binary row, a separate `GOCOVERDIR` run) before `make coverage` existed. Each test counted only for its own package, so they are lower.
+
 Statement coverage from `go test ./... -coverprofile`, before (`test/rules-req-ids`) and after (`qa/rules-tests`):
 
 | Package | Before | After |
@@ -293,7 +299,7 @@ The remaining uncovered statements in `internal/rules` (49 of 739) are `if err !
 
 ```sh
 go test ./... -run 'TestREQ_PG_'           # all requirement tests
-go test ./... -coverprofile=cover.out      # coverage
+make coverage                              # coverage (module-wide, incl. the push-guard binary)
 ```
 
 `REQ-PG-020` and the `CONTENT-SECRET` tests need gitleaks 8.x on `PATH`.
