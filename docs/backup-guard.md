@@ -262,6 +262,11 @@ Each requirement is one shall/must behaviour. Settled points from [SPEC.md § Ba
 | `REQ-BG-111` | A `notify.command` program without a `/` shall be looked up on `PATH`. One with a `/` shall be used as is if it is absolute, otherwise relative to the configuration directory. An empty program name shall be an error. | Warnings (2026-10-06) |
 | `REQ-BG-112` | A git-everref that reports `dev` (a source build) shall fail the preflight unless `everref.version` is exactly `dev`. With `everref.version: dev`, only a git-everref that reports `dev` shall pass. | Prerequisites (2026-10-06) |
 | `REQ-BG-113` | `everref.version` shall be `dev` or a version `[v]MAJOR[.MINOR[.PATCH]]`. Anything else, including an empty value, shall be an error. | Configuration (2026-10-06) |
+| `REQ-BG-114` | `timeout` shall be from `1m` to `24h`. Anything else shall be an error (amends `REQ-BG-022`). | Configuration (2026-10-11) |
+| `REQ-BG-115` | The event counts of `git-everref run` (`REQ-BG-080`) shall be taken while its output is read, so they stay right for any output size. Of that output only the last 1 MiB shall be kept for `output` (`REQ-BG-081`). | Limits (2026-10-11) |
+| `REQ-BG-116` | The output of `git-everref --version` shall be read up to 1 MiB. More shall fail the preflight. | Limits (2026-10-11) |
+| `REQ-BG-117` | Of the output of `git-everref add` and of `notify.command`, only the last 1 MiB per stream shall be kept; the rest shall be dropped and the program shall run on normally. | Limits (2026-10-11) |
+| `REQ-BG-118` | These fixed limits shall apply: an error text from a program shortened to 300 characters; after a program is killed, at most 5 s more for its output pipes to close. (The 40 lines and 4000 bytes of `output`, 100 branches per `add`, 30 s for `--version` and 1 minute for `notify.command` are `REQ-BG-081`, `046`, `010` and `086`.) | Limits (2026-10-11) |
 
 ## Decided
 
@@ -272,6 +277,7 @@ From [SPEC.md § Open questions](../SPEC.md#open-questions) and [what the implem
 - **Cadence:** every 15 minutes by default, from the host's timer; everref schedules nothing itself (`REQ-BG-071`–`073`).
 - **Retention:** the backups are kept forever for now; nothing in a backup repository is deleted or rewritten (`REQ-BG-066`).
 - **A backup is never continued with another remote** (`REQ-BG-062`), and **a remote with no branch to back up is a failure** (`REQ-BG-054`).
+- **Limits (Peter, 2026-10-11).** `timeout` has an upper bound (24h) besides being positive (`REQ-BG-114`). Output of git-everref and `notify.command` is bounded: event counts are taken while reading, what is only shown keeps its last 1 MiB, and an oversized `--version` answer fails the preflight (`REQ-BG-115`–`117`). Fixed internal limits are requirements with their exact value (`REQ-BG-118`).
 - **Decided by Peter (2026-10-06)**, on the mismatches between spec and code found when the requirements were numbered:
   - **A failed preflight is recorded and warned** like a failed repo: one `backup.jsonl` line with `"preflight": true` and a `backup_failed` warning. Writing `state_dir` and that line is allowed; no repo is set up. If `defaults.yaml` doesn't load, or the line can't be written, the run still exits `1` with a clear error. `check-config` records nothing (`REQ-BG-001`, `015`, `105`, `106`, `110`).
   - **The preflight loads every `backup.yaml`**, like the Push Guard's, and refuses a repo folder with an invalid name; it reports every problem at once (`REQ-BG-037`, `107`, `108`).

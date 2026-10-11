@@ -77,6 +77,14 @@ Each requirement is one shall/must behaviour. Where a rule ID applies, it is nam
 | `REQ-PG-043` | Subjects shall be: full ref name for `REF-*`; path for `PATH-*`, `MODE-*`, `CONTENT-*` and per-file `SIZE-*`; ref name for per-ref `SIZE-*` totals; branch (without `refs/heads/` for branches; full ref for tags) for `META-*`. `REF-COUNT` and `RATE-*` have no subject; `allow`/`deny` shall not apply to them. | Configuration |
 | `REQ-PG-044` | Path and content rules shall run over the **cumulative diff**; metadata rules shall run over **each new commit**. | What a rule sees |
 | `REQ-PG-045` | Remote state shall come from a fresh `git ls-remote --symref` per push; the agent's `old-oid` shall not be trusted. | What a rule sees |
+| `REQ-PG-046` | Every limit in [Limit bounds](#limit-bounds) shall be checked against its range when the configuration loads. A value outside the range shall be refused with an error naming the rule, the key and the range (`check-config` exits `1`); it shall never be clamped. | Configuration (2026-10-11) |
+| `REQ-PG-047` | `timeout` shall be from `1s` to `1h`. Anything else shall be refused when the configuration loads. | Configuration (2026-10-11) |
+| `REQ-PG-048` | A line in `push.jsonl` of up to 64 MiB shall be read. A longer line shall make the push fail closed (internal error). | Limits (2026-10-11) |
+| `REQ-PG-049` | A line of up to 16 MiB in the diff of a push shall be read. A longer line shall make the push fail closed (internal error). | Limits (2026-10-11) |
+| `REQ-PG-050` | Output of a program the Push Guard starts and evaluates (gitleaks' report and its stdout and stderr, `gitleaks version`, `git version`) shall be read up to 1 MiB per file or stream. More shall make the check fail closed, never be evaluated cut short. | Limits (2026-10-11) |
+| `REQ-PG-051` | Output of a program the Push Guard starts only to show or log it (`notify.command`) shall be kept up to its last 1 MiB per stream; the rest shall be dropped and the program shall run on normally. | Limits (2026-10-11) |
+| `REQ-PG-052` | Text shall be shortened to these fixed lengths: a SHA in messages to 12 characters, an error text from a program to 300 characters, a commit subject in `replay` to 72 characters; an alert shall quote at most 20 commits and at most 500 characters per commit message. | Limits (2026-10-11) |
+| `REQ-PG-053` | These fixed time limits shall apply: `gitleaks version` and `git version` 30 s each; after a program is killed, at most 5 s more for its output pipes to close; the HTTP server 30 s to read request headers and 30 s to shut down. | Limits (2026-10-11) |
 
 ## What a rule sees
 
@@ -262,6 +270,26 @@ rules:
 
 Configuration lives on the wall, never in the repo itself. Changing it is a human's job. **Each repo can have its own configuration:** shared defaults, plus a file per repo that overrides individual settings (rules, `enabled`, `color`, lists, limits). A setting the repo file doesn't mention keeps the default. **Lists are added to, never replaced:** `match`, `allow` and `deny` in a repo file extend the defaults, so a default protection (e.g. `deny` for `refs/heads/main`) can't vanish unnoticed. Removing a default entry needs an explicit `match_remove` / `deny_remove` / `allow_remove` with the exact pattern (a pattern that isn't there is an error). There are three layers: the built-in defaults of the program, then `defaults.yaml`, then the repo file.
 
+### Limit bounds
+
+Every configurable limit has a range (`REQ-PG-046`). A value outside it is refused when the configuration loads, so `check-config` reports it; nothing is clamped silently. Zero is allowed only where the table says so.
+
+| Rule | Key | Default | Range |
+| --- | --- | --- | --- |
+| `REF-COUNT` | `max_refs` | 10 | 1 to 1,000 |
+| `CONTENT-BLOB` | `min_base64`, `min_hex` | 200, 100 | 20 to 1,000,000 |
+| `META-UNSIGNED` | `lookback` | 20 | 0 to 1,000 (0 switches the history check off) |
+| `META-BACKDATED` | `max_age` | 24h | 1m to 8760h |
+| `META-FUTURE` | `max_skew` | 10m | 0 to 24h |
+| `SIZE-LIMIT`, `SIZE-LARGE` | `max_files`, `max_lines`, `max_commits` | see defaults | 1 to 10,000,000 |
+| `SIZE-LIMIT`, `SIZE-LARGE` | `max_bytes`, `max_file_bytes` | see defaults | 1 to 10 GiB (10,737,418,240) |
+| `SIZE-MASS-DELETE` | `max_deleted_files` | 20 | 1 to 10,000,000 |
+| `SIZE-MASS-DELETE` | `max_deleted_share` | 50 | 1 to 100 (percent) |
+| `SIZE-MASS-DELETE` | `min_lines` | 100 | 0 to 1,000,000 |
+| `RATE-LIMIT` | `max_pushes`, `window` | 30, 1h | 1 to 10,000; 1m to 168h |
+| `RATE-YELLOW-STREAK` | `max_yellow`, `window` | 5, 24h | 1 to 1,000; 1m to 720h |
+| (wall) | `timeout` | 60s | 1s to 1h (`REQ-PG-047`) |
+
 ### Repos
 
 The Push Guard knows nothing about owners or platforms. **Each repo gets a short name** chosen by the owner (`[a-z0-9._-]+`, unique within one Push Guard) and **one Git URL** where its real remote lives. The name is all the agent sees: it pushes to `<push guard>/<name>.git`, and the Push Guard forwards to the URL. GitHub, GitLab, Gitea/Forgejo and a bare repo over SSH look the same here; `owner/repo` only appears inside the URL, if at all.
@@ -339,6 +367,8 @@ Warnings go out through `notify.command` in `defaults.yaml`: a command that gets
   - Paths with spaces are seen by every content rule (`REQ-PG-021`, `022`, `025`, `026`).
   - A `.gitleaksignore` in the scanned directory makes the scan fail closed (`REQ-PG-020`).
   - An empty `pages_branch` switches `CONTENT-PAGES-SCRIPT` off (`REQ-PG-026`).
+
+- **Limits (Peter, 2026-10-11).** Every configurable limit has a lower and an upper bound and is refused outside it, never clamped ([Limit bounds](#limit-bounds), `REQ-PG-046`, `047`). Fixed internal limits are requirements with their exact value (`REQ-PG-048`–`053`). The maximum diff line drops from 256 MiB to 16 MiB so it can be tested. Output of programs the guard starts is bounded: what is evaluated fails closed above 1 MiB, what is only shown keeps its last 1 MiB. Output of the guard's own `git` calls is not bounded this way; its size follows the repository, and `REQ-PG-049` bounds the diff lines.
 
 ## Open questions
 
