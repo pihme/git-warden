@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pihme/git-warden/internal/gitx"
 	"github.com/pihme/git-warden/internal/testutil"
 )
 
@@ -644,6 +646,16 @@ func TestREQ_BG_043_LsRemoteFailureFails(t *testing.T) {
 	if f.count(t, " add ") != 0 || f.count(t, " run ") != 0 {
 		t.Fatalf("everref called after a failed ls-remote: %v", f.calls(t))
 	}
+	t.Run("error is wrapped", func(t *testing.T) {
+		f := qaFake(t)
+		dir := writeConfig(t, f.config(""), map[string]string{"r": "remote: " + filepath.Join(t.TempDir(), "missing.git") + "\n"})
+		g, _ := qaGuard(t, dir)
+		err := g.runRepo(context.Background(), "r", &Result{})
+		var ge *gitx.Error
+		if !errors.As(err, &ge) || !strings.HasPrefix(err.Error(), "list remote refs: ") {
+			t.Errorf("runRepo: %v", err)
+		}
+	})
 }
 
 func TestREQ_BG_044_OnlyHeadsAreBranches(t *testing.T) {
@@ -806,6 +818,25 @@ func TestREQ_BG_053_BridgedTagsOnOnce(t *testing.T) {
 	if n := f.count(t, " tags --remote backup on --source origin "); n != 2 {
 		t.Fatalf("tags on not redone when origin was missing: %d", n)
 	}
+	t.Run("every value of everref-remote.backup.tags counts", func(t *testing.T) {
+		ctx := context.Background()
+		f := qaFake(t)
+		bare, _ := remoteWith(t, "main")
+		dir := writeConfig(t, f.config(""), map[string]string{"r": "remote: " + bare + "\n"})
+		g, _ := qaGuard(t, dir)
+		if res := g.RunRepo(ctx, "r"); !res.OK {
+			t.Fatalf("first run: %+v", res)
+		}
+		if _, err := qaGitIn(t, BridgePath(g.Defaults.StateDir, "r"), "config", "--add", "everref-remote.backup.tags", "other"); err != nil {
+			t.Fatal(err)
+		}
+		if res := g.RunRepo(ctx, "r"); !res.OK {
+			t.Fatalf("second run: %+v", res)
+		}
+		if n := f.count(t, " tags "); n != 1 {
+			t.Errorf("tags called %d times, want 1:\n%s", n, strings.Join(f.calls(t), "\n"))
+		}
+	})
 }
 
 func TestREQ_BG_054_NoBranchesFails(t *testing.T) {
@@ -915,6 +946,23 @@ func TestREQ_BG_064_LeftoversRemoved(t *testing.T) {
 			t.Errorf("left over: %s", e.Name())
 		}
 	}
+	t.Run("leftover that cannot be removed", func(t *testing.T) {
+		base := t.TempDir()
+		sub := filepath.Join(base, setupPrefix+"bridge-1", "sub")
+		if err := os.MkdirAll(sub, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(sub, "f"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(sub, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Chmod(sub, 0o700)
+		if err := removeSetupLeftovers(base); !errors.Is(err, os.ErrPermission) {
+			t.Fatalf("err = %v", err)
+		}
+	})
 }
 
 func TestREQ_BG_065_IncompleteDirs(t *testing.T) {
@@ -1224,6 +1272,28 @@ func TestREQ_BG_082_JournalAppendFails(t *testing.T) {
 	if res.OK || !strings.Contains(res.Error, "backup.jsonl") {
 		t.Fatalf("run with an unwritable backup.jsonl: %+v", res)
 	}
+	t.Run("write error", func(t *testing.T) {
+		if _, err := os.Stat("/dev/full"); err == nil {
+			state := t.TempDir()
+			if err := os.Symlink("/dev/full", filepath.Join(state, "backup.jsonl")); err != nil {
+				t.Fatal(err)
+			}
+			g := &Guard{Defaults: &Defaults{StateDir: state}}
+			if err := g.appendJournal(&Result{}); err == nil {
+				t.Error("write error on backup.jsonl swallowed")
+			}
+		}
+	})
+	t.Run("backup.jsonl is a directory", func(t *testing.T) {
+		sd := t.TempDir()
+		if err := os.Mkdir(filepath.Join(sd, "backup.jsonl"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		g := &Guard{Defaults: &Defaults{StateDir: sd}}
+		if err := g.appendJournal(&Result{Repo: "r"}); err == nil || !strings.Contains(err.Error(), "is a directory") {
+			t.Errorf("appendJournal: %v", err)
+		}
+	})
 }
 
 // ---------- Warnings ----------
@@ -1294,6 +1364,24 @@ func TestREQ_BG_086_NotifyFailureRecorded(t *testing.T) {
 			t.Errorf("journal notify %q", j[len(j)-1].Notify)
 		}
 	}
+	t.Run("arguments and failure", func(t *testing.T) {
+		ctx := context.Background()
+		args := filepath.Join(t.TempDir(), "args")
+		g := &Guard{Defaults: &Defaults{NotifyCommand: []string{fakeProg(t, `printf '%s' "$*" > `+args+`; cat > /dev/null`), "--flag", "x y"}}}
+		if err := g.notify(ctx, &Result{Repo: "r"}); err != nil {
+			t.Fatal(err)
+		}
+		if got := qaRead(t, args); got != "--flag x y" {
+			t.Errorf("notify args %q", got)
+		}
+		long := strings.Repeat("n", 301)
+		g.Defaults.NotifyCommand = []string{fakeProg(t, "echo "+long+"; exit 3")}
+		err := g.notify(ctx, &Result{Repo: "r"})
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != 3 || !strings.HasSuffix(err.Error(), long[:300]+"…") {
+			t.Errorf("failing notify: %v", err)
+		}
+	})
 }
 
 // ---------- Looking, restoring, provisioning ----------
@@ -1397,4 +1485,629 @@ func TestREQ_BG_103_104_InstallScriptChecks(t *testing.T) {
 	if st, err := os.Stat(filepath.Join(prefix, "git-everref")); err != nil || st.Mode().Perm() != 0o755 {
 		t.Fatalf("installed binary: %v %v", st, err)
 	}
+}
+
+// scriptedEverrefScript is a stand-in for git-everref driven by files in its own
+// directory: add-<branch> makes an add naming origin/<branch> fail with that
+// file as output; run-out is printed by run --all, which then sleeps
+// run-sleep seconds or exits run-exit.
+const scriptedEverrefScript = `#!/bin/sh
+if [ "$1" = -C ] && [ -z "$2" ]; then echo "fake everref: empty -C directory" >&2; exit 9; fi
+echo "$*" >> "@DIR@/calls.log"
+dir=$2
+case " $* " in *" --version "*) echo "everref version v1.0.0"; exit 0;; esac
+case " $* " in *" tags "*) git -C "$dir" config --add everref-remote.backup.tags origin; exit $?;; esac
+case " $* " in *" add "*)
+	for a in "$@"; do case "$a" in origin/*) if [ -f "@DIR@/add-${a#origin/}" ]; then cat "@DIR@/add-${a#origin/}"; exit 1; fi;; esac; done
+	for a in "$@"; do case "$a" in origin/*) git -C "$dir" config "everref.remotes/$a.remote" backup || exit 2;; esac; done
+	exit 0;;
+esac
+case " $* " in *" run --all "*)
+	if [ -f "@DIR@/run-out" ]; then cat "@DIR@/run-out"; fi
+	if [ -f "@DIR@/run-sleep" ]; then exec sleep "$(cat "@DIR@/run-sleep")"; fi
+	if [ -f "@DIR@/run-exit" ]; then exit "$(cat "@DIR@/run-exit")"; fi
+	exit 0;;
+esac
+exit 0
+`
+
+type scriptedEverref struct{ dir, bin string }
+
+func newScriptedEverref(t *testing.T) scriptedEverref {
+	t.Helper()
+	f := scriptedEverref{dir: t.TempDir()}
+	f.bin = filepath.Join(f.dir, "git-everref")
+	if err := os.WriteFile(f.bin, []byte(strings.ReplaceAll(scriptedEverrefScript, "@DIR@", f.dir)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+// set writes the control file name; an empty content removes it.
+func (f scriptedEverref) set(t *testing.T, name, content string) {
+	t.Helper()
+	p := filepath.Join(f.dir, name)
+	if content == "" {
+		if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			t.Fatal(err)
+		}
+		return
+	}
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (f scriptedEverref) calls(t *testing.T) []string {
+	return qaLines(t, filepath.Join(f.dir, "calls.log"))
+}
+
+func (f scriptedEverref) config(extra string) string {
+	return "everref:\n  path: " + f.bin + "\n  version: 1.0.0\n" + extra
+}
+
+func fakeProg(t *testing.T, body string) string {
+	t.Helper()
+	return filepath.Join(qaFakeProgram(t, "prog", body), "prog")
+}
+
+func skipIfRoot(t *testing.T) {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("permission checks don't apply to root")
+	}
+}
+
+func modeOf(t *testing.T, path string) fs.FileMode {
+	t.Helper()
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st.Mode().Perm()
+}
+
+// REQ-BG-097, REQ-BG-098: check-config notes and, with --remote, the remote check.
+func TestREQ_BG_097_098_CheckConfigNotesAndRemote(t *testing.T) {
+	ctx := context.Background()
+	bin, _ := fakeEverref(t)
+	bare, _ := remoteWith(t, "main")
+	cred := filepath.Join(t.TempDir(), "key")
+	if err := os.WriteFile(cred, []byte("k"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// reachable local remote, credential readable by others, no notify.command
+	dir := writeConfig(t, "everref:\n  path: "+bin+"\n  version: 1.0.0\n", map[string]string{
+		"a": "remote: " + bare + "\n",
+		"b": "remote: ssh://git@example.invalid/b.git\ncredential: " + cred + "\n",
+	})
+	var out strings.Builder
+	if err := CheckConfig(ctx, dir, false, &out); err != nil {
+		t.Fatalf("check-config: %v\n%s", err, &out)
+	}
+	d, err := LoadDefaults(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"everref: " + bin + " (",
+		"note: notify.command is not set; nobody is warned about failed runs\n",
+		"note: repos/b: credential " + cred + " is readable by group or others\n",
+		"repo a: " + bare + " -> " + BackupPath(d.StateDir, "a") + "\n",
+		"configuration ok\n",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, &out)
+		}
+	}
+	if strings.Contains(out.String(), "remote reachable") {
+		t.Errorf("remote checked without --remote:\n%s", &out)
+	}
+	// with --remote: the local remote is reachable, the ssh one is a problem
+	out.Reset()
+	dir = writeConfig(t, "everref:\n  path: "+bin+"\n  version: 1.0.0\n", map[string]string{"a": "remote: " + bare + "\n"})
+	if err := CheckConfig(ctx, dir, true, &out); err != nil || !strings.Contains(out.String(), "repo a: remote reachable\n") {
+		t.Fatalf("check-config --remote: %v\n%s", err, &out)
+	}
+	out.Reset()
+	gone := filepath.Join(t.TempDir(), "gone.git")
+	dir = writeConfig(t, "everref:\n  path: "+bin+"\n  version: 1.0.0\n", map[string]string{"a": "remote: " + gone + "\n"})
+	err = CheckConfig(ctx, dir, true, &out)
+	if err == nil || err.Error() != "1 problem(s) in the configuration" || !strings.Contains(out.String(), "problem: repos/a: remote: ") {
+		t.Fatalf("unreachable remote: %v\n%s", err, &out)
+	}
+}
+
+// REQ-BG-095, 096, 099: every problem is listed and counted; no "ok".
+func TestREQ_BG_095_096_099_CheckConfigProblemsListed(t *testing.T) {
+	bin, _ := fakeEverref(t)
+	cred := filepath.Join(t.TempDir(), "missing-key")
+	hosts := filepath.Join(t.TempDir(), "missing-hosts")
+	dir := writeConfig(t, "everref:\n  path: "+bin+"\n  version: 1.0.0\nnotify:\n  command: [/nonexistent/notify-me]\n", map[string]string{
+		"b": "remote: ssh://git@example.invalid/b.git\ncredential: " + cred + "\nknown_hosts: " + hosts + "\n",
+	})
+	var out strings.Builder
+	err := CheckConfig(context.Background(), dir, false, &out)
+	if err == nil || err.Error() != "3 problem(s) in the configuration" {
+		t.Fatalf("err = %v\n%s", err, &out)
+	}
+	for _, want := range []string{"problem: notify.command: ", "problem: repos/b: credential: ", "problem: repos/b: known_hosts: "} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, &out)
+		}
+	}
+	if strings.Contains(out.String(), "configuration ok") || strings.Contains(out.String(), "notify.command is not set") {
+		t.Errorf("output:\n%s", &out)
+	}
+}
+
+// REQ-BG-099: each repo gets its line, and every repo's problem is counted
+// (64 repos with a missing credential).
+func TestREQ_BG_099_EveryRepoProblemListed(t *testing.T) {
+	ctx := context.Background()
+	bin, _ := fakeEverref(t)
+	bare, _ := remoteWith(t, "main")
+	dir := writeConfig(t, "everref:\n  path: "+bin+"\n", map[string]string{"a": "remote: " + bare + "\n", "b": "remote: " + bare + "\n"})
+	var out strings.Builder
+	if err := CheckConfig(ctx, dir, false, &out); err != nil {
+		t.Fatalf("%v\n%s", err, &out)
+	}
+	sd := filepath.Join(dir, "state")
+	for _, want := range []string{
+		"note: everref.version is not set; the default 1.0.0 applies (git-everref must report major version 1)\n",
+		"repo a: " + bare + " -> " + BackupPath(sd, "a") + "\n",
+		"repo b: " + bare + " -> " + BackupPath(sd, "b") + "\n",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, &out)
+		}
+	}
+	// every repo's missing credential is a problem, whatever the map order
+	// (a two-entry map starts with its first key 7 times in 8, hence 64 repos)
+	repos := map[string]string{}
+	for i := range 64 {
+		n := fmt.Sprintf("r%02d", i)
+		repos[n] = "remote: ssh://git@example.invalid/" + n + ".git\ncredential: /nonexistent/key-" + n + "\n"
+	}
+	dir = writeConfig(t, "everref:\n  path: "+bin+"\n  version: 1.0.0\n", repos)
+	out.Reset()
+	if err := CheckConfig(ctx, dir, false, &out); err == nil || err.Error() != "64 problem(s) in the configuration" {
+		t.Errorf("64 missing credentials: %v\n%s", err, &out)
+	}
+}
+
+// Only a credential readable by group or others gets a note; known_hosts may be.
+func TestREQ_BG_097_CredentialModeNote(t *testing.T) {
+	bin, _ := fakeEverref(t)
+	d := t.TempDir()
+	cred, hosts := filepath.Join(d, "key"), filepath.Join(d, "known_hosts")
+	if err := os.WriteFile(cred, []byte("k"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hosts, []byte("h"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := writeConfig(t, "everref:\n  path: "+bin+"\n  version: 1.0.0\n", map[string]string{
+		"s": "remote: ssh://git@example.invalid/s.git\ncredential: " + cred + "\nknown_hosts: " + hosts + "\n",
+	})
+	var out strings.Builder
+	if err := CheckConfig(context.Background(), dir, false, &out); err != nil {
+		t.Fatalf("%v\n%s", err, &out)
+	}
+	if strings.Contains(out.String(), "note: repos/") {
+		t.Errorf("unexpected note:\n%s", &out)
+	}
+	// any group/other bit counts, down to execute for others
+	if err := os.Chmod(cred, 0o601); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := CheckConfig(context.Background(), dir, false, &out); err != nil || !strings.Contains(out.String(), "note: repos/s: credential "+cred+" is readable by group or others\n") {
+		t.Errorf("mode 0601: %v\n%s", err, &out)
+	}
+}
+
+// REQ-BG-003, 004, 023: a defaults.yaml, repos/ or backup.yaml that cannot be
+// read is an error, not a default or an unknown repo.
+func TestREQ_BG_003_004_023_UnreadableConfigEntries(t *testing.T) {
+	t.Run("LoadDefaults, Repos and LoadRepo", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.Mkdir(filepath.Join(dir, DefaultsFile), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadDefaults(dir); err == nil {
+			t.Error("defaults.yaml as a directory accepted")
+		}
+		dir = t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "repos"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if names, err := Repos(dir); err == nil {
+			t.Errorf("repos as a file: %v", names)
+		}
+		dir = t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, "repos", "r", RepoFile), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadRepo(dir, "r"); err == nil || errors.Is(err, ErrUnknownRepo) {
+			t.Errorf("backup.yaml as a directory: %v", err)
+		}
+	})
+	t.Run("backup.yaml is a directory", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, "repos", "r", RepoFile), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadRepo(dir, "r"); err == nil || !strings.Contains(err.Error(), "is a directory") {
+			t.Errorf("LoadRepo: %v", err)
+		}
+	})
+}
+
+// With the working directory gone, a relative configuration directory can't
+// be made absolute: that error is reported as it is.
+func TestREQ_BG_003_RelativeConfigDirWithoutWorkingDir(t *testing.T) {
+	gone := filepath.Join(t.TempDir(), "gone")
+	if err := os.Mkdir(gone, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(gone)
+	if err := os.Remove(gone); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Getwd(); err == nil {
+		t.Skip("getwd works in a removed directory here")
+	}
+	if _, err := LoadDefaults("cfg"); err == nil || strings.HasPrefix(err.Error(), "configuration directory") {
+		t.Errorf("LoadDefaults: %v", err)
+	}
+	if _, err := LoadRepo("cfg", "r"); err == nil || errors.Is(err, ErrUnknownRepo) {
+		t.Errorf("LoadRepo: %v", err)
+	}
+}
+
+// REQ-BG-009 to 011: what FindEverref reports for a missing binary, a failing
+// or unexpected --version, and a dev build.
+func TestREQ_BG_009_010_011_EverrefErrorMessages(t *testing.T) {
+	ctx := context.Background()
+	if _, _, err := FindEverref(ctx, "git-everref-not-installed-anywhere", ""); !errors.Is(err, exec.ErrNotFound) {
+		t.Errorf("missing binary: %v", err)
+	}
+	long := strings.Repeat("x", 301)
+	_, _, err := FindEverref(ctx, fakeProg(t, "echo "+long+"; exit 3"), "")
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 3 || !strings.HasSuffix(err.Error(), long[:300]+"…") {
+		t.Errorf("failing --version: %v", err)
+	}
+	long = strings.Repeat("y", 301)
+	if _, _, err := FindEverref(ctx, fakeProg(t, "echo "+long), ""); err == nil || !strings.Contains(err.Error(), `"`+long[:300]+`…"`) {
+		t.Errorf("unexpected output: %v", err)
+	}
+	dev := fakeProg(t, "echo everref version dev")
+	if path, v, err := FindEverref(ctx, dev, DevVersion); err != nil || path != dev || v != DevVersion {
+		t.Errorf("dev build with version dev: %q %q %v", path, v, err)
+	}
+	if _, _, err := FindEverref(ctx, fakeProg(t, "echo everref version v1.0.0"), DevVersion); err == nil || !strings.Contains(err.Error(), "requires a source build (dev)") {
+		t.Errorf("release with version dev: %v", err)
+	}
+	if _, _, err := FindEverref(ctx, fakeProg(t, "echo everref version abc"), ""); err == nil || !strings.Contains(err.Error(), `can't read a major version from "abc"`) {
+		t.Errorf("version abc: %v", err)
+	}
+}
+
+// A child that keeps the output pipe open must not hold up the guard beyond
+// the WaitDelay.
+func TestREQ_BG_074_ChildHoldingThePipeDoesNotBlock(t *testing.T) {
+	ctx := context.Background()
+	limit := 15 * time.Second
+	t.Run("FindEverref", func(t *testing.T) {
+		t.Parallel()
+		bin := fakeProg(t, "echo everref version v1.0.0; sleep 20 & exit 0")
+		start := time.Now()
+		_, _, _ = FindEverref(ctx, bin, "")
+		if d := time.Since(start); d > limit {
+			t.Errorf("FindEverref took %v", d)
+		}
+	})
+	t.Run("Run", func(t *testing.T) {
+		t.Parallel()
+		ev := &Everref{Bin: fakeProg(t, "sleep 20 & exit 0")}
+		start := time.Now()
+		_, _ = ev.Run(ctx, t.TempDir(), "run")
+		if d := time.Since(start); d > limit {
+			t.Errorf("Run took %v", d)
+		}
+	})
+	t.Run("notify", func(t *testing.T) {
+		t.Parallel()
+		g := &Guard{Defaults: &Defaults{NotifyCommand: []string{fakeProg(t, "sleep 20 & exit 0")}}}
+		start := time.Now()
+		_ = g.notify(ctx, &Result{Repo: "r"})
+		if d := time.Since(start); d > limit {
+			t.Errorf("notify took %v", d)
+		}
+	})
+}
+
+// REQ-BG-046, REQ-BG-048: branches are added in sorted order, and every
+// branch that could not be protected is listed, sorted.
+func TestREQ_BG_046_048_BranchesSortedAndFailuresListed(t *testing.T) {
+	ctx := context.Background()
+	f := newScriptedEverref(t)
+	// more than 8 refs: Go iterates small maps in insertion order (rotated)
+	bare, _ := remoteWith(t, "main", "b1", "b2", "b3", "bad1", "bad2", "bad3", "bad4", "c1", "c2", "c3", "c4")
+	dir := writeConfig(t, f.config(""), map[string]string{"r": "remote: " + bare + "\n"})
+	g, _ := qaGuard(t, dir)
+	// 9 failures: the names come from a map too
+	for _, b := range []string{"b3", "bad1", "bad2", "bad3", "bad4", "c1", "c2", "c3", "c4"} {
+		f.set(t, "add-"+b, "refused\n")
+	}
+	res := g.RunRepo(ctx, "r")
+	if want := "9 branch(es) could not be protected: b3, bad1, bad2, bad3, bad4, c1, c2, c3, c4"; res.Error != want {
+		t.Errorf("Error = %q, want %q", res.Error, want)
+	}
+	var first string
+	for _, c := range f.calls(t) {
+		if strings.Contains(c, " add ") {
+			first = c
+			break
+		}
+	}
+	if !strings.HasSuffix(first, " -q add origin/b1 origin/b2 origin/b3 origin/bad1 origin/bad2 origin/bad3 origin/bad4 origin/c1 origin/c2 origin/c3 origin/c4 origin/main --remote backup") {
+		t.Errorf("first add call: %q", first)
+	}
+}
+
+// REQ-BG-045: a config entry with an empty branch name is not a protected branch.
+func TestREQ_BG_045_ProtectedBranchesIgnoreEmptyNames(t *testing.T) {
+	w := testutil.Init(t, false)
+	w.Git("config", "everref.remotes/origin/.remote", "backup")
+	w.Git("config", "everref.remotes/origin/main.remote", "backup")
+	got, err := protectedBranches(context.Background(), w.Dir)
+	if err != nil || len(got) != 1 || !got["main"] {
+		t.Errorf("protectedBranches = %v, %v", got, err)
+	}
+}
+
+// REQ-BG-070, REQ-BG-080: RunAll prints one counted line per repo, fails for
+// an unknown one, and journals each run with its duration.
+func TestREQ_BG_070_080_RunAllOutputIsCounted(t *testing.T) {
+	ctx := context.Background()
+	f := newScriptedEverref(t)
+	f.set(t, "run-out", "[new] a\n[new] b\n[new lineage] c\n[deleted] d\n[re-tagged] e\n")
+	bare, _ := remoteWith(t, "main")
+	dir := writeConfig(t, f.config(""), map[string]string{"r": "remote: " + bare + "\n"})
+	g, _ := qaGuard(t, dir)
+	var out strings.Builder
+	g.Out = &out
+	if err := g.RunAll(ctx, []string{"r", "x"}); err == nil || err.Error() != "backup failed for x" {
+		t.Errorf("RunAll: %v", err)
+	}
+	for _, want := range []string{"repo r: ok: 1 branches, 2 new, 1 rewritten, 1 deleted, 1 re-tagged\n", "repo x: FAILED: unknown repo"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, &out)
+		}
+	}
+	if j := readJournal(t, g.Defaults.StateDir); len(j) != 2 || j[0].DurationMS <= 0 {
+		t.Errorf("journal: %+v", j)
+	}
+}
+
+// REQ-BG-063, REQ-BG-065: a setup step that fails leaves no half-built
+// directory and never builds over one it cannot check.
+func TestREQ_BG_063_065_SetupErrorsLeaveNoHalfBuiltRepo(t *testing.T) {
+	t.Run("build, rename and permission errors", func(t *testing.T) {
+		base := t.TempDir()
+		// a build error removes the temporary directory and is returned
+		boom := errors.New("boom")
+		if err := createOnce(base, filepath.Join(base, "r"), "HEAD", func(string) error { return boom }); !errors.Is(err, boom) {
+			t.Errorf("build error: %v", err)
+		}
+		// a failed rename (the target appeared meanwhile) removes the temporary directory
+		target := filepath.Join(base, "r")
+		err := createOnce(base, target, "HEAD", func(tmp string) error {
+			if err := os.MkdirAll(filepath.Join(target, "sub"), 0o700); err != nil {
+				return err
+			}
+			return nil
+		})
+		if err == nil {
+			t.Error("rename onto a non-empty directory succeeded")
+		}
+		os.RemoveAll(target)
+		if left, _ := filepath.Glob(filepath.Join(base, setupPrefix+"*")); len(left) != 0 {
+			t.Errorf("setup leftovers: %v", left)
+		}
+		// a path below a regular file cannot be checked
+		file := filepath.Join(base, "file")
+		if err := os.WriteFile(file, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := createOnce(base, filepath.Join(file, "r"), "HEAD", func(string) error { return nil }); err == nil {
+			t.Error("dir below a file accepted")
+		}
+		// a read-only base: neither the empty leftover dir nor a temp dir can be made
+		ro := t.TempDir()
+		if err := os.Mkdir(filepath.Join(ro, "empty"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(ro, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Chmod(ro, 0o700)
+		called := false
+		build := func(string) error { called = true; return nil }
+		if err := createOnce(ro, filepath.Join(ro, "empty"), "HEAD", build); !errors.Is(err, os.ErrPermission) {
+			t.Errorf("empty dir in read-only base: %v", err)
+		}
+		if err := createOnce(ro, filepath.Join(ro, "new"), "HEAD", build); !errors.Is(err, os.ErrPermission) {
+			t.Errorf("temp dir in read-only base: %v", err)
+		}
+		if called {
+			t.Error("build ran although setup failed")
+		}
+	})
+	t.Run("stat and remove errors", func(t *testing.T) {
+		skipIfRoot(t)
+		built := false
+		build := func(string) error { built = true; return nil }
+		// the marker can't be checked (no search permission): no listing either
+		b := t.TempDir()
+		target := filepath.Join(b, "r")
+		testutil.WriteFiles(t, target, map[string]string{"x": ""})
+		if err := os.Chmod(target, 0o400); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(target, 0o700) })
+		if err := createOnce(b, target, "HEAD", build); !errors.Is(err, os.ErrPermission) || built {
+			t.Errorf("unsearchable dir: err %v, built %v", err, built)
+		}
+		// an empty dir that can't be removed is not built over
+		ro := t.TempDir()
+		empty := filepath.Join(ro, "empty")
+		if err := os.Mkdir(empty, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(ro, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(ro, 0o700) })
+		if err := createOnce(t.TempDir(), empty, "HEAD", build); !errors.Is(err, os.ErrPermission) || built {
+			t.Errorf("unremovable empty dir: err %v, built %v", err, built)
+		}
+	})
+}
+
+// REQ-BG-065: a repo state directory that cannot be read fails the repo
+// instead of being rebuilt.
+func TestREQ_BG_065_UnreadableStateDirFailsTheRepo(t *testing.T) {
+	skipIfRoot(t)
+	ctx := context.Background()
+	f := qaFake(t)
+	bare, _ := remoteWith(t, "main")
+	dir := writeConfig(t, f.config(""), map[string]string{"r": "remote: " + bare + "\n"})
+	g, _ := qaGuard(t, dir)
+	if res := g.RunRepo(ctx, "r"); !res.OK {
+		t.Fatalf("first run: %+v", res)
+	}
+	base := filepath.Join(g.Defaults.StateDir, "repos", "r")
+	if err := os.Chmod(base, 0o300); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(base, 0o700) })
+	if res := g.RunRepo(ctx, "r"); res.OK || !strings.Contains(res.Error, "permission denied") {
+		t.Errorf("run with an unreadable repo state directory: %+v", res)
+	}
+
+	// createOnce: a directory without marker that can't be listed
+	b := t.TempDir()
+	target := filepath.Join(b, "r")
+	if err := os.Mkdir(target, 0o300); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(target, 0o700) })
+	built := false
+	if err := createOnce(b, target, "HEAD", func(string) error { built = true; return nil }); !errors.Is(err, os.ErrPermission) || built {
+		t.Errorf("unlistable dir: err %v, built %v", err, built)
+	}
+}
+
+// REQ-BG-060: a missing backup remote is restored, a wrong one or a missing
+// origin fails the repo.
+func TestREQ_BG_060_BrokenBridgeRemoteIsRestored(t *testing.T) {
+	ctx := context.Background()
+	bin, _ := fakeEverref(t)
+	bare, _ := remoteWith(t, "main")
+	dir := writeConfig(t, "everref:\n  path: "+bin+"\n", map[string]string{
+		"r": "remote: " + bare + "\n",
+	})
+	g, _ := qaGuard(t, dir)
+	// a healthy run, then break the bridge in ways the next run must handle
+	if res := g.RunRepo(ctx, "r"); !res.OK {
+		t.Fatalf("first run: %+v", res)
+	}
+	bridge := BridgePath(g.Defaults.StateDir, "r")
+	if _, err := qaGitIn(t, bridge, "remote", "remove", "backup"); err != nil {
+		t.Fatal(err)
+	}
+	if res := g.RunRepo(ctx, "r"); !res.OK {
+		t.Fatalf("run after the backup remote was removed: %+v", res)
+	}
+	if got, _ := qaGitIn(t, bridge, "remote", "get-url", "backup"); strings.TrimSpace(got) != BackupPath(g.Defaults.StateDir, "r") {
+		t.Errorf("backup remote not restored: %q", got)
+	}
+	if _, err := qaGitIn(t, bridge, "remote", "set-url", "backup", "/elsewhere.git"); err != nil {
+		t.Fatal(err)
+	}
+	if res := g.RunRepo(ctx, "r"); res.OK || !strings.Contains(res.Error, "refusing to continue") {
+		t.Errorf("wrong backup remote: %+v", res)
+	}
+	if _, err := qaGitIn(t, bridge, "remote", "set-url", "backup", BackupPath(g.Defaults.StateDir, "r")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := qaGitIn(t, bridge, "remote", "remove", "origin"); err != nil {
+		t.Fatal(err)
+	}
+	if res := g.RunRepo(ctx, "r"); res.OK || !strings.Contains(res.Error, "No such remote") {
+		t.Errorf("bridge without origin: %+v", res)
+	}
+}
+
+// REQ-BG-068: RunRepo with an unknown name fails and names it.
+func TestREQ_BG_068_UnknownRepoFailsTheRun(t *testing.T) {
+	ctx := context.Background()
+	bin, _ := fakeEverref(t)
+	bare, _ := remoteWith(t, "main")
+	dir := writeConfig(t, "everref:\n  path: "+bin+"\n", map[string]string{
+		"r": "remote: " + bare + "\n",
+	})
+	g, _ := qaGuard(t, dir)
+	if res := g.RunRepo(ctx, "nope"); res.OK || !strings.Contains(res.Error, "nope") {
+		t.Errorf("unknown repo: %+v", res)
+	}
+}
+
+// REQ-BG-075: a lock that cannot be taken (locks/ is a file, the lock path
+// is a directory) is an error, not "locked", and fails the repo.
+func TestREQ_BG_075_LockThatCannotBeTakenFailsTheRepo(t *testing.T) {
+	state := t.TempDir()
+	if err := os.WriteFile(filepath.Join(state, "locks"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lock(state, "r"); err == nil || errors.Is(err, ErrLocked) {
+		t.Errorf("locks is a file: %v", err)
+	}
+	sd := t.TempDir()
+	if err := os.MkdirAll(lockPath(sd, "r"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if unlock, err := lock(sd, "r"); err == nil || errors.Is(err, ErrLocked) || !strings.Contains(err.Error(), "is a directory") {
+		if unlock != nil {
+			unlock()
+		}
+		t.Errorf("lock on a directory: %v", err)
+	}
+	t.Run("RunRepo", func(t *testing.T) {
+		ctx := context.Background()
+		bin, _ := fakeEverref(t)
+		bare, _ := remoteWith(t, "main")
+		dir := writeConfig(t, "everref:\n  path: "+bin+"\n", map[string]string{
+			"r": "remote: " + bare + "\n",
+		})
+		g, _ := qaGuard(t, dir)
+		if res := g.RunRepo(ctx, "r"); !res.OK {
+			t.Fatalf("first run: %+v", res)
+		}
+		// a lock that cannot be taken (locks/ is a file) fails the repo
+		locks := filepath.Join(g.Defaults.StateDir, "locks")
+		if err := os.RemoveAll(locks); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(locks, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if res := g.RunRepo(ctx, "r"); res.OK || res.Skipped {
+			t.Errorf("lock failure: %+v", res)
+		}
+	})
 }

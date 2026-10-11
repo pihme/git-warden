@@ -5,14 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp/syntax"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/pihme/git-warden/internal/testutil"
+	"gopkg.in/yaml.v3"
 )
 
 func TestMain(m *testing.M) {
@@ -91,6 +94,33 @@ func TestLoadDefaults(t *testing.T) {
 	if _, err := LoadDefaults(filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Error("accepted a missing configuration directory")
 	}
+	t.Run("errors and the default timeout", func(t *testing.T) {
+		if DefaultTimeout != 30*time.Minute {
+			t.Errorf("DefaultTimeout = %v", DefaultTimeout)
+		}
+		d, err := LoadDefaults(t.TempDir())
+		if err != nil || d.Timeout != 30*time.Minute {
+			t.Errorf("defaults: %+v %v", d, err)
+		}
+		if _, err := LoadDefaults(""); err == nil {
+			t.Error("empty configuration directory accepted")
+		}
+		if _, err := LoadDefaults(filepath.Join(t.TempDir(), "missing")); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("missing directory: %v", err)
+		}
+		file := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(file, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadDefaults(file); err == nil || err.Error() != "configuration directory "+file+" is not a directory" {
+			t.Errorf("file as directory: %v", err)
+		}
+		dir := writeConfig(t, "bogus: 1\n", nil)
+		var te *yaml.TypeError
+		if _, err := LoadDefaults(dir); !errors.As(err, &te) {
+			t.Errorf("unknown key: %v", err)
+		}
+	})
 }
 
 func TestLoadRepo(t *testing.T) {
@@ -141,6 +171,20 @@ func TestLoadRepo(t *testing.T) {
 	if err != nil || len(repos) != 12 || repos[0] != "badre" {
 		t.Fatalf("Repos = %v, %v", repos, err)
 	}
+	t.Run("Repos lists folders only; a bad exclude_branches keeps the syntax error", func(t *testing.T) {
+		dir := writeConfig(t, "", map[string]string{"b": "remote: /x\n"})
+		if err := os.WriteFile(filepath.Join(dir, "repos", "a.txt"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := Repos(dir); err != nil || strings.Join(got, ",") != "b" {
+			t.Errorf("Repos = %v, %v", got, err)
+		}
+		dir = writeConfig(t, "", map[string]string{"r": "remote: /x\nexclude_branches: ['(']\n"})
+		var se *syntax.Error
+		if _, err := LoadRepo(dir, "r"); !errors.As(err, &se) {
+			t.Errorf("bad exclude_branches: %v", err)
+		}
+	})
 }
 
 func TestParseVersion(t *testing.T) {
@@ -475,5 +519,59 @@ func TestInstallScriptPin(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "\nVERSION=1.0.0\n") {
 		t.Error("scripts/install-everref.sh does not pin VERSION=1.0.0 (update this test with the example)")
+	}
+}
+
+// The exit codes documented by git-everref.
+func TestEverrefExitCodes(t *testing.T) {
+	if EverrefOK != 0 || EverrefRefError != 1 || EverrefUsage != 2 {
+		t.Errorf("exit codes %d %d %d, want 0 1 2 (documented by git-everref)", EverrefOK, EverrefRefError, EverrefUsage)
+	}
+}
+
+// RunError keeps the exec error in the chain.
+func TestRunError_UnwrapsExecError(t *testing.T) {
+	ev := &Everref{Bin: filepath.Join(qaFakeProgram(t, "fail", "exit 3"), "fail")}
+	_, err := ev.Run(context.Background(), t.TempDir(), "x")
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 3 {
+		t.Errorf("RunError does not unwrap to the exec error: %v", err)
+	}
+}
+
+// The state directory and its files are private (0700 / 0600), also when
+// a failed preflight creates them.
+func TestStatePermissions(t *testing.T) {
+	ctx := context.Background()
+	f := qaFake(t)
+	bare, _ := remoteWith(t, "main")
+	dir := writeConfig(t, f.config(""), map[string]string{"r": "remote: " + bare + "\n"})
+	g, _ := qaGuard(t, dir)
+	if res := g.RunRepo(ctx, "r"); !res.OK {
+		t.Fatalf("run: %+v", res)
+	}
+	sd := g.Defaults.StateDir
+	for path, want := range map[string]fs.FileMode{
+		filepath.Join(sd, "locks"):            0o700,
+		lockPath(sd, "r"):                     0o600,
+		filepath.Join(sd, "repos", "r"):       0o700,
+		filepath.Join(sd, "backup.jsonl"):     0o600,
+		filepath.Join(sd, "repos", "r", ".."): 0o700,
+	} {
+		if got := modeOf(t, path); got != want {
+			t.Errorf("%s: mode %o, want %o", path, got, want)
+		}
+	}
+	// a failed preflight creates the state directory itself
+	sd = filepath.Join(t.TempDir(), "new-state")
+	dir = writeConfig(t, "everref:\n  path: "+missingEverref(t)+"\nstate_dir: "+sd+"\n", map[string]string{"r": "remote: " + bare + "\n"})
+	if _, _, err := PreflightRun(ctx, dir, nil); err == nil {
+		t.Fatal("preflight without everref passed")
+	}
+	if got := modeOf(t, sd); got != 0o700 {
+		t.Errorf("state dir mode %o", got)
+	}
+	if got := modeOf(t, filepath.Join(sd, "backup.jsonl")); got != 0o600 {
+		t.Errorf("backup.jsonl mode %o", got)
 	}
 }

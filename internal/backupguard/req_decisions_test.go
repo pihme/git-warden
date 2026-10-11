@@ -10,7 +10,9 @@ package backupguard
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -154,6 +156,23 @@ func TestREQ_BG_108_PreflightReportsEveryProblem(t *testing.T) {
 			t.Errorf("preflight error lacks %q: %v", want, err)
 		}
 	}
+	t.Run("problem count", func(t *testing.T) {
+		ctx := context.Background()
+		bare, _ := remoteWith(t, "main")
+		dir := writeConfig(t, "everref:\n  path: "+missingEverref(t)+"\n", map[string]string{"r": "remote: " + bare + "\n"})
+		if _, _, err := Preflight(ctx, dir, nil); err == nil || !strings.HasPrefix(err.Error(), "everref not found") {
+			t.Errorf("one problem: %v", err)
+		}
+		// two problems are still recorded by PreflightRun
+		dir = writeConfig(t, "everref:\n  path: "+missingEverref(t)+"\n", nil)
+		if _, _, err := PreflightRun(ctx, dir, nil); err == nil || !strings.HasPrefix(err.Error(), "2 problems: ") {
+			t.Fatalf("two problems: %v", err)
+		}
+		j := readJournal(t, filepath.Join(dir, "state"))
+		if len(j) != 1 || !j[0].Preflight || !strings.HasPrefix(j[0].Error, "preflight: 2 problems: ") {
+			t.Errorf("journal: %+v", j)
+		}
+	})
 }
 
 func TestREQ_BG_012_OnlyTheMajorVersionIsCompared(t *testing.T) {
@@ -185,6 +204,14 @@ func TestREQ_BG_012_OnlyTheMajorVersionIsCompared(t *testing.T) {
 	if g, _, err := Preflight(ctx, dir, nil); err != nil || g.Version != "v1.3.0" {
 		t.Fatalf("v1.3.0 against v1.0.0: %v", err)
 	}
+	t.Run("majorVersion", func(t *testing.T) {
+		if n, ok := majorVersion("abc"); n != 0 || ok {
+			t.Errorf("majorVersion(abc) = %d, %v", n, ok)
+		}
+		if n, ok := majorVersion("v2.1.0"); n != 2 || !ok {
+			t.Errorf("majorVersion(v2.1.0) = %d, %v", n, ok)
+		}
+	})
 }
 
 func TestREQ_BG_013_EverrefVersionDefaultsTo100(t *testing.T) {
@@ -344,6 +371,42 @@ func TestREQ_BG_081_FailedAddCarriesEverrefOutput(t *testing.T) {
 	if j := readJournal(t, g.Defaults.StateDir); !strings.Contains(j[0].Output, "reserved name") {
 		t.Fatalf("journal output: %+v", j[0])
 	}
+	t.Run("reasons and output limits", func(t *testing.T) {
+		ctx := context.Background()
+		f := newScriptedEverref(t)
+		bare, _ := remoteWith(t, "main", "bad1", "bad2")
+		dir := writeConfig(t, f.config(""), map[string]string{"r": "remote: " + bare + "\n"})
+		g, _ := qaGuard(t, dir)
+		z301, z299 := strings.Repeat("z", 301), strings.Repeat("z", 299)
+		f.set(t, "add-bad1", "a1\n"+z301)
+		f.set(t, "add-bad2", "first\n"+z299)
+		res := g.RunRepo(ctx, "r")
+		if res.OK || res.AddFailed["bad1"] != "…"+z301[1:] || res.AddFailed["bad2"] != z299 || len(res.AddFailed) != 2 {
+			t.Errorf("AddFailed = %q", res.AddFailed)
+		}
+		if want := "a1\n" + z301 + "\nfirst\n" + z299; res.Output != want {
+			t.Errorf("Output = %q, want %q", res.Output, want)
+		}
+		// the output kept is the last 40 lines and at most 4000 bytes
+		f.set(t, "add-bad2", "")
+		var lines []string
+		for i := 1; i <= 41; i++ {
+			lines = append(lines, "l"+string(rune('0'+i/10))+string(rune('0'+i%10)))
+		}
+		f.set(t, "add-bad1", strings.Join(lines, "\n")+"\n")
+		if res := g.RunRepo(ctx, "r"); res.Output != strings.Join(lines[1:], "\n") {
+			t.Errorf("41 lines: Output = %q", res.Output)
+		}
+		w := strings.Repeat("w", 4001)
+		f.set(t, "add-bad1", w[:4000])
+		if res := g.RunRepo(ctx, "r"); res.Output != w[:4000] {
+			t.Errorf("4000 bytes: Output has %d bytes, starts %q", len(res.Output), res.Output[:min(5, len(res.Output))])
+		}
+		f.set(t, "add-bad1", w)
+		if res := g.RunRepo(ctx, "r"); res.Output != "…"+w[:4000] {
+			t.Errorf("4001 bytes: Output has %d bytes, starts %q", len(res.Output), res.Output[:min(5, len(res.Output))])
+		}
+	})
 }
 
 func TestREQ_BG_097_CheckConfigNotesDefaultEverrefVersion(t *testing.T) {
@@ -431,6 +494,45 @@ func TestREQ_BG_081_TailKeepsTheEnd(t *testing.T) {
 	if got := tail("x\n"+strings.Repeat("y", 30), 10); got != "…"+strings.Repeat("y", 10) {
 		t.Errorf("a newline before the window must not drop the window: %q", got)
 	}
+	t.Run("tail and truncate cut at a line or UTF-8 boundary", func(t *testing.T) {
+		for _, c := range []struct {
+			s    string
+			n    int
+			want string
+		}{
+			{"abc", 3, "abc"},
+			{"abcd", 3, "abc…"},
+			{"aé", 2, "a…"},
+			{"éé", 1, "…"},
+		} {
+			if got := truncate(c.s, c.n); got != c.want {
+				t.Errorf("truncate(%q, %d) = %q, want %q", c.s, c.n, got, c.want)
+			}
+		}
+		for _, c := range []struct {
+			s    string
+			n    int
+			want string
+		}{
+			{"abc", 3, "abc"},
+			{"ab\ncd", 4, "…cd"},
+			{"abc\n", 2, "…c\n"},
+			{"a\nbc", 3, "…bc"},
+			{"ab\nc", 3, "…c"},
+			{"\x80\x80\x80", 2, "…"},
+			{"xé", 1, "…"},
+		} {
+			if got := tail(c.s, c.n); got != c.want {
+				t.Errorf("tail(%q, %d) = %q, want %q", c.s, c.n, got, c.want)
+			}
+		}
+		if got := truncate("\x80\x80\x80\x80", 2); got != "…" {
+			t.Errorf("truncate of continuation bytes = %q", got)
+		}
+		if got := truncate("abc", 3); got != "abc" {
+			t.Errorf("truncate(abc, 3) = %q", got)
+		}
+	})
 }
 
 // TestREQ_BG_074_TimeoutIsNamed: a run killed by its timeout says so in the
@@ -450,4 +552,86 @@ func TestREQ_BG_074_TimeoutIsNamed(t *testing.T) {
 	if w := readWarning(t, warning); !strings.Contains(w.Error, "timeout 2s") {
 		t.Fatalf("warning: %+v", w)
 	}
+}
+
+func TestREQ_BG_015_PreflightRunOutcomes(t *testing.T) {
+	ctx := context.Background()
+	bin, _ := fakeEverref(t)
+	dir := writeConfig(t, "everref:\n  path: "+bin+"\n", map[string]string{"r": "remote: /srv/git/r.git\n"})
+	g, repos, err := PreflightRun(ctx, dir, nil)
+	if err != nil || g == nil || len(repos) != 1 || repos[0] != "r" {
+		t.Fatalf("PreflightRun: %v %v %v", g, repos, err)
+	}
+	// a failed preflight whose warning cannot be delivered records that too
+	notify, _ := qaNotifier(t, "exit 3")
+	dir = writeConfig(t, "everref:\n  path: "+missingEverref(t)+"\nnotify:\n  command: ["+notify+"]\n", map[string]string{"r": "remote: /srv/git/r.git\n"})
+	if _, _, err := PreflightRun(ctx, dir, nil); err == nil {
+		t.Fatal("preflight without everref passed")
+	}
+	d, _ := LoadDefaults(dir)
+	if j := readJournal(t, d.StateDir); len(j) != 1 || !strings.Contains(j[0].Notify, "notify.command") {
+		t.Fatalf("journal: %+v", j)
+	}
+	// repos/ that cannot be read is a preflight problem
+	dir = writeConfig(t, "everref:\n  path: "+bin+"\n", nil)
+	if err := os.WriteFile(filepath.Join(dir, "repos"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Preflight(ctx, dir, nil); err == nil || strings.Contains(err.Error(), "no repos configured") {
+		t.Fatalf("unreadable repos/: %v", err)
+	}
+}
+
+// REQ-BG-074, REQ-BG-081: a failed or timed-out everref run keeps its exit
+// code and (the end of) its output; a timeout says so.
+func TestREQ_BG_074_081_RunOutputAndTimeout(t *testing.T) {
+	t.Run("Everref.Run", func(t *testing.T) {
+		ctx := context.Background()
+		dir := t.TempDir()
+		var re *RunError
+		_, err := (&Everref{Bin: missingEverref(t)}).Run(ctx, dir, "run")
+		if !errors.As(err, &re) || re.ExitCode != -1 {
+			t.Errorf("missing binary: %#v", err)
+		}
+		// a failure keeps the output (run --all events are still counted)
+		out, err := (&Everref{Bin: fakeProg(t, "echo '[new] x'; exit 3")}).Run(ctx, dir, "run", "--all")
+		var ee *exec.ExitError
+		if out != "[new] x\n" || !errors.As(err, &re) || re.ExitCode != 3 || !errors.As(err, &ee) || errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("failing run: %q %v", out, err)
+		}
+		tctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+		defer cancel()
+		_, err = (&Everref{Bin: fakeProg(t, "exec sleep 10")}).Run(tctx, dir, "run")
+		if !errors.As(err, &re) || !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("timeout: %v", err)
+		}
+	})
+	t.Run("RunRepo", func(t *testing.T) {
+		ctx := context.Background()
+		f := newScriptedEverref(t)
+		bare, _ := remoteWith(t, "main")
+		dir := writeConfig(t, f.config(""), map[string]string{"r": "remote: " + bare + "\n"})
+		g, _ := qaGuard(t, dir)
+		v := strings.Repeat("v", 4001)
+		f.set(t, "run-exit", "1")
+		f.set(t, "run-out", v[:4000])
+		res := g.RunRepo(ctx, "r")
+		if res.OK || res.EverrefExit != 1 || res.Output != v[:4000] || strings.Contains(res.Error, "timeout") {
+			t.Errorf("4000 bytes: exit %d, %d bytes, error %q", res.EverrefExit, len(res.Output), res.Error)
+		}
+		f.set(t, "run-out", v)
+		if res := g.RunRepo(ctx, "r"); res.Output != "…"+v[:4000] {
+			t.Errorf("4001 bytes: %d bytes, starts %q", len(res.Output), res.Output[:min(5, len(res.Output))])
+		}
+		// a timeout says so and keeps everref's partial output
+		f.set(t, "run-exit", "")
+		f.set(t, "run-out", "partial\n")
+		f.set(t, "run-sleep", "10")
+		dir = writeConfig(t, f.config("timeout: 2s\n"), map[string]string{"r": "remote: " + bare + "\n"})
+		g, _ = qaGuard(t, dir)
+		res = g.RunRepo(ctx, "r")
+		if res.OK || !strings.HasPrefix(res.Error, "timeout 2s (defaults.yaml) exceeded, killed: ") || res.Output != "partial" {
+			t.Errorf("timeout: error %q, output %q", res.Error, res.Output)
+		}
+	})
 }
