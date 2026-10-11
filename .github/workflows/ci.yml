@@ -17,7 +17,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -62,6 +62,29 @@ jobs:
           path: |
             coverage.out
             coverage.txt
+          retention-days: 14
+      # Authoritative module-wide number incl. the push-guard binary
+      # (docs/test-strategy.md). Fails below COVERAGE_MIN.
+      - name: Module coverage (make coverage, minimum 85 %)
+        run: ./scripts/coverage.sh
+        env:
+          COVERAGE_MIN: "85"
+          GITLEAKS_REQUIRED: "1"
+          SSH_REQUIRED: "1"
+          EVERREF_REQUIRED: "1"
+      - name: Module coverage summary
+        if: always() && hashFiles('.cov/total.txt') != ''
+        run: |
+          { echo "### Module coverage (make coverage)"; echo; echo '```'; cat .cov/per-package.txt; echo; cat .cov/total.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload module coverage
+        if: always() && hashFiles('.cov/total.txt') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-coverage
+          path: |
+            .cov/all.out
+            .cov/per-package.txt
+            .cov/total.txt
           retention-days: 14
 
 
