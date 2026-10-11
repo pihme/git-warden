@@ -189,3 +189,81 @@ func TestREQ_PG_031_FutureBoundaries(t *testing.T) {
 		expectColor(t, fs, "META-FUTURE", config.Yellow)
 	}
 }
+
+// REQ-PG-030, REQ-PG-031: the date rules check the commits of updated refs
+// (not deleted ones), META-FUTURE says what to fix, and an unreadable parent
+// fails closed.
+func TestREQ_PG_030_031_DateRulesPerRefAndFailClosed(t *testing.T) {
+	f := newFixture(t, "")
+	old := commitD("2222222222222222222222222222222222222222", f.now.Add(-48*time.Hour))
+	del := refD("refs/heads/x", Delete)
+	del.OldCommit = bogusOID
+	m := refD(main, Create)
+	m.Commits = []Commit{old}
+	fs := f.evalDOK(&Delta{Refs: []*RefDelta{del, m}, Commits: []Commit{old}})
+	if len(findings(fs, "META-BACKDATED")) != 1 {
+		t.Errorf("META-BACKDATED: %v", fs)
+	}
+	// future dates carry their own message
+	fut := commitD("3333333333333333333333333333333333333333", f.now.Add(time.Hour))
+	m.Commits = []Commit{fut}
+	fs = f.evalDOK(&Delta{Refs: []*RefDelta{m}, Commits: []Commit{fut}})
+	if x := expect(t, fs, "META-FUTURE", ""); !strings.Contains(x.Message, "after the push; fix the clock") {
+		t.Errorf("META-FUTURE message %q", x.Message)
+	}
+	// a parent that cannot be read fails closed
+	orphan := commitD("4444444444444444444444444444444444444444", f.now, bogusOID)
+	m.Commits = []Commit{orphan}
+	if _, err := f.evalD(&Delta{Refs: []*RefDelta{m}, Commits: []Commit{orphan}}); err == nil {
+		t.Error("unreadable parent ignored")
+	}
+}
+
+func TestREQ_PG_028_SignedHistoryErrorsAndDisable(t *testing.T) {
+	c := commitD("2222222222222222222222222222222222222222", time.Now())
+	rd := refD(main, FF)
+	rd.OldCommit = bogusOID
+	rd.Commits = []Commit{c}
+	d := func() *Delta { return &Delta{Refs: []*RefDelta{rd}, Commits: []Commit{c}} }
+	if _, err := newFixture(t, "").evalD(d()); err == nil {
+		t.Error("rev-list failure on the old tip ignored")
+	}
+	if _, err := newFixture(t, "rules:\n  META-UNSIGNED: {enabled: false}\n").evalD(d()); err != nil {
+		t.Errorf("disabled META-UNSIGNED still reads history: %v", err)
+	}
+	// new ref, default branch named but not on the remote: quiet
+	nr := refD("refs/heads/new", Create)
+	nr.Commits = []Commit{c}
+	if _, err := newFixture(t, "").evalD(&Delta{Refs: []*RefDelta{nr}, Commits: []Commit{c}, Remote: map[string]string{}, DefaultBranch: main}); err != nil {
+		t.Errorf("default branch missing on the remote: %v", err)
+	}
+	// default branch on the remote but not a commit here: fail closed
+	if _, err := newFixture(t, "").evalD(&Delta{Refs: []*RefDelta{nr}, Commits: []Commit{c}, Remote: map[string]string{main: bogusOID}, DefaultBranch: main}); err == nil {
+		t.Error("unpeelable default branch ignored")
+	}
+}
+
+func TestREQ_PG_028_LookbackZeroAndOne(t *testing.T) {
+	for lookback, want := range map[string]int{"0": 0, "1": 1} {
+		f := newReqFixture(t, "rules:\n  META-UNSIGNED: {lookback: "+lookback+"}\n"+quietDates)
+		start := f.now.Add(-time.Hour)
+		tip := metaChain(t, f, "", 1, start, true, "signed")[0]
+		u := metaChain(t, f, tip, 1, start.Add(time.Minute), false, "unsigned")
+		if got := unsignedCommits(f.eval(map[string]string{main: tip}, push(main, u[0]))); len(got) != want {
+			t.Errorf("lookback %s: %d META-UNSIGNED findings, want %d", lookback, len(got), want)
+		}
+	}
+}
+
+// A branch update looks back on its own old tip, not the default branch.
+func TestREQ_PG_029_BranchUsesOwnHistory(t *testing.T) {
+	f := newReqFixture(t, "rules:\n  META-UNSIGNED: {lookback: 1}\n"+quietDates)
+	start := f.now.Add(-time.Hour)
+	def := metaChain(t, f, "", 1, start, false, "unsigned default")[0]
+	feat := metaChain(t, f, "", 1, start, true, "signed feature")[0]
+	u := metaChain(t, f, feat, 1, start.Add(time.Minute), false, "unsigned")
+	fs := f.eval(map[string]string{main: def, "refs/heads/feature": feat}, push("refs/heads/feature", u[0]))
+	if got := unsignedCommits(fs); len(got) != 1 {
+		t.Errorf("META-UNSIGNED %v, want the new commit flagged", got)
+	}
+}

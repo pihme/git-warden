@@ -212,3 +212,69 @@ func TestREQ_PG_035_ShareOnRenamesNotDeletes(t *testing.T) {
 	fs := f.eval(map[string]string{main: base}, push(main, head))
 	wantPaths(t, fs, "SIZE-MASS-DELETE", []string{"new.txt", "old.txt", "gone.txt"}, "new.txt")
 }
+
+// REQ-PG-032 to 034: size rules check updated refs only, never deleted or
+// unchanged ones, and never size deleted files.
+func TestREQ_PG_032_033_034_SizeRulesPerRef(t *testing.T) {
+	f := newFixture(t, "rules:\n  SIZE-MASS-DELETE: {max_deleted_files: 0}\n  SIZE-LARGE: {max_files: 0}\n")
+	gone := FileChange{Status: 'D', Path: "a", NewSize: 2000000}
+	fs := f.evalDOK(&Delta{Refs: []*RefDelta{refD("refs/heads/x", Delete, gone), refD("refs/heads/y", Noop, gone),
+		refD("refs/heads/a", FF, FileChange{Status: 'M', Path: "m"}), refD(main, FF, gone)}})
+	if r := refs(fs, "SIZE-MASS-DELETE"); len(r) != 1 || !r[main] {
+		t.Errorf("SIZE-MASS-DELETE on %v, want only main", r)
+	}
+	if r := refs(fs, "SIZE-LARGE"); len(r) != 2 || !r[main] || !r["refs/heads/a"] {
+		t.Errorf("SIZE-LARGE on %v, want a and main", r)
+	}
+	for _, x := range append(findings(fs, "SIZE-LARGE"), findings(fs, "SIZE-LIMIT")...) {
+		if x.Path == "a" {
+			t.Errorf("deleted file checked for size: %v", x)
+		}
+	}
+}
+
+// Submodule entries point at commits of another repository: not sized.
+func TestREQ_PG_032_SubmoduleNotSized(t *testing.T) {
+	f := newReqFixture(t, "")
+	base := f.repo.Commit("base", map[string]string{"a.txt": "a\n"})
+	f.repo.Git("update-index", "--add", "--cacheinfo", "160000,"+bogusOID+",sub")
+	f.repo.Git("commit", "-q", "-m", "submodule")
+	d := f.normalize(map[string]string{main: base}, push(main, f.repo.Head()))
+	if fs := d.Refs[0].Files; len(fs) != 1 || fs[0].NewMode != "160000" || fs[0].NewSize != 0 {
+		t.Fatalf("files %v", fs)
+	}
+}
+
+func TestREQ_PG_035_MassDeleteShareEdges(t *testing.T) {
+	f := newFixture(t, "")
+	mod := func(blob string, deleted int, binary bool) *Delta {
+		return &Delta{Refs: []*RefDelta{refD(main, FF, FileChange{Status: 'M', Path: "f", OldBlob: blob, Deleted: deleted, Binary: binary})}}
+	}
+	if _, err := f.evalD(mod(bogusOID, 200, false)); err == nil {
+		t.Error("unreadable old blob ignored")
+	}
+	if _, err := f.evalD(mod(bogusOID, 200, true)); err != nil {
+		t.Errorf("binary file read for line counting: %v", err)
+	}
+	// 50 deleted lines * 100 <= 100 min_lines * 50%: not a candidate, not read
+	if _, err := f.evalD(mod(bogusOID, 50, false)); err != nil {
+		t.Errorf("non-candidate read: %v", err)
+	}
+	empty := hashObject(t, f.repo, "blob", "", false)
+	if fs := f.evalDOK(mod(empty, 200, false)); len(findings(fs, "SIZE-MASS-DELETE")) != 0 {
+		t.Errorf("empty old file: %v", fs)
+	}
+	one := hashObject(t, f.repo, "blob", "x", false)
+	f0 := newFixture(t, "rules:\n  SIZE-MASS-DELETE: {min_lines: 0}\n")
+	f0.repo = f.repo
+	if fs := f0.evalDOK(mod(one, 1, false)); len(findings(fs, "SIZE-MASS-DELETE")) != 1 {
+		t.Errorf("one line without newline, removed: %v", fs)
+	}
+	// 100 of 101 lines at a 99% share: 10000 > 9999
+	f99 := newFixture(t, "rules:\n  SIZE-MASS-DELETE: {max_deleted_share: 99}\n")
+	f99.repo = f.repo
+	b101 := hashObject(t, f.repo, "blob", lines("l", 101), false)
+	if fs := f99.evalDOK(mod(b101, 100, false)); len(findings(fs, "SIZE-MASS-DELETE")) != 1 {
+		t.Errorf("100 of 101 lines at 99%%: %v", fs)
+	}
+}

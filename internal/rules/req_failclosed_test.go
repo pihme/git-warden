@@ -2,6 +2,10 @@ package rules
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -248,5 +252,199 @@ func TestREQ_PG_004_Parsers(t *testing.T) {
 
 	if got := firstLine("  one\ntwo\n"); got != "one" {
 		t.Errorf("firstLine = %q", got)
+	}
+	// rejected inputs found by mutation testing
+	if _, err := parseRaw([]byte("X" + ":000000 100644 0000000000000000000000000000000000000000 45b983be36b73c0788dc9cbcb76cbb80fc7bb057 "[1:] + "A\x00p\x00")); err == nil {
+		t.Error("parseRaw: entry without ':' accepted")
+	}
+	for _, bad := range []string{"1\t2\x00", "5\t-\tp\x00", "-\t5\tp\x00"} {
+		if _, err := parseNumstat([]byte(bad)); err == nil {
+			t.Errorf("parseNumstat(%q) accepted", bad)
+		}
+	}
+	if _, err := identTime("1700000000 +0000"); err == nil {
+		t.Error("identTime: ident without '>' accepted")
+	}
+	for _, key := range []string{"author", "committer"} {
+		_, err := ParseCommit("c", []byte(key+" a <b> notanumber +0000\n\nmsg"))
+		var ne *strconv.NumError
+		if !errors.As(err, &ne) {
+			t.Errorf("ParseCommit %s: err = %v, want the parse error wrapped", key, err)
+		}
+	}
+}
+
+// A limit that is missing from a hand-built config fails the evaluation.
+func TestREQ_PG_004_MissingLimitFailsClosed(t *testing.T) {
+	for _, c := range []struct{ rule, key string }{
+		{"REF-COUNT", "max_refs"},
+		{"CONTENT-BLOB", "min_base64"}, {"CONTENT-BLOB", "min_hex"},
+		{"META-UNSIGNED", "lookback"}, {"META-BACKDATED", "max_age"}, {"META-FUTURE", "max_skew"},
+		{"SIZE-LIMIT", "max_bytes"}, {"SIZE-LARGE", "max_commits"}, {"SIZE-MASS-DELETE", "min_lines"},
+	} {
+		f := newFixture(t, "")
+		delete(f.cfg.Rules[c.rule].Limits, c.key)
+		if _, err := f.evalD(&Delta{}); err == nil || !strings.Contains(err.Error(), c.key) {
+			t.Errorf("%s without %s: err = %v", c.rule, c.key, err)
+		}
+	}
+}
+
+func TestREQ_PG_004_NormalizeFailsClosedAtEveryGitStep(t *testing.T) {
+	f := newReqFixture(t, "")
+	base := f.repo.Commit("base", map[string]string{"a.txt": "a\n"})
+	head := f.repo.Commit("x", map[string]string{"x.txt": "x\n"})
+	const x = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+	argsHave := func(s string) func(error) bool {
+		return func(err error) bool { return strings.Contains(gitErrArgs(err), s) }
+	}
+	msgHas := func(subs ...string) func(error) bool {
+		return func(err error) bool {
+			for _, s := range subs {
+				if err == nil || !strings.Contains(err.Error(), s) {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	numErr := func(err error) bool { var ne *strconv.NumError; return errors.As(err, &ne) }
+	for _, c := range []struct {
+		name, match string
+		nth         int
+		out         string
+		fail        bool
+		code        int
+		check       func(error) bool
+	}{
+		{"empty tree", " hash-object ", 1, "", true, 128, argsHave(" hash-object ")},
+		{"peel new", " rev-parse ", 1, "", true, 128, func(err error) bool {
+			return strings.HasPrefix(err.Error(), main+": git rev-parse") && gitx.ExitCode(err) == 128
+		}},
+		{"peel old", " rev-parse ", 2, "", true, 128, func(err error) bool {
+			return strings.HasPrefix(err.Error(), main+" (remote): git rev-parse") && gitx.ExitCode(err) == 128
+		}},
+		{"new missing", " rev-parse ", 1, "", true, 1, msgHas(main+": object ", "is missing or does not point to a commit")},
+		{"old missing", " rev-parse ", 2, "", true, 1, msgHas(main+" (remote): object ", "is missing or does not point to a commit")},
+		{"ancestry", "--is-ancestor", 1, "", true, 128, argsHave("--is-ancestor")},
+		{"raw diff", "--raw", 1, "", true, 128, argsHave("--raw")},
+		{"raw garbage", "--raw", 1, "garbage\x00", false, 0, msgHas("unexpected raw entry")},
+		{"numstat", "--numstat", 1, "", true, 128, argsHave("--numstat")},
+		{"numstat garbage", "--numstat", 1, "x\x00", false, 0, msgHas("malformed numstat")},
+		{"file sizes", "--batch-check", 1, "", true, 128, argsHave(" cat-file ")},
+		{"object sizes", "--batch-check", 2, "", true, 128, argsHave(" cat-file ")},
+		{"sizes one field", "--batch-check", 1, "abc\n", false, 0, msgHas("unexpected")},
+		{"sizes missing", "--batch-check", 1, x + " missing\n", false, 0, func(err error) bool {
+			return err != nil && err.Error() == "object "+x+" missing"
+		}},
+		{"sizes not a number", "--batch-check", 1, x + " abc\n", false, 0, numErr},
+		{"patch", " -p ", 1, "", true, 128, argsHave(" -p ")},
+		{"commit list", " rev-list --stdin ", 1, "", true, 128, argsHave(" rev-list --stdin ")},
+		{"object list", "--objects", 1, "", true, 128, argsHave("--objects")},
+		{"commit batch", " cat-file --batch ", 1, "", true, 128, argsHave(" cat-file --batch ")},
+		{"commit batch empty", " cat-file --batch ", 1, "", false, 0, func(err error) bool { return errors.Is(err, io.EOF) }},
+		{"commit header short", " cat-file --batch ", 1, x + " commit\n", false, 0, msgHas("unexpected")},
+		{"commit header tree", " cat-file --batch ", 1, x + " tree 5\nabcde\n", false, 0, msgHas("unexpected")},
+		{"commit size", " cat-file --batch ", 1, x + " commit x\n\n", false, 0, numErr},
+		{"commit body short", " cat-file --batch ", 1, x + " commit 100\nshort\n", false, 0, func(err error) bool {
+			return errors.Is(err, io.ErrUnexpectedEOF)
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			g := wrapGit(t, f.repo.Dir, c.match, c.nth, c.out, c.fail, c.code)
+			_, err := Normalize(context.Background(), g, Input{Updates: []Update{push(main, head)},
+				Remote: map[string]string{main: base}, DefaultBranch: main, Now: f.now})
+			if err == nil || !c.check(err) {
+				t.Fatalf("REQ-PG-004: err = %v", err)
+			}
+		})
+	}
+	// object sizes are summed as int64
+	g := wrapGit(t, f.repo.Dir, "--batch-check", 2, x+" 5000000000000000000\n", false, 0)
+	d, err := Normalize(context.Background(), g, Input{Updates: []Update{push(main, head)},
+		Remote: map[string]string{main: base}, DefaultBranch: main, Now: f.now})
+	if err != nil || d.Refs[0].NewBytes != 5000000000000000000 {
+		t.Fatalf("NewBytes: %v, %v", d, err)
+	}
+}
+
+// REQ-PG-004: when the diff base cannot be found (a default branch that does
+// not peel, a failing merge-base), the push fails closed.
+func TestREQ_PG_004_DiffBaseFailsClosed(t *testing.T) {
+	f := newReqFixture(t, "")
+	base := f.repo.Commit("base", map[string]string{"a.txt": "a\n"})
+	head := f.repo.Commit("x", map[string]string{"x.txt": "x\n"})
+	run := func(g *gitx.Git, remote map[string]string, def string, u Update) (*Delta, error) {
+		return Normalize(context.Background(), g, Input{Updates: []Update{u}, Remote: remote, DefaultBranch: def, Now: f.now})
+	}
+	plain := &gitx.Git{Dir: f.repo.Dir}
+	// a default branch that is not a commit here, whether or not its oid is
+	// among the remote's heads and tags
+	for _, def := range []string{main, "refs/x/main"} {
+		if _, err := run(plain, map[string]string{def: bogusOID}, def, push("refs/heads/new", head)); err == nil {
+			t.Errorf("unpeelable default branch %s ignored", def)
+		}
+	}
+	// a failing merge-base (not "no common ancestor")
+	f.repo.Git("checkout", "-q", "-b", "side", base)
+	side := f.repo.Commit("side", map[string]string{"s.txt": "s\n"})
+	g := wrapGit(t, f.repo.Dir, " merge-base ", 2, "", true, 128)
+	if _, err := run(g, map[string]string{main: head}, main, push(main, side)); !strings.Contains(gitErrArgs(err), " merge-base ") {
+		t.Errorf("merge-base failure: %v", err)
+	}
+}
+
+func TestREQ_PG_004_ScannerReportErrorsFailClosed(t *testing.T) {
+	for name, c := range map[string]struct {
+		report string
+		check  func(error) bool
+	}{
+		"report removed": {"-", func(err error) bool { return errors.Is(err, fs.ErrNotExist) }},
+		"malformed, exit 0": {"[{", func(err error) bool {
+			var se *json.SyntaxError
+			return errors.As(err, &se)
+		}},
+		"one byte": {"x", func(err error) bool { return err != nil && strings.Contains(err.Error(), "report") }},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bin, _ := recScanner(t, c.report, 0)
+			_, err, _, _ := scanWith(t, bin)
+			if !c.check(err) {
+				t.Fatalf("REQ-PG-004: err = %v", err)
+			}
+		})
+	}
+}
+
+func TestREQ_PG_004_ScannerStartErrorWrapped(t *testing.T) {
+	_, err, _, _ := scanWith(t, filepath.Join(t.TempDir(), "missing", "gitleaks"))
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("err = %v, want the start error wrapped", err)
+	}
+}
+
+func TestREQ_PG_004_ScannerTempFilesFailClosed(t *testing.T) {
+	f := newReqFixture(t, "")
+	// the report file cannot be created
+	bin, _ := recScanner(t, "[]", 0)
+	f = f.withRules("gitleaks: {path: '" + bin + "'}\n")
+	base := f.repo.Commit("base", nil)
+	head := f.repo.Commit("x", map[string]string{"x.txt": "x\n"})
+	sc, err := NewScanner(f.cfg, f.repo.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sc.Close()
+	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "gone"))
+	if _, err := f.evalErr(map[string]string{main: base}, Options{Scanner: sc}, push(main, head)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("report temp file: err = %v", err)
+	}
+	// the generated config or ignore file cannot be created
+	if _, err := NewScanner(f.cfg, f.repo.Dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("generated config: err = %v", err)
+	}
+	testutil.WriteFiles(t, f.cfg.Dir, map[string]string{"gitleaks.toml": "# wall\n"})
+	if _, err := NewScanner(f.cfg, f.repo.Dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("generated ignore file: err = %v", err)
 	}
 }

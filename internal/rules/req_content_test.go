@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/pihme/git-warden/internal/config"
+	"github.com/pihme/git-warden/internal/gitx"
 	"github.com/pihme/git-warden/internal/testutil"
 )
 
@@ -332,4 +333,183 @@ func TestREQ_PG_027_PagesHostKnownFromOldTreeCaseInsensitive(t *testing.T) {
 	}
 	// deleting the Pages branch is not checked by this rule
 	expectNone(t, f.eval(remote, push("refs/heads/gh-pages", "0000000000000000000000000000000000000000")), "CONTENT-PAGES-SCRIPT")
+}
+
+// REQ-PG-021: CONTENT-SCANNER-ALLOW fires only in regular files, not in
+// submodules or symlinks.
+func TestREQ_PG_021_ScannerAllowOnlyInMarkedFile(t *testing.T) {
+	f := newFixture(t, "")
+	allow := []Line{{No: 1, Text: "// gitleaks:allow"}}
+	rd := refD(main, FF,
+		FileChange{Status: 'A', Path: "sub", NewMode: "160000"},
+		FileChange{Status: 'A', Path: "link", NewMode: "120000"},
+		FileChange{Status: 'A', Path: "a.go", NewMode: "100644"})
+	rd.Added = map[string][]Line{"sub": allow, "link": allow, "a.go": allow}
+	fs := f.evalDOK(&Delta{Refs: []*RefDelta{rd}})
+	if p := paths(fs, "CONTENT-SCANNER-ALLOW"); p["sub"] || p["link"] || !p["a.go"] {
+		t.Errorf("CONTENT-SCANNER-ALLOW on %v, want only a.go", p)
+	}
+	if x := expect(t, fs, "CONTENT-SCANNER-ALLOW", "a.go"); x.Message != "inline exception for the secret scanner" {
+		t.Errorf("message %q", x.Message)
+	}
+}
+
+// REQ-PG-022: an invisible character at the start of a line fires; a line
+// gives one finding, for its first invisible character.
+func TestREQ_PG_022_InvisibleAtLineStart(t *testing.T) {
+	f := newFixture(t, "")
+	rd := refD(main, FF, FileChange{Status: 'A', Path: "a.go", NewMode: "100644"})
+	rd.Added = map[string][]Line{"a.go": {
+		{No: 1, Text: "\u200bstart"},
+		{No: 2, Text: "x \u200b y \u200c"},
+	}}
+	fs := f.evalDOK(&Delta{Refs: []*RefDelta{rd}})
+	byLine := map[int][]string{}
+	for _, x := range findings(fs, "CONTENT-INVISIBLE") {
+		byLine[x.Line] = append(byLine[x.Line], x.Message)
+	}
+	if len(byLine[1]) != 1 {
+		t.Errorf("zero-width space at the start of line 1 must fire: %v", byLine)
+	}
+	if m := byLine[2]; len(m) != 1 || !strings.Contains(m[0], "U+200B") {
+		t.Errorf("line 2: %q, want one finding for the first character", m)
+	}
+}
+
+// REQ-PG-025: which characters count as hex and base64, and the length limits.
+func TestREQ_PG_025_LongLiteralCharacterClasses(t *testing.T) {
+	for _, c := range []struct {
+		s              string
+		minB64, minHex int
+		kind           string
+		n              int
+	}{
+		{"", 0, 0, "hex", 0},
+		{"", 0, 1, "base64", 0},
+		{"!!", 1, 1, "", 0},
+		{"zz", 200, 1, "", 0},
+		{"abc", 100, 3, "hex", 3},
+		{"ab!abc", 100, 3, "hex", 3},
+		{"x09afAF", 100, 6, "hex", 6},
+		{"09afAF", 100, 6, "hex", 6},
+		{"/:`gG@[{", 100, 1, "", 0},
+		{"9:9", 100, 2, "", 0},
+		{"0909", 100, 4, "hex", 4},
+		{"azAZ09+/-_=", 11, 100, "base64", 11},
+		{"a!az", 3, 100, "", 0},
+		{"zZ9", 3, 100, "base64", 3},
+		{"0Zz-", 4, 100, "base64", 4},
+		{":`{@[", 1, 100, "", 0},
+		{"z:z", 2, 100, "", 0},
+		{"Z@Z", 2, 100, "", 0},
+		{"0`0", 2, 100, "", 0},
+	} {
+		kind, n := longLiteral(c.s, c.minB64, c.minHex)
+		if kind != c.kind || n != c.n {
+			t.Errorf("longLiteral(%q, %d, %d) = %q, %d; want %q, %d", c.s, c.minB64, c.minHex, kind, n, c.kind, c.n)
+		}
+	}
+	// each hex digit class boundary counts as hex
+	for _, ch := range "09afAF" {
+		if kind, _ := longLiteral(strings.Repeat(string(ch), 5), 100, 5); kind != "hex" {
+			t.Errorf("%q not hex", ch)
+		}
+	}
+	for _, ch := range "gG:`@/" {
+		if kind, _ := longLiteral(strings.Repeat(string(ch), 5), 100, 5); kind == "hex" {
+			t.Errorf("%q counted as hex", ch)
+		}
+	}
+	for _, ch := range "09azAZ+/-_=" {
+		if kind, _ := longLiteral(strings.Repeat(string(ch), 5), 5, 100); kind == "" {
+			t.Errorf("%q not base64", ch)
+		}
+	}
+}
+
+func TestREQ_PG_026_PagesScriptHosts(t *testing.T) {
+	f := newFixture(t, "")
+	pages := "refs/heads/gh-pages"
+	html := FileChange{Status: 'A', Path: "index.html", NewMode: "100644"}
+	lines := []Line{
+		{No: 1, Text: `<script src="https://a.example/x.js"></script><script src="https://b.example/y.js"></script>`},
+		{No: 2, Text: `<script src="app.js"></script><link href="https://c.example/s.css">`},
+	}
+	other := refD(main, FF, html)
+	other.Added["index.html"] = lines
+	pg := refD(pages, Create, html)
+	pg.Added["index.html"] = lines
+	fs := f.evalDOK(&Delta{Refs: []*RefDelta{other, pg}})
+	hosts := map[string]bool{}
+	for _, x := range findings(fs, "CONTENT-PAGES-SCRIPT") {
+		if x.Ref != pages {
+			t.Errorf("finding on %s", x.Ref)
+		}
+		hosts[strings.Fields(x.Message)[7]] = true
+	}
+	if len(hosts) != 3 || !hosts["a.example"] || !hosts["b.example"] || !hosts["c.example"] {
+		t.Errorf("hosts %v, want a, b and c.example", hosts)
+	}
+	for _, k := range []Kind{Delete, Noop} {
+		rd := refD(pages, k, html)
+		rd.Added["index.html"] = lines
+		if fs := f.evalDOK(&Delta{Refs: []*RefDelta{rd}}); len(findings(fs, "CONTENT-PAGES-SCRIPT")) != 0 {
+			t.Errorf("%s of the Pages branch checked: %v", k, fs)
+		}
+	}
+	// the old tree cannot be searched: fail closed
+	rd := refD(pages, FF, html)
+	rd.OldCommit = bogusOID
+	rd.Added["index.html"] = lines
+	if _, err := f.evalD(&Delta{Refs: []*RefDelta{rd}}); err == nil {
+		t.Error("git grep failure on the old tree was ignored")
+	}
+}
+
+// The scanner runs in the repository with the guard's git environment, and
+// scans exactly the new tips that carry new commits, excluding the remote.
+func TestREQ_PG_019_ScannerScansExactlyTheNewTips(t *testing.T) {
+	bin, dir := recScanner(t, "[]", 0)
+	f := newReqFixture(t, "gitleaks: {path: '"+bin+"'}\n")
+	base := f.repo.Commit("base", nil)
+	head := f.repo.Commit("x", map[string]string{"x.txt": "x\n"})
+	g := &gitx.Git{Dir: f.repo.Dir, Env: []string{"WARDEN_MUT_ENV=from-guard"}}
+	if _, err := scanEval(t, f, g, map[string]string{main: base}, push(main, head), push("refs/heads/old", base)); err != nil {
+		t.Fatal(err)
+	}
+	if got := logOpts(t, dir); got != head+" --not "+base {
+		t.Errorf("log-opts = %q, want only the tip with new commits, excluding the remote", got)
+	}
+	want, _ := filepath.EvalSymlinks(f.repo.Dir)
+	if got := strings.TrimSpace(readRec(t, dir, "pwd")); got != want {
+		t.Errorf("scanner ran in %q, want %q", got, want)
+	}
+	if got := readRec(t, dir, "env"); got != "from-guard" {
+		t.Errorf("scanner env WARDEN_MUT_ENV = %q, want the guard's git environment", got)
+	}
+}
+
+func TestREQ_PG_019_ScannerLogOptsWithoutRemote(t *testing.T) {
+	bin, dir := recScanner(t, "[]", 0)
+	f := newReqFixture(t, "gitleaks: {path: '"+bin+"'}\n")
+	head := f.repo.Commit("x", map[string]string{"x.txt": "x\n"})
+	if _, err := scanEval(t, f, &gitx.Git{Dir: f.repo.Dir}, map[string]string{}, push(main, head)); err != nil {
+		t.Fatal(err)
+	}
+	if got := logOpts(t, dir); got != head {
+		t.Errorf("log-opts = %q, want %q (no --not for an empty remote)", got, head)
+	}
+}
+
+// A push without new commits is not scanned at all.
+func TestREQ_PG_019_NoNewCommitsNotScanned(t *testing.T) {
+	bin, dir := recScanner(t, "[]", 2)
+	f := newReqFixture(t, "gitleaks: {path: '"+bin+"'}\n")
+	head := f.repo.Commit("x", map[string]string{"x.txt": "x\n"})
+	if _, err := scanEval(t, f, &gitx.Git{Dir: f.repo.Dir}, map[string]string{main: head}, push("refs/heads/x", head)); err != nil {
+		t.Fatalf("push without new commits: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "args")); err == nil {
+		t.Error("scanner ran for a push without new commits")
+	}
 }

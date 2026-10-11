@@ -6,8 +6,12 @@ package rules
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -152,4 +156,131 @@ func lines(prefix string, n int) string {
 		fmt.Fprintf(&b, "%s%d\n", prefix, i)
 	}
 	return b.String()
+}
+
+const bogusOID = "1111111111111111111111111111111111111111"
+
+// evalD evaluates a hand-built delta without the secret scanner.
+func (f *fixture) evalD(d *Delta) (*Result, error) {
+	f.t.Helper()
+	if d.Now.IsZero() {
+		d.Now = f.now
+	}
+	return Evaluate(context.Background(), &gitx.Git{Dir: f.repo.Dir}, f.cfg, d, Options{SkipScanner: true})
+}
+
+func (f *fixture) evalDOK(d *Delta) []Finding {
+	f.t.Helper()
+	res, err := f.evalD(d)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return res.Findings
+}
+
+func refD(name string, kind Kind, files ...FileChange) *RefDelta {
+	return &RefDelta{Update: Update{Ref: name, Kind: kind}, Files: files, Added: map[string][]Line{}}
+}
+
+func commitD(oid string, at time.Time, parents ...string) Commit {
+	return Commit{OID: oid, Author: at, Committer: at, Parents: parents}
+}
+
+// wrapGit returns a git for dir that runs the real git, except for the nth
+// command whose arguments contain match: that one prints out and exits 0,
+// or, if fail is set, exits with code.
+func wrapGit(t *testing.T, dir, match string, nth int, out string, fail bool, code int) *gitx.Git {
+	t.Helper()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := t.TempDir()
+	act := "cat '" + filepath.Join(tmp, "out") + "'; exit 0"
+	if fail {
+		act = "echo 'fatal: injected' >&2; exit " + strconv.Itoa(code)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "out"), []byte(out), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cnt := filepath.Join(tmp, "count")
+	script := "#!/bin/sh\ncase \" $* \" in\n*'" + match + "'*)\n" +
+		"  n=$(cat '" + cnt + "' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '" + cnt + "'\n" +
+		"  if [ $n -eq " + strconv.Itoa(nth) + " ]; then cat >/dev/null; " + act + "; fi;;\nesac\n" +
+		"exec '" + real + "' \"$@\"\n"
+	bin := filepath.Join(tmp, "git")
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return &gitx.Git{Dir: dir, Bin: bin}
+}
+
+func gitErrArgs(err error) string {
+	var ge *gitx.Error
+	if errors.As(err, &ge) {
+		return " " + strings.Join(ge.Args, " ") + " "
+	}
+	return ""
+}
+
+// recScanner is a stand-in gitleaks that records its working directory,
+// arguments and two environment variables in dir, then writes report to the
+// -r file (or removes the file if report is "-") and exits with code.
+func recScanner(t *testing.T, report string, code int) (bin, dir string) {
+	t.Helper()
+	dir = t.TempDir()
+	testutil.WriteFiles(t, dir, map[string]string{"report": report})
+	write := "cat '" + filepath.Join(dir, "report") + "' > \"$r\"\n"
+	if report == "-" {
+		write = "rm -f \"$r\"\n"
+	}
+	script := "#!/bin/sh\nd='" + dir + "'\npwd -P > \"$d/pwd\"\nprintf '%s\\n' \"$@\" > \"$d/args\"\n" +
+		"printf '%s' \"${WARDEN_MUT_ENV-unset}\" > \"$d/env\"\n" +
+		"while [ $# -gt 0 ]; do [ \"$1\" = -r ] && r=$2; shift; done\n" + write +
+		"echo '1:00PM INF 1 commits scanned.'\nexit " + strconv.Itoa(code) + "\n"
+	bin = filepath.Join(dir, "gitleaks")
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin, dir
+}
+
+// scanEval evaluates updates against remote with the scanner bin and git g.
+func scanEval(t *testing.T, f *fixture, g *gitx.Git, remote map[string]string, updates ...Update) (*Result, error) {
+	t.Helper()
+	sc, err := NewScanner(f.cfg, f.repo.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sc.Close()
+	def := ""
+	if _, ok := remote[main]; ok {
+		def = main
+	}
+	d, err := Normalize(context.Background(), g, Input{Updates: updates, Remote: remote, DefaultBranch: def, Now: f.now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Evaluate(context.Background(), g, f.cfg, d, Options{Scanner: sc})
+}
+
+func readRec(t *testing.T, dir, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatalf("scanner did not record %s: %v", name, err)
+	}
+	return string(b)
+}
+
+// logOpts returns the --log-opts value the scanner was started with.
+func logOpts(t *testing.T, dir string) string {
+	t.Helper()
+	for _, a := range strings.Split(readRec(t, dir, "args"), "\n") {
+		if v, ok := strings.CutPrefix(a, "--log-opts="); ok {
+			return v
+		}
+	}
+	t.Fatal("no --log-opts argument")
+	return ""
 }

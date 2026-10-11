@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"context"
 	"os"
 	"regexp"
 	"strings"
@@ -327,9 +328,96 @@ func TestREQ_PG_002_FindingString(t *testing.T) {
 		{Finding{Rule: "META-FUTURE", Ref: main, Commit: strings.Repeat("ab", 20), Message: "m"}, "META-FUTURE refs/heads/main commit abababababab: m"},
 		{Finding{Rule: "REF-COUNT", Message: "11 refs"}, "REF-COUNT: 11 refs"},
 		{Finding{Rule: "X", Commit: "abc", Message: "m"}, "X commit abc: m"},
+		{Finding{Rule: "R", Path: "p", Line: 1, Message: "m"}, "R p:1: m"},
 	} {
 		if got := c.f.String(); got != c.want {
 			t.Errorf("REQ-PG-002: %q, want %q", got, c.want)
 		}
+	}
+	// commits are shown with 12 hex digits
+	if got := short(strings.Repeat("a", 12)); got != strings.Repeat("a", 12) {
+		t.Errorf("short(12) = %q", got)
+	}
+	if got := short(strings.Repeat("b", 13)); got != strings.Repeat("b", 12) {
+		t.Errorf("short(13) = %q", got)
+	}
+}
+
+// REQ-PG-002: findings are listed by ref, then rule (push-wide findings first).
+func TestREQ_PG_002_FindingsSortedByRefThenRule(t *testing.T) {
+	f := newFixture(t, "rules:\n  REF-COUNT: {max_refs: 1}\n")
+	fs := f.evalDOK(&Delta{Refs: []*RefDelta{refD("refs/notes/b", Delete), refD("refs/heads/a", Delete)}})
+	var got []string
+	for _, x := range fs {
+		got = append(got, x.Ref+" "+x.Rule)
+	}
+	want := []string{" REF-COUNT", "refs/heads/a REF-DELETE", "refs/notes/b REF-DELETE", "refs/notes/b REF-NAMESPACE"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("order\n got %q\nwant %q", got, want)
+	}
+}
+
+// REQ-PG-040: only a triggered, enabled rule exempted by allow records a
+// lease exemption.
+func TestREQ_PG_040_AllowRecordedOnlyWhenTriggeredAndEnabled(t *testing.T) {
+	f := newFixture(t, "rules:\n  REF-NAMESPACE: {allow: ['refs/heads/main']}\n  REF-NON-FF: {enabled: false}\n")
+	res, err := f.evalD(&Delta{Refs: []*RefDelta{refD(main, NonFF)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsAllowed("REF-NAMESPACE", main) {
+		t.Error("REF-NAMESPACE not triggered, but recorded as allowed")
+	}
+	if res.IsAllowed("REF-NON-FF", main) {
+		t.Error("disabled REF-NON-FF recorded as allowed")
+	}
+	e := &eval{cfg: newFixture(t, "rules:\n  REF-NON-FF: {allow: ['x']}\n").cfg,
+		res: &Result{Allowed: map[string]map[string]bool{}}, seen: map[string]bool{}}
+	e.check("REF-NON-FF", "x", true, Finding{})
+	if len(e.res.Allowed) != 0 {
+		t.Errorf("finding without ref recorded as allowed: %v", e.res.Allowed)
+	}
+}
+
+// REQ-PG-044, REQ-PG-045: the cumulative diff of a ref is taken against the
+// old remote tip, the merge base for a non-fast-forward, or the empty tree for
+// a new ref when the remote has no default branch; each new commit is listed once.
+func TestREQ_PG_044_045_DiffBaseAndCommitList(t *testing.T) {
+	f := newReqFixture(t, "")
+	base := f.repo.Commit("base", map[string]string{"a.txt": "a\n"})
+	head := f.repo.Commit("x", map[string]string{"x.txt": "x\n", "y.txt": "y\ny\n"})
+	// the same new commit on two refs is listed once
+	d := f.normalize(map[string]string{main: base}, push(main, head), push("refs/heads/b", head))
+	if len(d.Commits) != 1 {
+		t.Errorf("Commits = %d, want 1", len(d.Commits))
+	}
+	if d.Refs[0].Base != base {
+		t.Errorf("FF base = %q, want the old commit", d.Refs[0].Base)
+	}
+	// a file missing from numstat keeps zero counts; later files still get theirs
+	run := func(g *gitx.Git, remote map[string]string, def string, u Update) (*Delta, error) {
+		return Normalize(context.Background(), g, Input{Updates: []Update{u}, Remote: remote, DefaultBranch: def, Now: f.now})
+	}
+	g := wrapGit(t, f.repo.Dir, "--numstat", 1, "2\t0\ty.txt\x00", false, 0)
+	d2, err := run(g, map[string]string{main: base}, main, push(main, head))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fc := range d2.Refs[0].Files {
+		if want := map[string]int{"x.txt": 0, "y.txt": 2}[fc.Path]; fc.Added != want {
+			t.Errorf("%s: Added %d, want %d", fc.Path, fc.Added, want)
+		}
+	}
+	// a non-fast-forward diffs against the merge base
+	f.repo.Git("checkout", "-q", "-b", "side", base)
+	side := f.repo.Commit("side", map[string]string{"s.txt": "s\n"})
+	d = f.normalize(map[string]string{main: head}, push(main, side))
+	if rd := d.Refs[0]; rd.Kind != NonFF || len(rd.Files) != 1 || rd.Files[0].Path != "s.txt" || rd.Base != base {
+		t.Errorf("non-ff: kind %s base %s files %v", rd.Kind, rd.Base, rd.Files)
+	}
+	// a new ref with a default branch the remote does not have: empty-tree base
+	d, err = run(&gitx.Git{Dir: f.repo.Dir}, map[string]string{}, main, push("refs/heads/new", head))
+	if err != nil || d.Refs[0].Base != d.EmptyTree {
+		t.Errorf("create without remote default: %v %v", d, err)
 	}
 }

@@ -6,11 +6,14 @@ package rules
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
+	"github.com/pihme/git-warden/internal/config"
 	"github.com/pihme/git-warden/internal/gitx"
 )
 
@@ -43,6 +46,35 @@ func TestREQ_PG_020_DotGitleaksIgnoreDirectoryFailsClosed(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "is a directory") {
 		t.Fatalf("REQ-PG-020: err = %v, want refusal for a .gitleaksignore directory", err)
 	}
+
+	// a .gitleaksignore that cannot be checked (here: the path is too long)
+	// fails closed, even if the scanner itself could run in the directory
+	t.Run("uncheckable", func(t *testing.T) {
+		dir := t.TempDir()
+		for len(dir) < 4080-200 {
+			dir = filepath.Join(dir, strings.Repeat("d", 200))
+		}
+		dir = filepath.Join(dir, strings.Repeat("e", 4085-len(dir)))
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Skipf("cannot create a long path: %v", err)
+		}
+		if _, err := os.Lstat(filepath.Join(dir, ".gitleaksignore")); !errors.Is(err, syscall.ENAMETOOLONG) {
+			t.Skipf("Lstat of the long path: %v", err)
+		}
+		bin, _ := recScanner(t, "[]", 0)
+		f := newReqFixture(t, "gitleaks: {path: '"+bin+"'}\n")
+		base := f.repo.Commit("base", nil)
+		head := f.repo.Commit("x", map[string]string{"x.txt": "x\n"})
+		sc, err := NewScanner(f.cfg, f.repo.Dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sc.Close()
+		sc.RepoDir = dir
+		if _, err := f.evalErr(map[string]string{main: base}, Options{Scanner: sc}, push(main, head)); !errors.Is(err, syscall.ENAMETOOLONG) {
+			t.Fatalf("REQ-PG-020: err = %v, want ENAMETOOLONG", err)
+		}
+	})
 }
 
 // Scanner output in an error message is cut to its first line, at most 300 bytes.
@@ -55,6 +87,19 @@ func TestREQ_PG_004_ScannerErrorMessageIsShortened(t *testing.T) {
 	msg := err.Error()
 	if !strings.Contains(msg, strings.Repeat("x", 300)) || strings.Contains(msg, strings.Repeat("x", 301)) || strings.Contains(msg, "second line") {
 		t.Fatalf("REQ-PG-004: message not cut to 300 bytes of the first line: %d bytes", len(msg))
+	}
+	// firstLine: first non-empty line, trimmed, at most 300 bytes
+	for in, want := range map[string]string{
+		strings.Repeat("a", 300):        strings.Repeat("a", 300),
+		strings.Repeat("b", 301):        strings.Repeat("b", 300),
+		strings.Repeat("c", 302):        strings.Repeat("c", 300),
+		"  first\nsecond":               "first",
+		"\n\nonly\n":                    "only",
+		strings.Repeat("d", 400) + "\n": strings.Repeat("d", 300),
+	} {
+		if got := firstLine(in); got != want {
+			t.Errorf("firstLine(%.20q…) = %d chars %.20q…, want %d chars", in, len(got), got, len(want))
+		}
 	}
 }
 
@@ -133,6 +178,24 @@ func TestREQ_PG_020_ScannerDefaultsAndWallOnlyConfig(t *testing.T) {
 	defer sc3.Close()
 	if sc3.ConfigFile != wallToml {
 		t.Errorf("wall-only config file = %q, want %s", sc3.ConfigFile, wallToml)
+	}
+	// without wall files: an empty ignore file and the default gitleaks config
+	cfg := &config.Config{Dir: t.TempDir()}
+	sc4, err := NewScanner(cfg, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sc4.Close()
+	if sc4.Bin != "gitleaks" {
+		t.Errorf("Bin = %q", sc4.Bin)
+	}
+	b, err := os.ReadFile(sc4.IgnoreFile)
+	if err != nil || len(b) != 0 {
+		t.Errorf("ignore file %q: %q, %v; want an empty file", sc4.IgnoreFile, b, err)
+	}
+	b, err = os.ReadFile(sc4.ConfigFile)
+	if err != nil || !strings.Contains(string(b), "useDefault = true") {
+		t.Errorf("config file %q: %q, %v", sc4.ConfigFile, b, err)
 	}
 }
 

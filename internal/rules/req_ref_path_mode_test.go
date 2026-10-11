@@ -251,3 +251,58 @@ func TestREQ_PG_018_ModeSubmoduleAddedOrChanged(t *testing.T) {
 	wantPaths(t, fs, "MODE-SUBMODULE", []string{"vendor/changed", "vendor/added", "vendor/removed", "vendor/same"}, "vendor/changed", "vendor/added")
 	expectColor(t, fs, "MODE-SUBMODULE", config.Yellow)
 }
+
+// REQ-PG-010: REF-NAMESPACE says why it fired: a denied ref or a ref outside
+// heads and tags.
+func TestREQ_PG_010_NamespaceMessages(t *testing.T) {
+	f := newFixture(t, "rules:\n  REF-NAMESPACE: {deny: ['refs/heads/main']}\n")
+	fs := f.evalDOK(&Delta{Refs: []*RefDelta{refD(main, FF), refD("refs/notes/x", FF)}})
+	for _, x := range findings(fs, "REF-NAMESPACE") {
+		want := map[string]string{main: "pushes to this ref are reserved for a human",
+			"refs/notes/x": "ref outside refs/heads/* and refs/tags/*"}[x.Ref]
+		if x.Message != want {
+			t.Errorf("REF-NAMESPACE %s: %q, want %q", x.Ref, x.Message, want)
+		}
+	}
+	if len(findings(fs, "REF-NAMESPACE")) != 2 {
+		t.Errorf("REF-NAMESPACE findings: %v", fs)
+	}
+}
+
+// REQ-PG-012, REQ-PG-013: the PATH-RED and PATH-YELLOW messages.
+func TestREQ_PG_012_013_PathMessages(t *testing.T) {
+	f := newFixture(t, "")
+	fs := f.evalDOK(&Delta{Refs: []*RefDelta{
+		refD(main, FF, FileChange{Status: 'M', Path: ".github/workflows/ci.yml"}, FileChange{Status: 'M', Path: "go.mod"}),
+	}})
+	if x := expect(t, fs, "PATH-RED", ".github/workflows/ci.yml"); x.Message != "this path is reserved for a human" {
+		t.Errorf("PATH-RED message %q", x.Message)
+	}
+	if x := expect(t, fs, "PATH-YELLOW", "go.mod"); !strings.HasPrefix(x.Message, "dependency, build, hook") {
+		t.Errorf("PATH-YELLOW message %q", x.Message)
+	}
+}
+
+// REQ-PG-016 to 018: the mode rules look at the new mode only (a deleted
+// symlink does not fire) and say what changed.
+func TestREQ_PG_016_017_018_ModeTargetsAndMessages(t *testing.T) {
+	f := newFixture(t, "")
+	fs := f.evalDOK(&Delta{Refs: []*RefDelta{refD(main, FF,
+		FileChange{Status: 'D', Path: "gone", OldMode: "120000", NewMode: "120000"},
+		FileChange{Status: 'A', Path: "run", NewMode: "100755"},
+		FileChange{Status: 'A', Path: "link", NewMode: "120000"},
+		FileChange{Status: 'A', Path: "sub", NewMode: "160000"},
+	)}})
+	if p := paths(fs, "MODE-SYMLINK"); p["gone"] || !p["link"] {
+		t.Errorf("MODE-SYMLINK on %v, want only link", p)
+	}
+	for rule, msg := range map[string]string{
+		"MODE-EXEC":      "file becomes executable (mode 100755); commit it as 100644",
+		"MODE-SYMLINK":   "symlink added or changed",
+		"MODE-SUBMODULE": "submodule (gitlink) added or changed",
+	} {
+		if x := expect(t, fs, rule, ""); x.Message != msg {
+			t.Errorf("%s message %q", rule, x.Message)
+		}
+	}
+}
