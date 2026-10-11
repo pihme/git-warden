@@ -1,12 +1,12 @@
 # Backup Guard: test specification
 
-This document maps every requirement in [backup-guard.md](backup-guard.md#requirements) (`REQ-BG-001` to `REQ-BG-113`) to the automated tests that check it. Requirement tests are named `TestREQ_BG_<nnn>_…`, so `go test ./internal/backupguard ./cmd/backup-guard -run 'TestREQ_BG_081'` runs the tests of one requirement. Older tests that already covered a requirement before the numbering are listed with their own names.
+This document maps every requirement in [backup-guard.md](backup-guard.md#requirements) (`REQ-BG-001` to `REQ-BG-118`) to the automated tests that check it. Requirement tests are named `TestREQ_BG_<nnn>_…`, so `go test ./internal/backupguard ./cmd/backup-guard -run 'TestREQ_BG_081'` runs the tests of one requirement. Older tests that already covered a requirement before the numbering are listed with their own names.
 
 Status is as of `main` @ `0d52412` (Peter's decisions of 2026-10-06 included) plus branch `qa/backup-guard-tests` (6.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
 
 ## Summary
 
-- 113 of 113 requirements have at least one test. `REQ-BG-071` (one pass, then exit) is covered implicitly by every `run` test in `cmd/backup-guard`.
+- 113 of 118 requirements have at least one test; `REQ-BG-114` to `118` (limits, 2026-10-11) are specified below and not written yet. `REQ-BG-071` (one pass, then exit) is covered implicitly by every `run` test in `cmd/backup-guard`.
 - 85 requirement tests (65 from QA, 20 from Maintainer with the 2026-10-06 decisions), plus 12 older tests mapped below.
 - 87 green, 0 red. `TestREQ_BG_081_OutputTail` was red until the fix on this branch (see Findings).
 
@@ -242,6 +242,18 @@ The mutation campaign of October 2026 added tests in `internal/backupguard/backu
 | `TestMutantsSubcommandHelpExitsZero` | `REQ-BG-089`, `091` | `TestREQ_BG_089_SubcommandHelpIsNotAnError` | `cmd/backup-guard/req_cmd_test.go` |
 | `TestMutantsParseInterleavedPositionals` | `REQ-BG-088` | merge into `TestREQ_BG_067_068_088_RunSelection` | `cmd/backup-guard/req_cmd_test.go` |
 | `TestMutantsPreflightErrorWraps` | none | `TestRun_PreflightErrorKeepsItsCause` | `cmd/backup-guard/main_test.go` |
+
+## Planned: limits (2026-10-11)
+
+Tests for the limit requirements Peter approved on 2026-10-11. Every bound is tested just inside and just outside. Status: **planned**; the maintainer writes the tests (red first), then the code.
+
+| REQ | Test | File | Cases |
+| --- | --- | --- | --- |
+| `REQ-BG-114` | `TestREQ_BG_114_TimeoutBounds` | `internal/backupguard/req_bg_test.go` | `59s` refused, `1m` loads, `24h` loads, `24h0m1s` refused; `check-config` reports it. `TestREQ_BG_022_Timeout` keeps the cases for zero, negative and non-durations. |
+| `REQ-BG-115` | `TestREQ_BG_115_EventsCountedForLargeOutput` | `internal/backupguard/req_bg_test.go` | Stand-in everref whose `run --all` prints 3 MiB of event lines (known numbers of `[new]`, rewrites and tombstones): the counts in `backup.jsonl` are exact; on failure `output` still holds the end of the output (`REQ-BG-081` cut applies after). |
+| `REQ-BG-116` | `TestREQ_BG_116_VersionOutputBounded` | `internal/backupguard/req_bg_test.go` | `--version` answering a valid first line padded to exactly 1 MiB passes; 1 MiB + 1 byte fails the preflight. |
+| `REQ-BG-117` | `TestREQ_BG_117_AddAndNotifyOutputKeepTail` | `internal/backupguard/req_bg_test.go` | Stand-in `add` that writes 3 MiB and fails: `output` and `add_failed` come from the end (last marker present, first marker absent). A `notify.command` that writes 3 MiB: the run's result is unchanged and the guard's memory stays bounded. |
+| `REQ-BG-118` | `TestREQ_BG_118_ShortErrorText` | `internal/backupguard/req_bg_test.go` | A program error text of 300 characters is kept whole, 301 is shortened. The 5 s after a kill is the existing `TestREQ_BG_074_ChildHoldingThePipeDoesNotBlock`, which gets `REQ-BG-118` in its name. |
 
 ## Findings
 

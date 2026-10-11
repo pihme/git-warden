@@ -1,12 +1,12 @@
 # Push Guard: test specification
 
-This document maps every requirement in [push-guard-rules.md](push-guard-rules.md) (`REQ-PG-001` to `REQ-PG-045`) to the automated tests that check it. Test names start with `TestREQ_PG_<nnn>_`, so `go test ./... -run 'TestREQ_PG_020'` runs the tests of one requirement.
+This document maps every requirement in [push-guard-rules.md](push-guard-rules.md) (`REQ-PG-001` to `REQ-PG-053`) to the automated tests that check it. Test names start with `TestREQ_PG_<nnn>_`, so `go test ./... -run 'TestREQ_PG_020'` runs the tests of one requirement.
 
 Status is as of `main` @ `f223de4` plus branch `qa/journal-tests` (5.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
 
 ## Summary
 
-- 45 of 45 requirements have at least one test; 89 requirement tests in total.
+- 45 of 53 requirements have at least one test; 89 requirement tests in total. `REQ-PG-046` to `053` (limits, 2026-10-11) are specified below and not written yet.
 - 89 green, 0 red. All findings so far are fixed (see below).
 
 ## Coverage
@@ -237,6 +237,24 @@ Tests already named `TestREQ_PG_…` keep their name and only move.
 | `TestMutantsFirstLineTruncation` | `REQ-PG-004` | merge into `TestREQ_PG_004_ScannerErrorMessageIsShortened` | `internal/rules/req_edges_test.go` |
 
 Afterwards there is no `*_mutants_test.go` file and no `TestMutants` name left (`rg -l 'TestMutants|_mutants' --glob '*_test.go' .` finds nothing), `go test ./...` passes with at least the same coverage, and `make mutate` gives the same numbers as at `d7679a7`.
+
+## Planned: limits (2026-10-11)
+
+Tests for the limit requirements Peter approved on 2026-10-11 (`REQ-PG-046` to `053`). Every bound is tested just inside and just outside. "Fails closed" means the push is rejected as an internal error (`REQ-PG-004`). Status: **planned**; the maintainer writes the tests (red first), then the code.
+
+| REQ | Test | File | Cases |
+| --- | --- | --- | --- |
+| `REQ-PG-046` | `TestREQ_PG_046_LimitBounds` | `internal/config/req_config_test.go` | For every row of [Limit bounds](push-guard-rules.md#limit-bounds): minimum and maximum load; minimum − 1 and maximum + 1 (for durations: − 1s / + 1s; for `max_skew` and `min_lines`: −1s / −1, which the negative-limit check already refuses) are refused, and the error names rule, key and range. Also in a repo layer, not only the wall. |
+| `REQ-PG-046` | `TestREQ_PG_046_CheckConfigReportsOutOfRange` | `cmd/push-guard/req_e2e_test.go` | `push-guard check-config` with `REF-COUNT: {max_refs: 1001}` exits `1` and prints rule, key and range. |
+| `REQ-PG-047` | `TestREQ_PG_047_TimeoutBounds` | `internal/config/req_config_test.go` | `999ms` refused, `1s` loads, `1h` loads, `1h0m1s` refused. |
+| `REQ-PG-048` | `TestREQ_PG_048_JournalLineLimit` | `internal/journal/req_journal_edges_test.go` | A line of exactly 64 MiB is read; 64 MiB + 1 byte fails with an error (the push fails closed). The existing "just under / over 64 MiB" subtest moves here and is tightened to the exact boundary. |
+| `REQ-PG-049` | `TestREQ_PG_049_DiffLineLimit` | `internal/rules/req_failclosed_test.go` | A file whose single added line is exactly 16 MiB is evaluated normally; 16 MiB + 1 byte fails closed. |
+| `REQ-PG-050` | `TestREQ_PG_050_EvaluatedOutputBounded` | `internal/rules/req_failclosed_test.go`, `internal/pushguard` | Stand-in gitleaks: stdout of exactly 1 MiB is fine, 1 MiB + 1 fails closed; same for stderr and for the report file. A stand-in that writes without end fails closed within the push `timeout` and the guard's memory stays bounded. Stand-in `gitleaks version` and `git version` answering 1 MiB + 1 make the preflight fail. |
+| `REQ-PG-051` | `TestREQ_PG_051_NotifyOutputKeepsTail` | `internal/pushguard` | A `notify.command` that writes 3 MiB and exits non-zero: the recorded error text comes from the end of the output (marker written last is present, marker written first is not); the verdict is unchanged. |
+| `REQ-PG-052` | `TestREQ_PG_052_ShortenedTexts` | `internal/rules`, `internal/pushguard` | SHA 12 / 13 characters, program error text 300 / 301, `replay` subject 72 / 73, alert with 20 / 21 commits, commit message 500 / 501 characters. |
+| `REQ-PG-053` | `TestREQ_PG_053_ChildHoldingThePipe` | `internal/gitx` | A killed program whose child keeps the output pipe open returns after about 5 s, not later. The 30 s limits (version calls, HTTP header read, shutdown) are untested on purpose like `REQ-BG-010`, unless the maintainer makes them injectable for tests. |
+
+**Existing tests that change:** `TestPropNegativeLimitsRefused` (`internal/config/limits_prop_test.go`, `fuzz` tag) expects zero to load for every count and duration; under `REQ-PG-046` zero loads only for `lookback`, `max_skew` and `min_lines`. The generators of `TestPropCountLimitRoundTrip` and the other limit property tests must stay inside the ranges. The test for `timeout: 1ns` (moved from the mutation campaign into the `timeout` test) becomes a refused case. Fixtures that set limits outside the ranges to switch a rule off or make it always fire need values inside the ranges.
 
 ## Red tests
 
