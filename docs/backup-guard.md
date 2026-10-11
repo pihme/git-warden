@@ -265,8 +265,8 @@ Each requirement is one shall/must behaviour. Settled points from [SPEC.md § Ba
 | `REQ-BG-114` | `timeout` shall be from `1m` to `24h`. Anything else shall be an error (amends `REQ-BG-022`). | Configuration (2026-10-11) |
 | `REQ-BG-115` | The event counts of `git-everref run` (`REQ-BG-080`) shall be taken while its output is read, so they stay right for any output size. Of that output only the last 1 MiB shall be kept for `output` (`REQ-BG-081`). | Limits (2026-10-11) |
 | `REQ-BG-116` | The output of `git-everref --version` shall be read up to 1 MiB. More shall fail the preflight. | Limits (2026-10-11) |
-| `REQ-BG-117` | Of the output of `git-everref add` and of `notify.command`, only the last 1 MiB per stream shall be kept; the rest shall be dropped and the program shall run on normally. | Limits (2026-10-11) |
-| `REQ-BG-118` | These fixed limits shall apply: an error text from a program shortened to 300 characters; after a program is killed, at most 5 s more for its output pipes to close. (The 40 lines and 4000 bytes of `output`, 100 branches per `add`, 30 s for `--version` and 1 minute for `notify.command` are `REQ-BG-081`, `046`, `010` and `086`.) | Limits (2026-10-11) |
+| `REQ-BG-117` | Of the output of `git-everref add` and of `notify.command`, only the last 1 MiB, stdout and stderr together, shall be kept; the rest shall be dropped and the program shall run on normally. | Limits (2026-10-11) |
+| `REQ-BG-118` | These fixed limits shall apply: an error text from a program shortened to 300 characters (for `notify.command` its last 300, for the others their first 300); after a program is killed, at most 5 s more for its output pipes to close. (The 40 lines and 4000 bytes of `output`, 100 branches per `add`, 30 s for `--version` and 1 minute for `notify.command` are `REQ-BG-081`, `046`, `010` and `086`.) | Limits (2026-10-11) |
 
 ## Decided
 
