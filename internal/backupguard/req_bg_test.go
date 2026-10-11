@@ -1379,7 +1379,7 @@ func TestREQ_BG_086_NotifyFailureRecorded(t *testing.T) {
 		g.Defaults.NotifyCommand = []string{fakeProg(t, "echo "+long+"; exit 3")}
 		err := g.notify(ctx, &Result{Repo: "r"})
 		var ee *exec.ExitError
-		if !errors.As(err, &ee) || ee.ExitCode() != 3 || !strings.HasSuffix(err.Error(), long[:300]+"…") {
+		if !errors.As(err, &ee) || ee.ExitCode() != 3 || !strings.HasSuffix(err.Error(), ": …"+long[:300]) { // the end is kept, like REQ-PG-051
 			t.Errorf("failing notify: %v", err)
 		}
 	})

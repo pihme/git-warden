@@ -2,6 +2,7 @@ package gitx
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -27,7 +28,10 @@ func CheckGit(ctx context.Context) (path, version string, err error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, path, "version").Output()
+	out, _, err := RunBounded(exec.CommandContext(ctx, path, "version"), path+" version")
+	if errors.Is(err, ErrOutputTooLarge) {
+		return "", "", err
+	}
 	if err != nil {
 		return "", "", fmt.Errorf("%s version: %w", path, err)
 	}

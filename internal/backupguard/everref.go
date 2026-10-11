@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pihme/git-warden/internal/gitx"
 )
 
 // Everref runs the git-everref binary. Git Warden never downloads it: it must
@@ -41,13 +43,18 @@ func FindEverref(ctx context.Context, bin, want string) (path, version string, e
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, "--version")
 	cmd.WaitDelay = 5 * time.Second
-	out, err := cmd.CombinedOutput()
+	// The answer is evaluated: above 1 MiB the preflight fails (REQ-BG-116).
+	stdout, stderr, err := gitx.RunBounded(cmd, path+" --version")
+	if errors.Is(err, gitx.ErrOutputTooLarge) {
+		return "", "", err
+	}
+	out := append(stdout, stderr...)
 	if err != nil {
-		return "", "", fmt.Errorf("%s --version: %w: %s", path, err, truncate(strings.TrimSpace(string(out)), 300))
+		return "", "", fmt.Errorf("%s --version: %w: %s", path, err, truncate(strings.TrimSpace(string(out)), maxErrorText))
 	}
 	version = parseVersion(string(out))
 	if version == "" {
-		return "", "", fmt.Errorf("%s --version: unexpected output %q", path, truncate(strings.TrimSpace(string(out)), 300))
+		return "", "", fmt.Errorf("%s --version: unexpected output %q", path, truncate(strings.TrimSpace(string(out)), maxErrorText))
 	}
 	if want == "" {
 		want = DefaultEverrefVersion
@@ -106,15 +113,25 @@ func (e *RunError) Error() string {
 
 func (e *RunError) Unwrap() error { return e.Err }
 
-// Run runs everref -C dir args... and returns its combined output.
+// Run runs everref -C dir args... and returns the end of its combined
+// output: only the last 1 MiB is kept, the rest is dropped (REQ-BG-115, 117).
 func (e *Everref) Run(ctx context.Context, dir string, args ...string) (string, error) {
+	return e.RunEach(ctx, dir, nil, args...)
+}
+
+// RunEach is Run that also hands every output line to each while the output
+// is read, so whatever each counts stays right for any output size
+// (REQ-BG-115).
+func (e *Everref) RunEach(ctx context.Context, dir string, each func(line string), args ...string) (string, error) {
 	full := append([]string{"-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, e.Bin, full...)
 	cmd.Env = e.Env
-	cmd.WaitDelay = 5 * time.Second
-	var out bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &out
+	cmd.WaitDelay = killWait
+	out := &lineWriter{tail: gitx.TailBuffer{Max: gitx.OutputLimit}, each: each}
+	cmd.Stdout, cmd.Stderr = out, out // one writer: one pipe, order kept
 	err := cmd.Run()
+	out.flush()
+	text := out.tail.String()
 	if err != nil {
 		code := -1
 		var ee *exec.ExitError
@@ -124,9 +141,61 @@ func (e *Everref) Run(ctx context.Context, dir string, args ...string) (string, 
 		if ctx.Err() != nil {
 			err = fmt.Errorf("%w (%v)", ctx.Err(), err)
 		}
-		return out.String(), &RunError{Args: full, ExitCode: code, Output: out.String(), Err: err}
+		return text, &RunError{Args: full, ExitCode: code, Output: text, Err: err}
 	}
-	return out.String(), nil
+	return text, nil
+}
+
+// Fixed limits (REQ-BG-118).
+const (
+	maxErrorText = 300             // characters of a program's error text
+	killWait     = 5 * time.Second // after a kill, for the output pipes to close
+	maxEventLine = 64 << 10        // longest line handed to RunEach's each
+)
+
+// lineWriter keeps the tail of the output and hands each complete line to
+// each. A line longer than maxEventLine is not handed on (no event line is
+// that long), so memory stays bounded.
+type lineWriter struct {
+	tail    gitx.TailBuffer
+	each    func(string)
+	partial []byte
+	tooLong bool
+}
+
+func (w *lineWriter) Write(p []byte) (int, error) {
+	w.tail.Write(p)
+	if w.each == nil {
+		return len(p), nil
+	}
+	rest := p
+	for len(rest) > 0 {
+		i := bytes.IndexByte(rest, '\n')
+		if i < 0 {
+			w.add(rest)
+			break
+		}
+		w.add(rest[:i])
+		w.flush()
+		rest = rest[i+1:]
+	}
+	return len(p), nil
+}
+
+func (w *lineWriter) add(b []byte) {
+	if w.tooLong || len(w.partial)+len(b) > maxEventLine {
+		w.tooLong, w.partial = true, w.partial[:0]
+		return
+	}
+	w.partial = append(w.partial, b...)
+}
+
+// flush hands on the line collected so far.
+func (w *lineWriter) flush() {
+	if w.each != nil && !w.tooLong && len(w.partial) > 0 {
+		w.each(string(w.partial))
+	}
+	w.partial, w.tooLong = w.partial[:0], false
 }
 
 func lastLines(s string, n int) string {

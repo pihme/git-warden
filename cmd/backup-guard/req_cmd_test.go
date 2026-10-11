@@ -253,7 +253,7 @@ func TestREQ_BG_097_CheckConfigNotes(t *testing.T) {
 }
 
 func TestREQ_BG_098_CheckConfigRemote(t *testing.T) {
-	dir := qaConfig(t, "timeout: 30s\n", "good")
+	dir := qaConfig(t, "timeout: 1m\n", "good")
 	testutil.WriteFiles(t, dir, map[string]string{"repos/gone/backup.yaml": "remote: " + filepath.Join(t.TempDir(), "gone.git") + "\n"})
 	if code, out := pg("check-config", "--config", dir); code != 0 {
 		t.Fatalf("without --remote the missing remote is no problem: exit %d: %s", code, out)

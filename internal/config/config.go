@@ -476,6 +476,9 @@ func (m *merged) build(dir, repo string) (*Config, error) {
 	if err != nil || t <= 0 {
 		return nil, fmt.Errorf("timeout: invalid duration %q", m.timeout)
 	}
+	if t < MinTimeout || t > MaxTimeout {
+		return nil, fmt.Errorf("timeout %s is out of range %s to %s", m.timeout, fmtDur(MinTimeout), fmtDur(MaxTimeout))
+	}
 	c.Timeout = t
 	if repo != "" {
 		if m.remote == "" {
@@ -525,7 +528,82 @@ func (mr *mergedRule) compile(id string) (*Rule, error) {
 			return nil, err
 		}
 	}
+	if err := r.checkBounds(); err != nil {
+		return nil, err
+	}
 	return r, nil
+}
+
+// Timeout bounds (REQ-PG-047).
+const (
+	MinTimeout = time.Second
+	MaxTimeout = time.Hour
+)
+
+// bound is the range of one configurable limit (REQ-PG-046, "Limit bounds"
+// in docs/push-guard-rules.md). Durations are in nanoseconds.
+type bound struct{ lo, hi int64 }
+
+const gib10 = 10 << 30
+
+var (
+	countBounds = map[string]bound{
+		"max_refs": {1, 1000}, "min_base64": {20, 1_000_000}, "min_hex": {20, 1_000_000},
+		"lookback": {0, 1000}, "max_files": {1, 10_000_000}, "max_lines": {1, 10_000_000},
+		"max_commits": {1, 10_000_000}, "max_deleted_files": {1, 10_000_000},
+		"max_bytes": {1, gib10}, "max_file_bytes": {1, gib10},
+		"max_deleted_share": {1, 100}, "min_lines": {0, 1_000_000},
+		"max_pushes": {1, 10_000}, "max_yellow": {1, 1000},
+	}
+	durationBounds = map[string]bound{
+		"META-BACKDATED/max_age":    {int64(time.Minute), int64(8760 * time.Hour)},
+		"META-FUTURE/max_skew":      {0, int64(24 * time.Hour)},
+		"RATE-LIMIT/window":         {int64(time.Minute), int64(168 * time.Hour)},
+		"RATE-YELLOW-STREAK/window": {int64(time.Minute), int64(720 * time.Hour)},
+	}
+)
+
+// checkBounds refuses a limit outside its range; it never clamps.
+func (r *Rule) checkBounds() error {
+	keys := make([]string, 0, len(r.Limits))
+	for k := range r.Limits {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if durationLimit(k) {
+			b, ok := durationBounds[r.ID+"/"+k]
+			if !ok {
+				continue
+			}
+			d, _ := r.Duration(k)
+			if int64(d) < b.lo || int64(d) > b.hi {
+				return fmt.Errorf("rule %s: limit %s %s is out of range %s to %s", r.ID, k, d, fmtDur(time.Duration(b.lo)), fmtDur(time.Duration(b.hi)))
+			}
+			continue
+		}
+		b, ok := countBounds[k]
+		if !ok {
+			continue
+		}
+		n, _ := r.Int(k)
+		if n < b.lo || n > b.hi {
+			return fmt.Errorf("rule %s: limit %s %d is out of range %d to %d", r.ID, k, n, b.lo, b.hi)
+		}
+	}
+	return nil
+}
+
+// fmtDur prints a duration the way the docs write it: 1m, 24h, 8760h, 0s.
+func fmtDur(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = s[:len(s)-2]
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = s[:len(s)-2]
+	}
+	return s
 }
 
 // durationLimit reports whether key is a duration limit (not an integer count).

@@ -6,7 +6,7 @@ Status is as of `main` @ `f223de4` plus branch `qa/journal-tests` (5.10.2026). *
 
 ## Summary
 
-- 45 of 53 requirements have at least one test; 89 requirement tests in total. `REQ-PG-046` to `053` (limits, 2026-10-11) are specified below and not written yet.
+- 53 of 53 requirements have at least one test; 100 requirement tests in total. `REQ-PG-046` to `053` (limits, 2026-10-11) are listed below.
 - 89 green, 0 red. All findings so far are fixed (see below).
 
 ## Coverage
@@ -238,9 +238,9 @@ Tests already named `TestREQ_PG_…` keep their name and only move.
 
 Afterwards there is no `*_mutants_test.go` file and no `TestMutants` name left (`rg -l 'TestMutants|_mutants' --glob '*_test.go' .` finds nothing), `go test ./...` passes with at least the same coverage, and `make mutate` gives the same numbers as at `d7679a7`.
 
-## Planned: limits (2026-10-11)
+## Limits (2026-10-11)
 
-Tests for the limit requirements Peter approved on 2026-10-11 (`REQ-PG-046` to `053`). Every bound is tested just inside and just outside. "Fails closed" means the push is rejected as an internal error (`REQ-PG-004`). Status: **planned**; the maintainer writes the tests (red first), then the code.
+Tests for the limit requirements Peter approved on 2026-10-11 (`REQ-PG-046` to `053`). Every bound is tested just inside and just outside. "Fails closed" means the push is rejected as an internal error (`REQ-PG-004`). Status: **written** (tests red first, then the code).
 
 | REQ | Test | File | Cases |
 | --- | --- | --- | --- |

@@ -142,7 +142,8 @@ func TestREQ_PG_033_MaxCommits(t *testing.T) {
 }
 
 func TestREQ_PG_032_SizeSkipsDeletions(t *testing.T) {
-	f := newReqFixture(t, sizeRulesYAML("SIZE-LARGE", "max_files", 0))
+	f := newReqFixture(t, "")
+	f.cfg.Rule("SIZE-LARGE").Limits["max_files"] = 0 // below the range (REQ-PG-046), set in-process
 	base := f.repo.Commit("base", nFiles(3, "a"))
 	expectNone(t, f.eval(map[string]string{main: base, "refs/heads/old": base}, Update{Ref: "refs/heads/old", New: gitx.ZeroOID}), "SIZE-LARGE")
 }

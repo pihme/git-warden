@@ -30,6 +30,8 @@ const (
 	// only accepted when everref.version is exactly "dev".
 	DevVersion     = "dev"
 	DefaultTimeout = 30 * time.Minute
+	MinTimeout     = time.Minute    // REQ-BG-114
+	MaxTimeout     = 24 * time.Hour // REQ-BG-114
 	DefaultsFile   = "defaults.yaml"
 	RepoFile       = "backup.yaml"
 )
@@ -149,6 +151,9 @@ func LoadDefaults(dir string) (*Defaults, error) {
 		t, err := time.ParseDuration(*raw.Timeout)
 		if err != nil || t <= 0 {
 			return nil, fmt.Errorf("%s: timeout %q is not a positive duration", path, *raw.Timeout)
+		}
+		if t < MinTimeout || t > MaxTimeout {
+			return nil, fmt.Errorf("%s: timeout %s is out of range 1m to 24h", path, *raw.Timeout)
 		}
 		d.Timeout = t
 	}

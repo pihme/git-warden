@@ -6,7 +6,7 @@ Status is as of `main` @ `0d52412` (Peter's decisions of 2026-10-06 included) pl
 
 ## Summary
 
-- 113 of 118 requirements have at least one test; `REQ-BG-114` to `118` (limits, 2026-10-11) are specified below and not written yet. `REQ-BG-071` (one pass, then exit) is covered implicitly by every `run` test in `cmd/backup-guard`.
+- 118 of 118 requirements have at least one test; `REQ-BG-114` to `118` (limits, 2026-10-11) are listed below. `REQ-BG-071` (one pass, then exit) is covered implicitly by every `run` test in `cmd/backup-guard`.
 - 85 requirement tests (65 from QA, 20 from Maintainer with the 2026-10-06 decisions), plus 12 older tests mapped below.
 - 87 green, 0 red. `TestREQ_BG_081_OutputTail` was red until the fix on this branch (see Findings).
 
@@ -144,7 +144,7 @@ Statement coverage from `go test -cover`, before (`2be85f0`, numbering only), on
 | `REQ-BG-074` | Run | `TestREQ_BG_074_TimeoutKillsEverref` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-074` | Run | `TestREQ_BG_074_TimeoutIsNamed` | `internal/backupguard/req_decisions_test.go` | green |
 | `REQ-BG-074` | Run | `TestREQ_BG_074_081_RunOutputAndTimeout` | `internal/backupguard/req_decisions_test.go` | green |
-| `REQ-BG-074` | Run | `TestREQ_BG_074_ChildHoldingThePipeDoesNotBlock` | `internal/backupguard/req_bg_test.go` | green |
+| `REQ-BG-074` | Run | `TestREQ_BG_074_118_ChildHoldingThePipeDoesNotBlock` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-075` | Locking | `TestREQ_BG_075_LockedRepoIsSkippedWithoutWaiting` | `internal/backupguard/req_decisions_test.go` | green |
 | `REQ-BG-075` | Locking | `TestREQ_BG_075_LockThatCannotBeTakenFailsTheRepo` | `internal/backupguard/req_bg_test.go` | green |
 | `REQ-BG-076` | Locking | `TestREQ_BG_076_LockReleasedOnKill` | `internal/backupguard/req_bg_test.go` | green |
@@ -218,7 +218,7 @@ The mutation campaign of October 2026 added tests in `internal/backupguard/backu
 | `TestMutantsEverrefConstantsAndMajorVersion` | `REQ-BG-012` | major-version cases: merge into `TestREQ_BG_012_OnlyTheMajorVersionIsCompared`; exit-code constants: `TestEverrefExitCodes` | `internal/backupguard/req_decisions_test.go` / `backupguard_test.go` |
 | `TestMutantsFindEverrefMessages` | `REQ-BG-009`–`011`, `112` | `TestREQ_BG_009_010_011_EverrefErrorMessages` | `internal/backupguard/req_bg_test.go` |
 | `TestMutantsEverrefRun`, `TestMutantsRunOutputLimitsAndTimeout` | `REQ-BG-074`, `081` | `TestREQ_BG_074_081_RunOutputAndTimeout` (merged) | `internal/backupguard/req_decisions_test.go` |
-| `TestMutantsWaitDelay` | `REQ-BG-074`, `086` | `TestREQ_BG_074_ChildHoldingThePipeDoesNotBlock` | `internal/backupguard/req_bg_test.go` |
+| `TestMutantsWaitDelay` | `REQ-BG-074`, `086` | `TestREQ_BG_074_118_ChildHoldingThePipeDoesNotBlock` | `internal/backupguard/req_bg_test.go` |
 | `TestMutantsTruncateAndRunErrorUnwrap`, `TestMutantsTailAndTruncate` | `REQ-BG-081` | tail/truncate cases: merge into `TestREQ_BG_081_TailKeepsTheEnd`; `RunError` unwrap: `TestRunError_UnwrapsExecError` | `internal/backupguard/req_decisions_test.go` / `backupguard_test.go` |
 | `TestMutantsAddFailureReasonsAndOutput` | `REQ-BG-048`, `081` | merge into `TestREQ_BG_081_FailedAddCarriesEverrefOutput` | `internal/backupguard/req_decisions_test.go` |
 | `TestMutantsBranchesSortedAndFailuresListed` | `REQ-BG-046`, `048` | `TestREQ_BG_046_048_BranchesSortedAndFailuresListed` | `internal/backupguard/req_bg_test.go` |
@@ -243,9 +243,9 @@ The mutation campaign of October 2026 added tests in `internal/backupguard/backu
 | `TestMutantsParseInterleavedPositionals` | `REQ-BG-088` | merge into `TestREQ_BG_067_068_088_RunSelection` | `cmd/backup-guard/req_cmd_test.go` |
 | `TestMutantsPreflightErrorWraps` | none | `TestRun_PreflightErrorKeepsItsCause` | `cmd/backup-guard/main_test.go` |
 
-## Planned: limits (2026-10-11)
+## Limits (2026-10-11)
 
-Tests for the limit requirements Peter approved on 2026-10-11. Every bound is tested just inside and just outside. Status: **planned**; the maintainer writes the tests (red first), then the code.
+Tests for the limit requirements Peter approved on 2026-10-11. Every bound is tested just inside and just outside. Status: **written** (tests red first, then the code).
 
 | REQ | Test | File | Cases |
 | --- | --- | --- | --- |
@@ -253,7 +253,7 @@ Tests for the limit requirements Peter approved on 2026-10-11. Every bound is te
 | `REQ-BG-115` | `TestREQ_BG_115_EventsCountedForLargeOutput` | `internal/backupguard/req_bg_test.go` | Stand-in everref whose `run --all` prints 3 MiB of event lines (known numbers of `[new]`, rewrites and tombstones): the counts in `backup.jsonl` are exact; on failure `output` still holds the end of the output (`REQ-BG-081` cut applies after). |
 | `REQ-BG-116` | `TestREQ_BG_116_VersionOutputBounded` | `internal/backupguard/req_bg_test.go` | `--version` answering a valid first line padded to exactly 1 MiB passes; 1 MiB + 1 byte fails the preflight. |
 | `REQ-BG-117` | `TestREQ_BG_117_AddAndNotifyOutputKeepTail` | `internal/backupguard/req_bg_test.go` | Stand-in `add` that writes 3 MiB and fails: `output` and `add_failed` come from the end (last marker present, first marker absent). A `notify.command` that writes 3 MiB: the run's result is unchanged and the guard's memory stays bounded. |
-| `REQ-BG-118` | `TestREQ_BG_118_ShortErrorText` | `internal/backupguard/req_bg_test.go` | A program error text of 300 characters is kept whole, 301 is shortened. The 5 s after a kill is the existing `TestREQ_BG_074_ChildHoldingThePipeDoesNotBlock`, which gets `REQ-BG-118` in its name. |
+| `REQ-BG-118` | `TestREQ_BG_118_ShortErrorText` | `internal/backupguard/req_bg_test.go` | A program error text of 300 characters is kept whole, 301 is shortened. The 5 s after a kill is `TestREQ_BG_074_118_ChildHoldingThePipeDoesNotBlock`. |
 
 ## Findings
 

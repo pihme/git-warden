@@ -102,7 +102,7 @@ func (rp *Replay) Run(ctx context.Context) error {
 		}
 		if v != config.Green {
 			subject, _, _ := strings.Cut(c.Message, "\n")
-			fmt.Fprintf(rp.Out, "%s %-6s %s\n", oid[:12], v, truncate(subject, 72))
+			fmt.Fprintf(rp.Out, "%s %-6s %s\n", oid[:12], v, truncate(subject, replaySubject))
 			if rp.Verbose {
 				for _, f := range res.Findings {
 					fmt.Fprintf(rp.Out, "    %s\n", f.String())

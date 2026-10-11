@@ -226,7 +226,7 @@ func addBranches(ctx context.Context, ev *Everref, bridge string, branches []str
 				msg := err.Error()
 				var re *RunError
 				if errors.As(err, &re) {
-					msg = tail(lastLines(re.Output, 1), 300)
+					msg = tail(lastLines(re.Output, 1), maxErrorText)
 					outs.WriteString(re.Output)
 					if !strings.HasSuffix(re.Output, "\n") {
 						outs.WriteString("\n")
@@ -244,18 +244,23 @@ func addBranches(ctx context.Context, ev *Everref, bridge string, branches []str
 // countEvents counts the events everref run reported.
 func countEvents(out string, res *Result) {
 	for _, l := range strings.Split(out, "\n") {
-		switch {
-		case strings.Contains(l, "[new lineage]"):
-			res.Rewritten++
-		case strings.Contains(l, "[new]"):
-			res.New++
-		case strings.Contains(l, "[re-tagged]"):
-			res.Retagged++
-		case strings.Contains(l, "[regressed]"):
-			res.Regressed++
-		case strings.Contains(l, "[deleted]"):
-			res.Deleted++
-		}
+		countEvent(l, res)
+	}
+}
+
+// countEvent counts the event on one line of everref run's output.
+func countEvent(l string, res *Result) {
+	switch {
+	case strings.Contains(l, "[new lineage]"):
+		res.Rewritten++
+	case strings.Contains(l, "[new]"):
+		res.New++
+	case strings.Contains(l, "[re-tagged]"):
+		res.Retagged++
+	case strings.Contains(l, "[regressed]"):
+		res.Regressed++
+	case strings.Contains(l, "[deleted]"):
+		res.Deleted++
 	}
 }
 
@@ -319,11 +324,12 @@ func (g *Guard) notify(ctx context.Context, res *Result) error {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, cmdline[0], cmdline[1:]...)
 	cmd.Stdin = bytes.NewReader(append(data, '\n'))
-	var out bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &out
-	cmd.WaitDelay = 5 * time.Second
+	// Output is only shown: keep its last 1 MiB, drop the rest (REQ-BG-117).
+	out := &gitx.TailBuffer{Max: gitx.OutputLimit}
+	cmd.Stdout, cmd.Stderr = out, out
+	cmd.WaitDelay = killWait
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("notify.command: %w: %s", err, truncate(strings.TrimSpace(out.String()), 300))
+		return fmt.Errorf("notify.command: %w: %s", err, tail(strings.TrimSpace(out.String()), maxErrorText))
 	}
 	return nil
 }

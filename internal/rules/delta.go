@@ -410,6 +410,9 @@ func diffHeaderPath(p string) string {
 	return p
 }
 
+// maxDiffLine is the longest added line in a push's diff (REQ-PG-049).
+const maxDiffLine = 16 << 20
+
 // addedLines parses the -U0 patch of the cumulative diff.
 func addedLines(ctx context.Context, g *gitx.Git, base, head string) (map[string][]Line, error) {
 	out, err := g.Run(ctx, "diff-tree", "-r", "-p", "-M", "-U0", "--no-commit-id", "--no-color",
@@ -419,7 +422,9 @@ func addedLines(ctx context.Context, g *gitx.Git, base, head string) (map[string
 	}
 	res := map[string][]Line{}
 	sc := bufio.NewScanner(bytes.NewReader(out))
-	sc.Buffer(make([]byte, 64*1024), 256*1024*1024)
+	// An added line of up to maxDiffLine is read; a longer one fails closed
+	// (REQ-PG-049). The buffer also holds the leading '+' and the newline.
+	sc.Buffer(make([]byte, 64*1024), maxDiffLine+2)
 	path, no := "", 0
 	inHeader := false
 	for sc.Scan() {

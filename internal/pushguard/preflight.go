@@ -124,11 +124,16 @@ func CheckGitleaks(ctx context.Context, bin string) (string, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, "version")
 	cmd.WaitDelay = 5 * time.Second
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("%s version: %w: %s", path, err, truncate(strings.TrimSpace(string(out)), 300))
+	stdout, stderr, err := gitx.RunBounded(cmd, path+" version")
+	if errors.Is(err, gitx.ErrOutputTooLarge) {
+		return "", err
 	}
-	v := strings.TrimPrefix(strings.TrimSpace(string(out)), "v")
+	out := append(stdout, stderr...)
+	if err != nil {
+		return "", fmt.Errorf("%s version: %w: %s", path, err, truncate(strings.TrimSpace(string(out)), maxErrorText))
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+	v := strings.TrimPrefix(strings.TrimSpace(first), "v")
 	if !strings.HasPrefix(v, "8.") {
 		return "", fmt.Errorf("%s reports version %q; the Push Guard needs gitleaks 8.x", path, truncate(v, 100))
 	}

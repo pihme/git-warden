@@ -133,7 +133,7 @@ Survivors that remain after targeted tests and cannot change observable behaviou
 
 Not equivalent but not killed in rules (deliberately):
 
-- delta.go:422 maximum token size `256*1024*1024` ±1 in any factor (8 mutants), :443 `sc.Err()` branch and :444 (not covered): killing them needs a single diff line of about 256 MiB; too heavy for the shared box and CI.
+- delta.go maximum diff line: was 256 MiB and not killable on the shared box. Since 2026-10-11 it is 16 MiB (`REQ-PG-049`) and `TestREQ_PG_049_DiffLineLimit` tests exactly 16 MiB and one byte more; the next mutation run shows whether these mutants are now killed.
 - secret.go:73 temp file `WriteString` error: needs a write failure on a freshly created temp file (disk full or fault injection).
 - rules.go:475–476 `b.commits` error after `rev-list` succeeded: needs an object that disappears or is corrupt between two git calls.
 - delta.go:320 (INFRA ERROR) parseRaw `i++`→`i--`, and the timeouts at rules.go:300 and delta.go:358/384: infinite loops; a timeout counts as detected.

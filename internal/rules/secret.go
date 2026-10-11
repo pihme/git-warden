@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/pihme/git-warden/internal/config"
+	"github.com/pihme/git-warden/internal/gitx"
 )
 
 // Scanner runs gitleaks with configuration from the wall only.
@@ -129,9 +131,15 @@ func (e *eval) secretRule(s *Scanner) error {
 		"--exit-code", fmt.Sprint(leakExit), s.RepoDir)
 	cmd.Dir = s.RepoDir
 	cmd.Env = e.g.Environ()
+	// Its output is evaluated, so above 1 MiB per stream it fails closed
+	// rather than being read cut short (REQ-PG-050).
+	stdout, stderr, runErr := gitx.RunBounded(cmd, "secret scanner")
+	if errors.Is(runErr, gitx.ErrOutputTooLarge) {
+		return runErr
+	}
 	var out bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &out
-	runErr := cmd.Run()
+	out.Write(stdout)
+	out.Write(stderr)
 	code := 0
 	if runErr != nil {
 		var ee *exec.ExitError
@@ -150,7 +158,7 @@ func (e *eval) secretRule(s *Scanner) error {
 	if !strings.Contains(out.String(), "commits scanned") {
 		return fmt.Errorf("secret scanner did not report a scan: %s", firstLine(out.String()))
 	}
-	data, err := os.ReadFile(report.Name())
+	data, err := readBounded(report.Name())
 	if err != nil {
 		return fmt.Errorf("secret scanner report: %w", err)
 	}
@@ -209,4 +217,22 @@ func firstLine(s string) string {
 		s = s[:300]
 	}
 	return s
+}
+
+// readBounded reads a file the guard evaluates, failing above
+// gitx.OutputLimit (REQ-PG-050).
+func readBounded(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, gitx.OutputLimit+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > gitx.OutputLimit {
+		return nil, gitx.ErrOutputTooLarge
+	}
+	return data, nil
 }

@@ -253,8 +253,8 @@ func (g *Guard) runRepo(ctx context.Context, name string, res *Result) (err erro
 	}
 	res.Added, res.AddFailed, res.addOutput = addBranches(ctx, ev, bridge, missing)
 
-	out, err := ev.Run(ctx, bridge, "run", "--all")
-	countEvents(out, res)
+	// Events are counted while the output is read (REQ-BG-115).
+	_, err = ev.RunEach(ctx, bridge, func(l string) { countEvent(l, res) }, "run", "--all")
 	if err != nil {
 		var re *RunError
 		if errors.As(err, &re) {

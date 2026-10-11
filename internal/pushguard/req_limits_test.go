@@ -47,7 +47,7 @@ func TestREQ_PG_050_EvaluatedOutputBounded(t *testing.T) {
 	}
 	for n, fail := range map[int]bool{mib: false, mib + 1: true} {
 		dir := filepath.Dir(script(t, "git", versionAnswer("git version 2.47.3", n)))
-		t.Setenv("PATH", dir)
+		t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 		_, v, err := gitx.CheckGit(ctx)
 		if (err != nil) != fail || (fail && !strings.Contains(err.Error(), "1 MiB")) || (!fail && v != "2.47") {
 			t.Errorf("git version of %d bytes: %q, %v; want failure %v", n, v, err, fail)

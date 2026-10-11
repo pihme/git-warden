@@ -58,13 +58,16 @@ func TestREQ_PG_038_039_EveryRuleOnByDefaultWithDocumentedColor(t *testing.T) {
 func TestREQ_PG_038_DisabledRulesNeverFire(t *testing.T) {
 	f := newReqFixture(t, `gitleaks: {path: /nonexistent/gitleaks}
 rules:
-  REF-COUNT: {enabled: false, max_refs: 0}
+  REF-COUNT: {enabled: false}
   PATH-RED: {enabled: false}
   META-UNSIGNED: {enabled: false, lookback: 1}
   CONTENT-SECRET: {enabled: false}
-  SIZE-LARGE: {enabled: false, max_files: 0}
+  SIZE-LARGE: {enabled: false}
   REF-NON-FF: {enabled: false}
 `)
+	// below the ranges (REQ-PG-046), set in-process: would fire on any push if enabled
+	f.cfg.Rule("REF-COUNT").Limits["max_refs"] = 0
+	f.cfg.Rule("SIZE-LARGE").Limits["max_files"] = 0
 	tree := hashObject(t, f.repo, "tree", "", false)
 	now := f.now.Unix()
 	signed := rawCommit(t, f.repo, tree, nil, now, now, true, "signed root")
@@ -216,7 +219,8 @@ func TestREQ_PG_043_Subjects(t *testing.T) {
 		expect(t, fs, "REF-DELETE", "")
 	})
 	t.Run("SIZE totals by ref, per-file by path", func(t *testing.T) {
-		f := newReqFixture(t, "rules:\n  SIZE-LARGE: {max_files: 0, max_file_bytes: 1, allow: ['refs/heads/bulk']}\n")
+		f := newReqFixture(t, "rules:\n  SIZE-LARGE: {max_file_bytes: 1, allow: ['refs/heads/bulk']}\n")
+		f.cfg.Rule("SIZE-LARGE").Limits["max_files"] = 0 // below the range (REQ-PG-046), set in-process
 		base := f.repo.Commit("base", nil)
 		head := f.repo.Commit("x", map[string]string{"big.txt": "big\n"})
 		fs := f.eval(map[string]string{main: base}, push("refs/heads/bulk", head))
@@ -224,7 +228,8 @@ func TestREQ_PG_043_Subjects(t *testing.T) {
 			t.Errorf("REQ-PG-043: SIZE-LARGE total not exempted by ref: %v", fs)
 		}
 		expect(t, fs, "SIZE-LARGE", "big.txt")
-		f2 := f.withRules("rules:\n  SIZE-LARGE: {max_files: 0, max_file_bytes: 1, allow: ['big\\.txt']}\n")
+		f2 := f.withRules("rules:\n  SIZE-LARGE: {max_file_bytes: 1, allow: ['big\\.txt']}\n")
+		f2.cfg.Rule("SIZE-LARGE").Limits["max_files"] = 0
 		fs = f2.eval(map[string]string{main: base}, push("refs/heads/bulk", head))
 		if len(totalFindings(fs, "SIZE-LARGE")) != 1 || len(paths(fs, "SIZE-LARGE")) != 1 {
 			t.Errorf("REQ-PG-043: per-file SIZE-LARGE not exempted by path: %v", fs)

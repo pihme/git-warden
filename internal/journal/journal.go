@@ -101,6 +101,9 @@ func (j *Journal) Append(e Entry) error {
 	return f.Sync()
 }
 
+// maxLine is the longest line in push.jsonl (REQ-PG-048).
+const maxLine = 64 << 20
+
 // Read returns all entries. A malformed line is an error: decisions depend on
 // approvals and streaks recorded here, so the guard fails closed.
 func (j *Journal) Read() ([]Entry, error) {
@@ -113,7 +116,9 @@ func (j *Journal) Read() ([]Entry, error) {
 	}
 	var out []Entry
 	sc := bufio.NewScanner(bytes.NewReader(data))
-	sc.Buffer(make([]byte, 64*1024), 64*1024*1024)
+	// A line of up to maxLine is read, a longer one fails closed
+	// (REQ-PG-048); the buffer also holds its newline.
+	sc.Buffer(make([]byte, 64*1024), maxLine+1)
 	n := 0
 	for sc.Scan() {
 		n++
