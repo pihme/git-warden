@@ -216,4 +216,6 @@ Found a problem? Open an issue.
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE). Source-available, not OSI Open Source. Third-party software compiled in or run by Git Warden, and its licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[PolyForm Noncommercial 1.0.0](LICENSE). Source-available, not OSI Open Source. Commercial use is not granted. Other licenses can be negotiated with the copyright holder.
+
+Third-party software compiled in or run by Git Warden, and its licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
