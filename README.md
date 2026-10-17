@@ -1,9 +1,17 @@
 # Git Warden
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/git-warden-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/git-warden-logo-light.svg">
+    <img src="docs/assets/git-warden-logo-universal.svg" width="120" alt="Git Warden logo">
+  </picture>
+</p>
+
 [![CI](https://github.com/pihme/git-warden/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pihme/git-warden/actions/workflows/ci.yml)
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/pihme/git-warden?label=release)](https://github.com/pihme/git-warden/releases)
-[![Website](https://img.shields.io/badge/website-pihme.github.io%2Fgit--warden-455a6e)](https://pihme.github.io/git-warden/)
+[![Website](https://img.shields.io/badge/website-pihme.github.io%2Fgit--warden-1d7fb3)](https://pihme.github.io/git-warden/)
 [![Go](https://img.shields.io/badge/go-%3E%3D1.24-00ADD8?logo=go&logoColor=white)](go.mod)
 
 Git Warden puts guard posts between AI agents and their Git remote: a **Push Guard** that checks every push with deterministic rules, and a **Backup Guard** that keeps an append-only backup of every branch and tag. The remote can be GitHub, GitLab, Gitea/Forgejo or a bare repo over SSH. Neither guard uses AI: every decision is a deterministic rule.
