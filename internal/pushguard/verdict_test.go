@@ -1,6 +1,9 @@
 package pushguard
 
 import (
+	"errors"
+	"io"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -68,5 +71,48 @@ func TestVerdictStep(t *testing.T) {
 	}
 	if !journal.StreakActive(before, "demo") || !journal.StreakActive(s.entries, "demo") {
 		t.Fatal("a green push cleared the streak")
+	}
+}
+
+// A streak line that cannot be written does not stay half-recorded. The push
+// line becomes an internal error and the journal has no streak entry.
+func TestStreakAppendFailureRewritesPush(t *testing.T) {
+	dir := t.TempDir()
+	jr := &journal.Journal{Path: filepath.Join(dir, "push.jsonl")}
+	orig := writeJournal
+	t.Cleanup(func() { writeJournal = orig })
+	writeJournal = func(j *journal.Journal, e journal.Entry) error {
+		if e.Event == journal.EventStreak {
+			return errors.New("disk full")
+		}
+		return j.Append(e)
+	}
+	r := &run{
+		h:    &Hook{Out: io.Discard},
+		jr:   jr,
+		wall: &config.Config{StateDir: dir},
+		id:   "p1",
+		entry: journal.Entry{
+			Time: time.Now().UTC(), Event: journal.EventPush, ID: "p1", Repo: "demo",
+			Verdict: string(config.Red), Reason: journal.ReasonStreak,
+		},
+		streakLine: &journal.Entry{Time: time.Now().UTC(), Event: journal.EventStreak, ID: "p1", Repo: "demo"},
+	}
+	if code := r.persist(1, nil); code != 1 {
+		t.Fatalf("exit code %d, want 1", code)
+	}
+	entries, err := jr.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("journal entries: %+v", entries)
+	}
+	got := entries[0]
+	if got.Event != journal.EventPush || got.Verdict != string(config.Red) || got.Reason != journal.ReasonInternalError || got.Forwarded {
+		t.Fatalf("push line: %+v", got)
+	}
+	if got.Error != "disk full" {
+		t.Fatalf("push error %q", got.Error)
 	}
 }

@@ -90,6 +90,17 @@ func (h *Hook) Run(ctx context.Context) int {
 	r := &run{h: h, ctx: ctx, id: NewID(h.Now), g: &gitx.Git{Dir: h.GitDir}}
 	r.entry = journal.Entry{Time: h.Now, Event: journal.EventPush, ID: r.id, Repo: h.Repo}
 	code, err := r.main()
+	return r.persist(code, err)
+}
+
+// writeJournal appends one journal line. A test replaces it with a journal
+// that rejects a write.
+var writeJournal = func(j *journal.Journal, e journal.Entry) error { return j.Append(e) }
+
+// persist records the streak line and then the push line. A failed streak
+// append, on a push that was not forwarded, rewrites that push to an internal
+// error and leaves no streak line behind.
+func (r *run) persist(code int, err error) int {
 	if err != nil {
 		r.entry.Verdict, r.entry.Reason, r.entry.Error = string(config.Red), journal.ReasonInternalError, err.Error()
 		r.entry.Forwarded = false
@@ -98,16 +109,15 @@ func (h *Hook) Run(ctx context.Context) int {
 	}
 	if r.jr != nil {
 		if r.streakLine != nil {
-			if jerr := r.jr.Append(*r.streakLine); jerr != nil {
+			if jerr := writeJournal(r.jr, *r.streakLine); jerr != nil {
 				fallbackLog(r.wall, fmt.Sprintf("push %s: journal: %v (streak)", r.id, jerr))
 				if !r.entry.Forwarded {
 					r.entry.Verdict, r.entry.Reason, r.entry.Error = string(config.Red), journal.ReasonInternalError, jerr.Error()
-					r.entry.Forwarded = false
 					code = 1
 				}
 			}
 		}
-		if jerr := r.jr.Append(r.entry); jerr != nil {
+		if jerr := writeJournal(r.jr, r.entry); jerr != nil {
 			fallbackLog(r.wall, fmt.Sprintf("push %s: journal: %v (entry error: %s)", r.id, jerr, r.entry.Error))
 			if code == 0 {
 				// the push went to the remote; the agent's push is accepted anyway
