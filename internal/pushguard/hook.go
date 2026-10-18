@@ -77,6 +77,7 @@ type run struct {
 	entries    []journal.Entry
 	entry      journal.Entry
 	streakLine *journal.Entry // appended with the push line, streak first
+	admitted   []Admission
 	g          *gitx.Git
 }
 
@@ -209,29 +210,19 @@ func (r *run) main() (int, error) {
 		defBranch = "refs/heads/" + r.cfg.DefaultBranch
 	}
 
-	var approved, rest []rules.Update
-	var stale []rules.Update
-	for _, u := range updates {
-		old, ok := journal.ApprovalLease(r.entries, r.h.Repo, u.Ref, u.New)
-		if !ok {
-			rest = append(rest, u)
-			continue
+	// REQ-PG-003 / A15: an approval's lease is the remote tip at check time.
+	// If the tip moved since then, do not forward (would overwrite silently).
+	r.admitted = Admit(r.entries, r.h.Repo, updates, refs.Refs)
+	var approved, rest, stale []rules.Update
+	for _, a := range r.admitted {
+		switch a.Decision {
+		case Forward:
+			approved = append(approved, a.Update)
+		case Stale:
+			stale = append(stale, a.Update)
+		default:
+			rest = append(rest, a.Update)
 		}
-		cur := refs.Refs[u.Ref]
-		if cur == "" {
-			cur = gitx.ZeroOID
-		}
-		lease := old
-		if lease == "" {
-			lease = gitx.ZeroOID
-		}
-		// REQ-PG-003 / A15: an approval's lease is the remote tip at check time.
-		// If the tip moved since then, do not forward (would overwrite silently).
-		if cur != lease {
-			stale = append(stale, u)
-			continue
-		}
-		approved = append(approved, u)
 	}
 	if len(stale) > 0 {
 		return r.remoteMovedSinceApproval(stale)
