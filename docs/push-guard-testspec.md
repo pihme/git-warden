@@ -55,7 +55,7 @@ The end-to-end tests in `cmd/push-guard` run the compiled binary, so `go test -c
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_ScannerTimeoutIsInternalError` | `cmd/push-guard/req_e2e_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_UnknownCommitInReportGoesToFirstRef` | `internal/rules/req_failclosed_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_DiffBaseFailsClosed` | `internal/rules/req_failclosed_test.go` | green |
-| `REQ-PG-004` | Verdict | `TestREQ_PG_004_MissingLimitFailsClosed` | `internal/rules/req_failclosed_test.go` | green |
+| `REQ-PG-004` | Verdict | `TestREQ_PG_004_MissingLimitFailsClosed` | `internal/config/req_config_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_NormalizeFailsClosedAtEveryGitStep` | `internal/rules/req_failclosed_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_ScannerReportErrorsFailClosed` | `internal/rules/req_failclosed_test.go` | green |
 | `REQ-PG-004` | Verdict | `TestREQ_PG_004_ScannerStartErrorWrapped` | `internal/rules/req_failclosed_test.go` | green |

@@ -84,6 +84,11 @@ type Config struct {
 }
 
 // Rule is one rule with its merged settings.
+//
+// Count and duration fields are the limits this rule reads, parsed and
+// range-checked at load. Zero is a real value: lookback, min_lines and
+// max_skew may be zero. A rule that does not declare a limit leaves that
+// field zero.
 type Rule struct {
 	ID      string
 	Enabled bool
@@ -91,7 +96,25 @@ type Rule struct {
 	Match   []*regexp.Regexp
 	Allow   []*regexp.Regexp
 	Deny    []*regexp.Regexp
-	Limits  map[string]any
+	Limits  map[string]any // raw merged values; Int and Duration read these
+
+	MaxRefs         int64
+	MinBase64       int64
+	MinHex          int64
+	Lookback        int64
+	MaxFiles        int64
+	MaxLines        int64
+	MaxBytes        int64
+	MaxFileBytes    int64
+	MaxCommits      int64
+	MaxDeletedFiles int64
+	MaxDeletedShare int64
+	MinLines        int64
+	MaxPushes       int64
+	MaxYellow       int64
+	MaxAge          time.Duration
+	MaxSkew         time.Duration
+	Window          time.Duration
 }
 
 // RepoDir is the repo's folder on the wall.
@@ -514,18 +537,7 @@ func (mr *mergedRule) compile(id string) (*Rule, error) {
 			*l.dst = append(*l.dst, re)
 		}
 	}
-	for k := range r.Limits {
-		if durationLimit(k) {
-			if _, err := r.Duration(k); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		if _, err := r.Int(k); err != nil {
-			return nil, err
-		}
-	}
-	if err := r.checkBounds(); err != nil {
+	if err := r.bindLimits(); err != nil {
 		return nil, err
 	}
 	return r, nil
@@ -537,58 +549,120 @@ const (
 	MaxTimeout = time.Hour
 )
 
-// bound is the range of one configurable limit (REQ-PG-046, "Limit bounds"
-// in docs/push-guard-rules.md). Durations are in nanoseconds.
-type bound struct{ lo, hi int64 }
+// limitDecl is one limit a rule reads (REQ-PG-046). Durations are in
+// nanoseconds. The same list is the range check and the set of required keys.
+type limitDecl struct {
+	key      string
+	duration bool
+	lo, hi   int64
+}
 
 const gib10 = 10 << 30
 
-var (
-	countBounds = map[string]bound{
-		"max_refs": {1, 1000}, "min_base64": {20, 1_000_000}, "min_hex": {20, 1_000_000},
-		"lookback": {0, 1000}, "max_files": {1, 10_000_000}, "max_lines": {1, 10_000_000},
-		"max_commits": {1, 10_000_000}, "max_deleted_files": {1, 10_000_000},
-		"max_bytes": {1, gib10}, "max_file_bytes": {1, gib10},
-		"max_deleted_share": {1, 100}, "min_lines": {0, 1_000_000},
-		"max_pushes": {1, 10_000}, "max_yellow": {1, 1000},
-	}
-	durationBounds = map[string]bound{
-		"META-BACKDATED/max_age":    {int64(time.Minute), int64(8760 * time.Hour)},
-		"META-FUTURE/max_skew":      {0, int64(24 * time.Hour)},
-		"RATE-LIMIT/window":         {int64(time.Minute), int64(168 * time.Hour)},
-		"RATE-YELLOW-STREAK/window": {int64(time.Minute), int64(720 * time.Hour)},
-	}
-)
+// ruleLimits is the single declaration of the limits each rule requires.
+var ruleLimits = map[string][]limitDecl{
+	"REF-COUNT":          {{key: "max_refs", lo: 1, hi: 1000}},
+	"CONTENT-BLOB":       {{key: "min_base64", lo: 20, hi: 1_000_000}, {key: "min_hex", lo: 20, hi: 1_000_000}},
+	"META-UNSIGNED":      {{key: "lookback", lo: 0, hi: 1000}},
+	"META-BACKDATED":     {{key: "max_age", duration: true, lo: int64(time.Minute), hi: int64(8760 * time.Hour)}},
+	"META-FUTURE":        {{key: "max_skew", duration: true, lo: 0, hi: int64(24 * time.Hour)}},
+	"SIZE-LIMIT":         {{key: "max_files", lo: 1, hi: 10_000_000}, {key: "max_lines", lo: 1, hi: 10_000_000}, {key: "max_bytes", lo: 1, hi: gib10}, {key: "max_file_bytes", lo: 1, hi: gib10}},
+	"SIZE-LARGE":         {{key: "max_files", lo: 1, hi: 10_000_000}, {key: "max_lines", lo: 1, hi: 10_000_000}, {key: "max_commits", lo: 1, hi: 10_000_000}, {key: "max_file_bytes", lo: 1, hi: gib10}},
+	"SIZE-MASS-DELETE":   {{key: "max_deleted_files", lo: 1, hi: 10_000_000}, {key: "max_deleted_share", lo: 1, hi: 100}, {key: "min_lines", lo: 0, hi: 1_000_000}},
+	"RATE-LIMIT":         {{key: "max_pushes", lo: 1, hi: 10_000}, {key: "window", duration: true, lo: int64(time.Minute), hi: int64(168 * time.Hour)}},
+	"RATE-YELLOW-STREAK": {{key: "max_yellow", lo: 1, hi: 1000}, {key: "window", duration: true, lo: int64(time.Minute), hi: int64(720 * time.Hour)}},
+}
 
-// checkBounds refuses a limit outside its range; it never clamps.
-func (r *Rule) checkBounds() error {
+// bindLimits parses every limit this rule declares, checks its range, and
+// stores it on the rule. A missing required limit, an unknown limit key, or
+// a value outside its range is an error. It never clamps.
+func (r *Rule) bindLimits() error {
+	decls := ruleLimits[r.ID]
+	want := map[string]limitDecl{}
+	for _, d := range decls {
+		want[d.key] = d
+	}
 	keys := make([]string, 0, len(r.Limits))
 	for k := range r.Limits {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		if durationLimit(k) {
-			b, ok := durationBounds[r.ID+"/"+k]
-			if !ok {
-				continue
-			}
-			d, _ := r.Duration(k)
-			if int64(d) < b.lo || int64(d) > b.hi {
-				return fmt.Errorf("rule %s: limit %s %s is out of range %s to %s", r.ID, k, d, fmtDur(time.Duration(b.lo)), fmtDur(time.Duration(b.hi)))
-			}
-			continue
-		}
-		b, ok := countBounds[k]
+		d, ok := want[k]
 		if !ok {
-			continue
+			return fmt.Errorf("rule %s: limit %s is not used by this rule", r.ID, k)
 		}
-		n, _ := r.Int(k)
-		if n < b.lo || n > b.hi {
-			return fmt.Errorf("rule %s: limit %s %d is out of range %d to %d", r.ID, k, n, b.lo, b.hi)
+		if d.duration {
+			v, err := r.Duration(k)
+			if err != nil {
+				return err
+			}
+			if int64(v) < d.lo || int64(v) > d.hi {
+				return fmt.Errorf("rule %s: limit %s %s is out of range %s to %s", r.ID, k, v, fmtDur(time.Duration(d.lo)), fmtDur(time.Duration(d.hi)))
+			}
+			r.setDuration(k, v)
+		} else {
+			n, err := r.Int(k)
+			if err != nil {
+				return err
+			}
+			if n < d.lo || n > d.hi {
+				return fmt.Errorf("rule %s: limit %s %d is out of range %d to %d", r.ID, k, n, d.lo, d.hi)
+			}
+			r.setCount(k, n)
+		}
+		delete(want, k)
+	}
+	for _, d := range decls {
+		if _, ok := want[d.key]; ok {
+			return fmt.Errorf("rule %s: limit %s not set", r.ID, d.key)
 		}
 	}
 	return nil
+}
+
+func (r *Rule) setCount(key string, n int64) {
+	switch key {
+	case "max_refs":
+		r.MaxRefs = n
+	case "min_base64":
+		r.MinBase64 = n
+	case "min_hex":
+		r.MinHex = n
+	case "lookback":
+		r.Lookback = n
+	case "max_files":
+		r.MaxFiles = n
+	case "max_lines":
+		r.MaxLines = n
+	case "max_bytes":
+		r.MaxBytes = n
+	case "max_file_bytes":
+		r.MaxFileBytes = n
+	case "max_commits":
+		r.MaxCommits = n
+	case "max_deleted_files":
+		r.MaxDeletedFiles = n
+	case "max_deleted_share":
+		r.MaxDeletedShare = n
+	case "min_lines":
+		r.MinLines = n
+	case "max_pushes":
+		r.MaxPushes = n
+	case "max_yellow":
+		r.MaxYellow = n
+	}
+}
+
+func (r *Rule) setDuration(key string, d time.Duration) {
+	switch key {
+	case "max_age":
+		r.MaxAge = d
+	case "max_skew":
+		r.MaxSkew = d
+	case "window":
+		r.Window = d
+	}
 }
 
 // fmtDur prints a duration the way the docs write it: 1m, 24h, 8760h, 0s.
@@ -601,16 +675,6 @@ func fmtDur(d time.Duration) string {
 		s = s[:len(s)-2]
 	}
 	return s
-}
-
-// durationLimit reports whether key is a duration limit (not an integer count).
-func durationLimit(key string) bool {
-	switch key {
-	case "max_age", "max_skew", "window":
-		return true
-	default:
-		return false
-	}
 }
 
 func resolve(dir, p string) string {

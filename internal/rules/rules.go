@@ -140,10 +140,7 @@ func (e *eval) fire(id string, f Finding) {
 }
 
 func (e *eval) refRules() error {
-	max, err := e.cfg.Rule("REF-COUNT").Int("max_refs")
-	if err != nil {
-		return err
-	}
+	max := e.cfg.Rule("REF-COUNT").MaxRefs
 	if n := len(e.d.Refs); int64(n) > max {
 		e.fire("REF-COUNT", Finding{Message: fmt.Sprintf("%d refs in one push (limit %d)", n, max)})
 	}
@@ -231,14 +228,7 @@ func invisible(r rune) bool {
 
 func (e *eval) contentRules() error {
 	blob := e.cfg.Rule("CONTENT-BLOB")
-	minB64, err := blob.Int("min_base64")
-	if err != nil {
-		return err
-	}
-	minHex, err := blob.Int("min_hex")
-	if err != nil {
-		return err
-	}
+	minB64, minHex := blob.MinBase64, blob.MinHex
 	for _, rd := range e.d.Refs {
 		for _, fc := range rd.Files {
 			if fc.Status == 'D' || fc.NewMode == "160000" || fc.NewMode == "120000" {
@@ -387,18 +377,9 @@ func branchSubject(ref string) string { return strings.TrimPrefix(ref, "refs/hea
 
 func (e *eval) metaRules() error {
 	unsigned := e.cfg.Rule("META-UNSIGNED")
-	lookback, err := unsigned.Int("lookback")
-	if err != nil {
-		return err
-	}
-	maxAge, err := e.cfg.Rule("META-BACKDATED").Duration("max_age")
-	if err != nil {
-		return err
-	}
-	maxSkew, err := e.cfg.Rule("META-FUTURE").Duration("max_skew")
-	if err != nil {
-		return err
-	}
+	lookback := unsigned.Lookback
+	maxAge := e.cfg.Rule("META-BACKDATED").MaxAge
+	maxSkew := e.cfg.Rule("META-FUTURE").MaxSkew
 	b := newBatch(e.g)
 	parentTimes := map[string]time.Time{}
 	for _, c := range e.d.Commits {
@@ -411,6 +392,7 @@ func (e *eval) metaRules() error {
 		subj := branchSubject(rd.Ref)
 		signedHistory := false
 		if unsigned.Enabled && lookback > 0 {
+			var err error
 			if signedHistory, err = e.signedHistory(b, rd, int(lookback)); err != nil {
 				return err
 			}
@@ -484,29 +466,9 @@ func (e *eval) signedHistory(b *batch, rd *RefDelta, n int) (bool, error) {
 }
 
 func (e *eval) sizeRules() error {
-	read := func(id string, keys ...string) (map[string]int64, error) {
-		out := map[string]int64{}
-		for _, k := range keys {
-			v, err := e.cfg.Rule(id).Int(k)
-			if err != nil {
-				return nil, err
-			}
-			out[k] = v
-		}
-		return out, nil
-	}
-	hard, err := read("SIZE-LIMIT", "max_files", "max_lines", "max_bytes", "max_file_bytes")
-	if err != nil {
-		return err
-	}
-	soft, err := read("SIZE-LARGE", "max_files", "max_lines", "max_commits", "max_file_bytes")
-	if err != nil {
-		return err
-	}
-	del, err := read("SIZE-MASS-DELETE", "max_deleted_files", "max_deleted_share", "min_lines")
-	if err != nil {
-		return err
-	}
+	hard := e.cfg.Rule("SIZE-LIMIT")
+	soft := e.cfg.Rule("SIZE-LARGE")
+	del := e.cfg.Rule("SIZE-MASS-DELETE")
 	for _, rd := range e.d.Refs {
 		if rd.Kind == Delete || rd.Kind == Noop {
 			continue
@@ -518,33 +480,38 @@ func (e *eval) sizeRules() error {
 				deleted++
 			}
 		}
-		totals := map[string]int64{"max_files": int64(len(rd.Files)), "max_lines": lines,
-			"max_bytes": rd.NewBytes, "max_commits": int64(len(rd.Commits))}
-		names := map[string]string{"max_files": "changed files", "max_lines": "changed lines",
-			"max_bytes": "bytes of new objects", "max_commits": "new commits"}
-		for _, rule := range []struct {
-			id string
-			l  map[string]int64
-		}{{"SIZE-LIMIT", hard}, {"SIZE-LARGE", soft}} {
-			for _, k := range []string{"max_files", "max_lines", "max_bytes", "max_commits"} {
-				limit, ok := rule.l[k]
-				if ok && totals[k] > limit {
-					e.check(rule.id, rd.Ref, true, Finding{Ref: rd.Ref,
-						Message: fmt.Sprintf("%d %s (limit %d); split the change into smaller pushes", totals[k], names[k], limit)})
-				}
+		over := func(id, name string, n, limit int64) {
+			if n > limit {
+				e.check(id, rd.Ref, true, Finding{Ref: rd.Ref,
+					Message: fmt.Sprintf("%d %s (limit %d); split the change into smaller pushes", n, name, limit)})
 			}
-			for _, fc := range rd.Files {
-				if fc.Status != 'D' && fc.NewSize > rule.l["max_file_bytes"] {
+		}
+		nFiles, nCommits := int64(len(rd.Files)), int64(len(rd.Commits))
+		over("SIZE-LIMIT", "changed files", nFiles, hard.MaxFiles)
+		over("SIZE-LIMIT", "changed lines", lines, hard.MaxLines)
+		over("SIZE-LIMIT", "bytes of new objects", rd.NewBytes, hard.MaxBytes)
+		over("SIZE-LARGE", "changed files", nFiles, soft.MaxFiles)
+		over("SIZE-LARGE", "changed lines", lines, soft.MaxLines)
+		over("SIZE-LARGE", "new commits", nCommits, soft.MaxCommits)
+		for _, fc := range rd.Files {
+			if fc.Status == 'D' {
+				continue
+			}
+			for _, rule := range []struct {
+				id    string
+				limit int64
+			}{{"SIZE-LIMIT", hard.MaxFileBytes}, {"SIZE-LARGE", soft.MaxFileBytes}} {
+				if fc.NewSize > rule.limit {
 					e.check(rule.id, fc.Path, true, Finding{Ref: rd.Ref, Path: fc.Path,
-						Message: fmt.Sprintf("file has %d bytes (limit %d)", fc.NewSize, rule.l["max_file_bytes"])})
+						Message: fmt.Sprintf("file has %d bytes (limit %d)", fc.NewSize, rule.limit)})
 				}
 			}
 		}
-		if deleted > del["max_deleted_files"] {
+		if deleted > del.MaxDeletedFiles {
 			e.check("SIZE-MASS-DELETE", rd.Ref, true, Finding{Ref: rd.Ref,
-				Message: fmt.Sprintf("%d files deleted (limit %d)", deleted, del["max_deleted_files"])})
+				Message: fmt.Sprintf("%d files deleted (limit %d)", deleted, del.MaxDeletedFiles)})
 		}
-		if err := e.massDeleteShare(rd, del["max_deleted_share"], del["min_lines"]); err != nil {
+		if err := e.massDeleteShare(rd, del.MaxDeletedShare, del.MinLines); err != nil {
 			return err
 		}
 	}

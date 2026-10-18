@@ -275,22 +275,6 @@ func TestREQ_PG_004_Parsers(t *testing.T) {
 	}
 }
 
-// A limit that is missing from a hand-built config fails the evaluation.
-func TestREQ_PG_004_MissingLimitFailsClosed(t *testing.T) {
-	for _, c := range []struct{ rule, key string }{
-		{"REF-COUNT", "max_refs"},
-		{"CONTENT-BLOB", "min_base64"}, {"CONTENT-BLOB", "min_hex"},
-		{"META-UNSIGNED", "lookback"}, {"META-BACKDATED", "max_age"}, {"META-FUTURE", "max_skew"},
-		{"SIZE-LIMIT", "max_bytes"}, {"SIZE-LARGE", "max_commits"}, {"SIZE-MASS-DELETE", "min_lines"},
-	} {
-		f := newFixture(t, "")
-		delete(f.cfg.Rules[c.rule].Limits, c.key)
-		if _, err := f.evalD(&Delta{}); err == nil || !strings.Contains(err.Error(), c.key) {
-			t.Errorf("%s without %s: err = %v", c.rule, c.key, err)
-		}
-	}
-}
-
 func TestREQ_PG_004_NormalizeFailsClosedAtEveryGitStep(t *testing.T) {
 	f := newReqFixture(t, "")
 	base := f.repo.Commit("base", map[string]string{"a.txt": "a\n"})
