@@ -234,11 +234,10 @@ func (e *eval) contentRules() error {
 			if fc.Status == 'D' || fc.NewMode == "160000" || fc.NewMode == "120000" {
 				continue
 			}
-			lines := rd.Added[fc.Path]
 			binary := fc.Binary
 			msg := "binary file added or changed"
 			if !binary {
-				for _, l := range lines {
+				for _, l := range fc.Lines {
 					if !utf8.ValidString(l.Text) {
 						binary, msg = true, "file is not valid UTF-8 text"
 						break
@@ -249,7 +248,7 @@ func (e *eval) contentRules() error {
 				e.check("CONTENT-BINARY", fc.Path, true, Finding{Ref: rd.Ref, Path: fc.Path, Message: msg})
 				continue
 			}
-			for _, l := range lines {
+			for _, l := range fc.Lines {
 				f := Finding{Ref: rd.Ref, Path: fc.Path, Line: l.No}
 				lower := strings.ToLower(l.Text)
 				if strings.Contains(lower, "gitleaks:allow") || strings.Contains(lower, "trufflehog:ignore") {
@@ -327,7 +326,7 @@ func (e *eval) pagesRule() error {
 		}
 		known := map[string]bool{}
 		for _, fc := range rd.Files {
-			for _, l := range rd.Added[fc.Path] {
+			for _, l := range fc.Lines {
 				var urls []string
 				for _, re := range []*regexp.Regexp{scriptSrc, linkHref} {
 					for _, m := range re.FindAllStringSubmatch(l.Text, -1) {
