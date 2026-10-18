@@ -55,7 +55,8 @@ type Commit struct {
 	Message   string
 }
 
-// FileChange is one entry of the cumulative diff.
+// FileChange is one entry of the cumulative diff. Lines are the added lines
+// of Path. Content rules and the Pages rule read them here.
 type FileChange struct {
 	Status  byte // A, M, D, R, T (C is treated as A)
 	Path    string
@@ -68,6 +69,7 @@ type FileChange struct {
 	Deleted int
 	Binary  bool
 	NewSize int64
+	Lines   []Line
 }
 
 // Paths returns the names a change is checked under (both names for a rename).
@@ -91,7 +93,7 @@ type RefDelta struct {
 	NewCommit string // new, peeled to a commit
 	Base      string // base of the cumulative diff (commit or empty tree)
 	Files     []FileChange
-	Added     map[string][]Line // added lines per path
+	Added     map[string][]Line // copy of each change's Lines, keyed by Path
 	Commits   []Commit          // new commits reachable from this ref
 	NewBytes  int64             // size of all new objects reachable from this ref
 }
@@ -259,9 +261,14 @@ func (d *Delta) fill(ctx context.Context, g *gitx.Git, b *batch, rd *RefDelta) e
 	if err := b.sizes(ctx, rd.Files); err != nil {
 		return err
 	}
-	if rd.Added, err = addedLines(ctx, g, base, rd.NewCommit); err != nil {
+	added, err := addedLines(ctx, g, base, rd.NewCommit)
+	if err != nil {
 		return err
 	}
+	if err := attachLines(rd.Files, added); err != nil {
+		return err
+	}
+	rd.Added = addedByPath(rd.Files)
 	revs := revInput([]string{rd.New}, d.RemoteOIDs)
 	oids, err := g.RunInput(ctx, strings.NewReader(revs), "rev-list", "--stdin")
 	if err != nil {
@@ -304,14 +311,60 @@ func diffFiles(ctx context.Context, g *gitx.Git, base, head string) ([]FileChang
 	if err != nil {
 		return nil, err
 	}
+	seen := map[string]bool{}
 	for i := range files {
 		s, ok := stats[files[i].Path]
 		if !ok {
-			continue
+			return nil, fmt.Errorf("diff-tree: numstat missing for %q", files[i].Path)
 		}
 		files[i].Added, files[i].Deleted, files[i].Binary = s.added, s.deleted, s.binary
+		seen[files[i].Path] = true
+	}
+	var extra []string
+	for path := range stats {
+		if !seen[path] {
+			extra = append(extra, path)
+		}
+	}
+	if len(extra) > 0 {
+		sort.Strings(extra)
+		return nil, fmt.Errorf("diff-tree: numstat path %q has no raw entry", extra[0])
 	}
 	return files, nil
+}
+
+// attachLines puts each patch path's added lines on the matching raw change.
+// A patch path with no raw entry fails closed.
+func attachLines(files []FileChange, added map[string][]Line) error {
+	byPath := map[string]*FileChange{}
+	for i := range files {
+		byPath[files[i].Path] = &files[i]
+	}
+	var extra []string
+	for path, lines := range added {
+		fc, ok := byPath[path]
+		if !ok {
+			extra = append(extra, path)
+			continue
+		}
+		fc.Lines = lines
+	}
+	if len(extra) > 0 {
+		sort.Strings(extra)
+		return fmt.Errorf("diff-tree: patch path %q has no raw entry", extra[0])
+	}
+	return nil
+}
+
+// addedByPath copies each change's lines into the per-path map.
+func addedByPath(files []FileChange) map[string][]Line {
+	out := map[string][]Line{}
+	for _, fc := range files {
+		if len(fc.Lines) > 0 {
+			out[fc.Path] = fc.Lines
+		}
+	}
+	return out
 }
 
 func parseRaw(raw []byte) ([]FileChange, error) {

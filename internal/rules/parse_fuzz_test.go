@@ -307,5 +307,13 @@ func TestPropDiffPipelineFileNames(t *testing.T) {
 		if fmt.Sprint(gotLines) != fmt.Sprint(want) {
 			rt.Errorf("addedLines: got %q, want %q", gotLines, want)
 		}
+		if err := attachLines(fcs, added); err != nil {
+			rt.Fatal(err)
+		}
+		for _, fc := range fcs {
+			if len(fc.Lines) != want[fc.Path] {
+				rt.Errorf("%q: %d lines on the change, want %d", fc.Path, len(fc.Lines), want[fc.Path])
+			}
+		}
 	})
 }

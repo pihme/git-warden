@@ -126,7 +126,6 @@ Survivors that remain after targeted tests and cannot change observable behaviou
 | delta.go `isAncestor` `return false, err`→`true, err` | RETURN_TRUE | The caller returns on the error. |
 | delta.go `fill` `d.DefaultBranch != ""`→true | EXPRESSION_REMOVE | `Remote[""]` is never present, so `ok` already implies a non-empty name. |
 | delta.go `fill` `if rd.IsTag() && rd.New != rd.NewCommit { ids = append(ids, rd.New) }` (6 mutants) | EXPRESSION_REMOVE, INVERT_LOGICAL, CONDITIONALS_NEGATION, BRANCH_IF, STATEMENT_REMOVE | `rev-list --objects` already lists a tag object given as input, and `check` sums a map keyed by oid, so adding or dropping the extra id (or the commit for a lightweight tag) changes nothing. |
-| delta.go `diffFiles` `if !ok { continue }` | BRANCH_IF | Without it a missing numstat entry assigns zero values to fields that are already zero. |
 | delta.go `addedLines` initial scanner buffer `64*1024` (5 mutants) | INTEGER_*, ARITHMETIC_BASE | Starting allocation only; bufio grows it up to the maximum. |
 | delta.go `addedLines` `no := 0`→`1`/`-1` | INTEGER_* | Every added line follows a hunk header, which sets `no` first. |
 | delta.go `hunkStart` `j >= 0`→`> 0`, `0`→`1` | CONDITIONALS_BOUNDARY, INTEGER_INCREMENT | j = 0 means s starts with `,` or space; Atoi of `""` or of that string both give 0. |

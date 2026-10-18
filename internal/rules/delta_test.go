@@ -1,10 +1,13 @@
 package rules
 
 import (
+	"context"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/pihme/git-warden/internal/gitx"
 )
 
 // Unit tests for the parsers and helpers in delta.go that no requirement
@@ -21,6 +24,63 @@ func TestAddedLines_LongLinesAndPlusPrefixedContent(t *testing.T) {
 	want := map[string][]Line{"f.txt": {{No: 1, Text: "++ not a header"}, {No: 2, Text: long}}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("added lines: %d paths, f.txt has %d lines", len(got), len(got["f.txt"]))
+	}
+}
+
+// A numstat row or a patch path that is not a raw path fails closed and names it.
+func TestNormalize_UnmatchedDiffPaths(t *testing.T) {
+	f := newReqFixture(t, "")
+	base := f.repo.Commit("base", map[string]string{"a.txt": "a\n"})
+	head := f.repo.Commit("x", map[string]string{"x.txt": "x\n", "y.txt": "y\ny\n"})
+	run := func(g *gitx.Git) error {
+		_, err := Normalize(context.Background(), g, Input{
+			Updates: []Update{push(main, head)}, Remote: map[string]string{main: base},
+			DefaultBranch: main, Now: f.now,
+		})
+		return err
+	}
+	g := wrapGit(t, f.repo.Dir, "--numstat", 1, "1\t0\tx.txt\x002\t0\ty.txt\x001\t0\tghost.txt\x00", false, 0)
+	if err := run(g); err == nil || !strings.Contains(err.Error(), "ghost.txt") {
+		t.Fatalf("extra numstat: %v, want an error naming ghost.txt", err)
+	}
+	patch := "diff --git a/ghost.txt b/ghost.txt\n--- /dev/null\n+++ b/ghost.txt\n@@ -0,0 +1 @@\n+nope\n"
+	g = wrapGit(t, f.repo.Dir, "-U0", 1, patch, false, 0)
+	if err := run(g); err == nil || !strings.Contains(err.Error(), "ghost.txt") {
+		t.Fatalf("patch path: %v, want an error naming ghost.txt", err)
+	}
+}
+
+// A rename whose new path contains a space carries the added line on that
+// change, and the content rule sees it.
+func TestNormalize_RenameWithSpaceCarriesAddedLine(t *testing.T) {
+	f := newReqFixture(t, "")
+	body := lines("content line ", 8)
+	base := f.repo.Commit("base", map[string]string{"old name.txt": body})
+	f.repo.Git("mv", "old name.txt", "new name.txt")
+	f.repo.Write("new name.txt", body+"\u200bhidden\n")
+	head := f.repo.Commit("rename", nil)
+	d := f.normalize(map[string]string{main: base}, push(main, head))
+	var fc *FileChange
+	for i := range d.Refs[0].Files {
+		if d.Refs[0].Files[i].Path == "new name.txt" {
+			fc = &d.Refs[0].Files[i]
+		}
+	}
+	if fc == nil || fc.Status != 'R' || fc.OldPath != "old name.txt" {
+		t.Fatalf("rename: %+v", d.Refs[0].Files)
+	}
+	seen := false
+	for _, l := range fc.Lines {
+		if strings.Contains(l.Text, "\u200b") {
+			seen = true
+		}
+	}
+	if !seen {
+		t.Fatalf("added line not on the change: %+v", fc.Lines)
+	}
+	p := expect(t, f.eval(map[string]string{main: base}, push(main, head)), "CONTENT-INVISIBLE", "new name.txt")
+	if !strings.Contains(p.Message, "U+200B") {
+		t.Fatalf("finding: %+v", p)
 	}
 }
 
