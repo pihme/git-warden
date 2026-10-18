@@ -86,7 +86,7 @@ jobs:
           jq -r '.files[] | .mutations[] | select(.status == "LIVED") | "\(.id)  line \(.line): \(.original) -> \(.replacement)"' mutation-report.json > survivors.txt || true
       - name: Upload report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-${{ steps.n.outputs.slug }}
           path: |
@@ -147,7 +147,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload corpus and crashers
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-${{ matrix.target }}
           path: |
