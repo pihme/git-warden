@@ -30,13 +30,17 @@ func TestForwardArgsNeverForce(t *testing.T) {
 		{Update: rules.Update{Ref: "refs/heads/same", Old: "a5", New: "a5", Kind: rules.Noop}},
 	}
 	allow := func(rule, ref string) bool { return rule == "REF-NON-FF" && ref == "refs/heads/agent/x" }
-	got := strings.Join(ForwardArgs("/remote.git", true, refs, allow), " ")
+	var admitted []Admission
+	for _, rd := range refs {
+		admitted = append(admitted, Admission{Update: rd.Update, Decision: Recheck, Lease: rd.Old})
+	}
+	got := strings.Join(ForwardArgs("/remote.git", true, refs, admitted, allow), " ")
 	want := "push --porcelain --atomic --force-with-lease=refs/heads/agent/x:a2 /remote.git " +
 		"b1:refs/heads/main b2:refs/heads/agent/x b3:refs/heads/other :refs/heads/gone"
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
-	if ForwardArgs("/r.git", true, refs[4:], allow) != nil {
+	if ForwardArgs("/r.git", true, refs[4:], admitted[4:], allow) != nil {
 		t.Fatal("noop push produced arguments")
 	}
 }

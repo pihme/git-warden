@@ -17,9 +17,14 @@ var leaseRules = map[rules.Kind]string{
 }
 
 // ForwardArgs builds the git push arguments for the checked updates. It never
-// uses --force; a non-fast-forward, tag move or delete gets
-// --force-with-lease=<ref>:<remote old> only when allow(rule, ref) is true.
-func ForwardArgs(url string, atomic bool, refs []*rules.RefDelta, allow func(rule, ref string) bool) []string {
+// uses --force. A non-fast-forward, tag move or delete gets
+// --force-with-lease=<ref>:<lease> when the admission forwarded that ref or
+// allow(rule, ref) is true. The lease OID comes from the admission.
+func ForwardArgs(url string, atomic bool, refs []*rules.RefDelta, admitted []Admission, allow func(rule, ref string) bool) []string {
+	byRef := map[string]Admission{}
+	for _, a := range admitted {
+		byRef[a.Update.Ref] = a
+	}
 	opts := []string{"push", "--porcelain"}
 	if atomic {
 		opts = append(opts, "--atomic")
@@ -29,8 +34,10 @@ func ForwardArgs(url string, atomic bool, refs []*rules.RefDelta, allow func(rul
 		if rd.Kind == rules.Noop {
 			continue
 		}
-		if rule, ok := leaseRules[rd.Kind]; ok && allow(rule, rd.Ref) {
-			opts = append(opts, "--force-with-lease="+rd.Ref+":"+rd.Old)
+		if rule, ok := leaseRules[rd.Kind]; ok {
+			if a, found := byRef[rd.Ref]; found && (a.Decision == Forward || allow(rule, rd.Ref)) {
+				opts = append(opts, "--force-with-lease="+rd.Ref+":"+a.Lease)
+			}
 		}
 		if rd.Kind == rules.Delete {
 			specs = append(specs, ":"+rd.Ref)
@@ -45,15 +52,13 @@ func ForwardArgs(url string, atomic bool, refs []*rules.RefDelta, allow func(rul
 }
 
 func (r *run) forward(remote *gitx.Remote, approved, rest *rules.Delta, res *rules.Result) (int, error) {
-	isApproved := map[string]bool{}
 	for _, rd := range approved.Refs {
-		isApproved[rd.Ref] = true
 		r.entry.Approved = append(r.entry.Approved, journal.RefSHA{Ref: rd.Ref, SHA: rd.New})
 	}
-	// A human approval of exactly this SHA counts as an explicit allow.
-	allow := func(rule, ref string) bool { return isApproved[ref] || res.IsAllowed(rule, ref) }
+	// An approved ref is already Decision Forward. allow is only the rule exemption.
+	allow := func(rule, ref string) bool { return res.IsAllowed(rule, ref) }
 	refs := append(append([]*rules.RefDelta{}, approved.Refs...), rest.Refs...)
-	args := ForwardArgs(remote.URL, r.cfg.ForwardAtomic, refs, allow)
+	args := ForwardArgs(remote.URL, r.cfg.ForwardAtomic, refs, r.admitted, allow)
 	if args == nil {
 		r.entry.Forwarded = true
 		return 0, nil

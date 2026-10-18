@@ -86,7 +86,7 @@ func Approve(configDir, repo, ref, sha string, out io.Writer) error {
 		fmt.Fprintf(out, " (push %s, rules %s)", e.Push, strings.Join(e.Rules, ", "))
 	}
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "The agent's next push of exactly this SHA to this ref is forwarded without re-checking.")
+	fmt.Fprintln(out, ApprovalSentence(e.Old))
 	if streak {
 		fmt.Fprintln(out, "The yellow streak of this repo has ended.")
 	}
