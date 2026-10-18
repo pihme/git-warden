@@ -186,7 +186,7 @@ func TestREQ_PG_033_MaxCommits(t *testing.T) {
 
 func TestREQ_PG_032_SizeSkipsDeletions(t *testing.T) {
 	f := newReqFixture(t, "")
-	f.cfg.Rule("SIZE-LARGE").Limits["max_files"] = 0 // below the range (REQ-PG-046), set in-process
+	f.cfg.Rule("SIZE-LARGE").MaxFiles = 0 // below the range (REQ-PG-046), set in-process
 	base := f.repo.Commit("base", nFiles(3, "a"))
 	expectNone(t, f.eval(map[string]string{main: base, "refs/heads/old": base}, Update{Ref: "refs/heads/old", New: gitx.ZeroOID}), "SIZE-LARGE")
 }
@@ -262,8 +262,8 @@ func TestREQ_PG_035_ShareOnRenamesNotDeletes(t *testing.T) {
 func TestREQ_PG_032_033_034_SizeRulesPerRef(t *testing.T) {
 	f := newFixture(t, "")
 	// zero is below the configurable range (REQ-PG-046); set in-process so any file fires
-	f.cfg.Rule("SIZE-MASS-DELETE").Limits["max_deleted_files"] = 0
-	f.cfg.Rule("SIZE-LARGE").Limits["max_files"] = 0
+	f.cfg.Rule("SIZE-MASS-DELETE").MaxDeletedFiles = 0
+	f.cfg.Rule("SIZE-LARGE").MaxFiles = 0
 	gone := FileChange{Status: 'D', Path: "a", NewSize: 2000000}
 	fs := f.evalDOK(&Delta{Refs: []*RefDelta{refD("refs/heads/x", Delete, gone), refD("refs/heads/y", Noop, gone),
 		refD("refs/heads/a", FF, FileChange{Status: 'M', Path: "m"}), refD(main, FF, gone)}})

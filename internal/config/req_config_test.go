@@ -501,3 +501,39 @@ func TestREQ_PG_047_TimeoutBounds(t *testing.T) {
 		}
 	}
 }
+
+// REQ-PG-004: a rule compiled without one of its required limits fails at
+// load, naming the rule and the key. Omitting the key in a repo file keeps
+// the built-in value, and that value is stored on the rule.
+func TestREQ_PG_004_MissingLimitFailsClosed(t *testing.T) {
+	for id, decls := range ruleLimits {
+		for _, drop := range decls {
+			limits := map[string]any{}
+			for _, d := range decls {
+				if d.key == drop.key {
+					continue
+				}
+				if d.duration {
+					limits[d.key] = time.Duration(d.lo).String()
+				} else {
+					limits[d.key] = int(d.lo)
+				}
+			}
+			_, err := (&mergedRule{enabled: true, color: "yellow", limits: limits}).compile(id)
+			if err == nil || !strings.Contains(err.Error(), id) || !strings.Contains(err.Error(), drop.key) || !strings.Contains(err.Error(), "not set") {
+				t.Errorf("%s without %s: %v", id, drop.key, err)
+			}
+		}
+	}
+	c := mustLoad(t, map[string]string{
+		"defaults.yaml":          wall,
+		"repos/demo/warden.yaml": repoOK + "rules:\n  REF-COUNT: {color: red}\n",
+	})
+	if got := c.Rule("REF-COUNT").MaxRefs; got != 10 {
+		t.Errorf("repo layer omitted max_refs: MaxRefs = %d, want 10", got)
+	}
+	rate := c.Rule("RATE-LIMIT")
+	if rate.MaxPushes != 30 || rate.Window != time.Hour {
+		t.Errorf("RATE-LIMIT parsed limits = pushes %d window %s", rate.MaxPushes, rate.Window)
+	}
+}

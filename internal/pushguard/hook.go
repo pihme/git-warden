@@ -294,14 +294,8 @@ func (r *run) rateLimited() (bool, error) {
 	if !rule.Enabled {
 		return false, nil
 	}
-	max, err := rule.Int("max_pushes")
-	if err != nil {
-		return false, err
-	}
-	window, err := rule.Duration("window")
-	if err != nil {
-		return false, err
-	}
+	max := rule.MaxPushes
+	window := rule.Window
 	n := journal.PushCount(r.entries, r.wall.AgentName, r.h.Now, window)
 	if int64(n) < max {
 		return false, nil
@@ -335,20 +329,14 @@ func (r *run) streak(findings *[]rules.Finding, verdict *config.Color) (bool, er
 	if *verdict != config.Yellow {
 		return false, nil
 	}
-	max, err := rule.Int("max_yellow")
-	if err != nil {
-		return false, err
-	}
-	window, err := rule.Duration("window")
-	if err != nil {
-		return false, err
-	}
+	max := rule.MaxYellow
+	window := rule.Window
 	n := journal.YellowCount(r.entries, r.h.Repo, r.h.Now, window) + 1
 	if int64(n) <= max {
 		return false, nil
 	}
 	add(fmt.Sprintf("%d yellow rejections within %s (limit %d)", n, window, max))
-	err = r.jr.Append(journal.Entry{Time: r.h.Now, Event: journal.EventStreak, ID: r.id, Agent: r.wall.AgentName, Repo: r.h.Repo})
+	err := r.jr.Append(journal.Entry{Time: r.h.Now, Event: journal.EventStreak, ID: r.id, Agent: r.wall.AgentName, Repo: r.h.Repo})
 	return true, err
 }
 
