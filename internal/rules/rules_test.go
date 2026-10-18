@@ -65,11 +65,11 @@ func (f *fixture) evalErr(remote map[string]string, opt Options, updates ...Upda
 	if _, ok := remote[main]; ok {
 		def = main
 	}
-	d, err := Normalize(ctx, g, Input{Updates: updates, Remote: remote, DefaultBranch: def, Now: f.now})
+	d, err := Normalize(ctx, g, f.cfg, Input{Updates: updates, Remote: remote, DefaultBranch: def, Now: f.now})
 	if err != nil {
 		return nil, err
 	}
-	return Evaluate(ctx, g, f.cfg, d, opt)
+	return Evaluate(ctx, f.cfg, d, opt)
 }
 
 func push(ref, sha string) Update { return Update{Ref: ref, New: sha} }

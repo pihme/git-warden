@@ -294,34 +294,41 @@ func TestREQ_PG_032_SubmoduleNotSized(t *testing.T) {
 
 func TestREQ_PG_035_MassDeleteShareEdges(t *testing.T) {
 	f := newFixture(t, "")
-	mod := func(blob string, deleted int, binary bool) *Delta {
-		return &Delta{Refs: []*RefDelta{refD(main, FF, FileChange{Status: 'M', Path: "f", OldBlob: blob, Deleted: deleted, Binary: binary})}}
+	mod := func(deleted int, binary bool, oldLines int, ok bool) *Delta {
+		return &Delta{Refs: []*RefDelta{refD(main, FF, FileChange{
+			Status: 'M', Path: "f", Deleted: deleted, Binary: binary, OldLines: oldLines, OldLinesOK: ok,
+		})}}
 	}
-	if _, err := f.evalD(mod(bogusOID, 200, false)); err == nil {
-		t.Error("unreadable old blob ignored")
+	if _, err := f.evalD(mod(200, false, 0, false)); err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("missing old line count: %v", err)
 	}
-	if _, err := f.evalD(mod(bogusOID, 200, true)); err != nil {
+	if _, err := f.evalD(mod(200, true, 0, false)); err != nil {
 		t.Errorf("binary file read for line counting: %v", err)
 	}
 	// 50 deleted lines * 100 <= 100 min_lines * 50%: not a candidate, not read
-	if _, err := f.evalD(mod(bogusOID, 50, false)); err != nil {
+	if _, err := f.evalD(mod(50, false, 0, false)); err != nil {
 		t.Errorf("non-candidate read: %v", err)
 	}
-	empty := hashObject(t, f.repo, "blob", "", false)
-	if fs := f.evalDOK(mod(empty, 200, false)); len(findings(fs, "SIZE-MASS-DELETE")) != 0 {
+	if n := oldLineCount(nil); n != 0 {
+		t.Errorf("empty blob has %d lines", n)
+	}
+	if fs := f.evalDOK(mod(200, false, 0, true)); len(findings(fs, "SIZE-MASS-DELETE")) != 0 {
 		t.Errorf("empty old file: %v", fs)
 	}
-	one := hashObject(t, f.repo, "blob", "x", false)
+	if n := oldLineCount([]byte("x")); n != 1 {
+		t.Errorf("one line without newline: %d", n)
+	}
 	f0 := newFixture(t, "rules:\n  SIZE-MASS-DELETE: {min_lines: 0}\n")
-	f0.repo = f.repo
-	if fs := f0.evalDOK(mod(one, 1, false)); len(findings(fs, "SIZE-MASS-DELETE")) != 1 {
+	if fs := f0.evalDOK(mod(1, false, 1, true)); len(findings(fs, "SIZE-MASS-DELETE")) != 1 {
 		t.Errorf("one line without newline, removed: %v", fs)
 	}
 	// 100 of 101 lines at a 99% share: 10000 > 9999
+	body := []byte(lines("l", 101))
+	if n := oldLineCount(body); n != 101 {
+		t.Errorf("101 lines counted as %d", n)
+	}
 	f99 := newFixture(t, "rules:\n  SIZE-MASS-DELETE: {max_deleted_share: 99}\n")
-	f99.repo = f.repo
-	b101 := hashObject(t, f.repo, "blob", lines("l", 101), false)
-	if fs := f99.evalDOK(mod(b101, 100, false)); len(findings(fs, "SIZE-MASS-DELETE")) != 1 {
+	if fs := f99.evalDOK(mod(100, false, 101, true)); len(findings(fs, "SIZE-MASS-DELETE")) != 1 {
 		t.Errorf("100 of 101 lines at 99%%: %v", fs)
 	}
 }

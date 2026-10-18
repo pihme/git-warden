@@ -401,7 +401,7 @@ func TestREQ_PG_044_045_DiffBaseAndCommitList(t *testing.T) {
 	}
 	// a raw path missing from numstat fails closed and names that path
 	run := func(g *gitx.Git, remote map[string]string, def string, u Update) (*Delta, error) {
-		return Normalize(context.Background(), g, Input{Updates: []Update{u}, Remote: remote, DefaultBranch: def, Now: f.now})
+		return Normalize(context.Background(), g, f.cfg, Input{Updates: []Update{u}, Remote: remote, DefaultBranch: def, Now: f.now})
 	}
 	g := wrapGit(t, f.repo.Dir, "--numstat", 1, "2\t0\ty.txt\x00", false, 0)
 	if _, err := run(g, map[string]string{main: base}, main, push(main, head)); err == nil || !strings.Contains(err.Error(), "x.txt") {

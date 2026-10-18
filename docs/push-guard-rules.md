@@ -98,6 +98,7 @@ For each ref in the push (`old-oid new-oid ref-name` from `pre-receive`):
 | Cumulative diff | `remote-ref..new` for `ff`; from the merge base for `non_ff` and `tag_move`; for a new ref, `merge-base(default branch, new)..new` |
 | Added lines | `+` lines of the cumulative diff, carried on the file change |
 | Commit metadata | author, committer, dates, signature present or not, parents (`git cat-file commit`) |
+| Lookback, old line counts, Pages hosts | read while normalising, and only when that rule is enabled; evaluation reads them off the delta |
 
 Path rules and content rules run over the **cumulative diff**, so splitting a change across many small commits doesn't help. Metadata rules run over **each new commit**.
 

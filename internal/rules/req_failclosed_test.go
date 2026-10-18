@@ -93,12 +93,12 @@ func TestREQ_PG_004_ScannerTimeoutFailsClosed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	g := &gitx.Git{Dir: f.repo.Dir}
-	d, err := Normalize(ctx, g, Input{Updates: []Update{push(main, head)}, Remote: map[string]string{main: base}, DefaultBranch: main, Now: f.now})
+	d, err := Normalize(ctx, g, f.cfg, Input{Updates: []Update{push(main, head)}, Remote: map[string]string{main: base}, DefaultBranch: main, Now: f.now})
 	if err != nil {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	if _, err := Evaluate(ctx, g, f.cfg, d, Options{Scanner: sc}); err == nil {
+	if _, err := Evaluate(ctx, f.cfg, d, Options{Scanner: sc}); err == nil {
 		t.Fatal("REQ-PG-004: a hanging scanner did not fail")
 	}
 	if time.Since(start) > 10*time.Second {
@@ -337,7 +337,7 @@ func TestREQ_PG_004_NormalizeFailsClosedAtEveryGitStep(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			g := wrapGit(t, f.repo.Dir, c.match, c.nth, c.out, c.fail, c.code)
-			_, err := Normalize(context.Background(), g, Input{Updates: []Update{push(main, head)},
+			_, err := Normalize(context.Background(), g, f.cfg, Input{Updates: []Update{push(main, head)},
 				Remote: map[string]string{main: base}, DefaultBranch: main, Now: f.now})
 			if err == nil || !c.check(err) {
 				t.Fatalf("REQ-PG-004: err = %v", err)
@@ -346,7 +346,7 @@ func TestREQ_PG_004_NormalizeFailsClosedAtEveryGitStep(t *testing.T) {
 	}
 	// object sizes are summed as int64
 	g := wrapGit(t, f.repo.Dir, "--batch-check", 2, x+" 5000000000000000000\n", false, 0)
-	d, err := Normalize(context.Background(), g, Input{Updates: []Update{push(main, head)},
+	d, err := Normalize(context.Background(), g, f.cfg, Input{Updates: []Update{push(main, head)},
 		Remote: map[string]string{main: base}, DefaultBranch: main, Now: f.now})
 	if err != nil || d.Refs[0].NewBytes != 5000000000000000000 {
 		t.Fatalf("NewBytes: %v, %v", d, err)
@@ -360,7 +360,7 @@ func TestREQ_PG_004_DiffBaseFailsClosed(t *testing.T) {
 	base := f.repo.Commit("base", map[string]string{"a.txt": "a\n"})
 	head := f.repo.Commit("x", map[string]string{"x.txt": "x\n"})
 	run := func(g *gitx.Git, remote map[string]string, def string, u Update) (*Delta, error) {
-		return Normalize(context.Background(), g, Input{Updates: []Update{u}, Remote: remote, DefaultBranch: def, Now: f.now})
+		return Normalize(context.Background(), g, f.cfg, Input{Updates: []Update{u}, Remote: remote, DefaultBranch: def, Now: f.now})
 	}
 	plain := &gitx.Git{Dir: f.repo.Dir}
 	// a default branch that is not a commit here, whether or not its oid is

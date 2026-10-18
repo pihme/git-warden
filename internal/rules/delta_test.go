@@ -33,7 +33,7 @@ func TestNormalize_UnmatchedDiffPaths(t *testing.T) {
 	base := f.repo.Commit("base", map[string]string{"a.txt": "a\n"})
 	head := f.repo.Commit("x", map[string]string{"x.txt": "x\n", "y.txt": "y\ny\n"})
 	run := func(g *gitx.Git) error {
-		_, err := Normalize(context.Background(), g, Input{
+		_, err := Normalize(context.Background(), g, f.cfg, Input{
 			Updates: []Update{push(main, head)}, Remote: map[string]string{main: base},
 			DefaultBranch: main, Now: f.now,
 		})

@@ -18,10 +18,11 @@ import (
 
 // Scanner runs gitleaks with configuration from the wall only.
 type Scanner struct {
-	Bin        string // gitleaks binary
-	ConfigFile string // gitleaks.toml from the wall (or a generated one)
-	IgnoreFile string // gitleaksignore from the wall (or an empty file)
-	RepoDir    string // repository to scan
+	Bin        string   // gitleaks binary
+	ConfigFile string   // gitleaks.toml from the wall (or a generated one)
+	IgnoreFile string   // gitleaksignore from the wall (or an empty file)
+	RepoDir    string   // repository to scan
+	Env        []string // environment for the scanner; nil inherits the process environment
 	cleanup    []string
 }
 
@@ -130,7 +131,7 @@ func (e *eval) secretRule(s *Scanner) error {
 		"--log-level", "info", "-f", "json", "-r", report.Name(),
 		"--exit-code", fmt.Sprint(leakExit), s.RepoDir)
 	cmd.Dir = s.RepoDir
-	cmd.Env = e.g.Environ()
+	cmd.Env = s.Env
 	// Its output is evaluated, so above 1 MiB per stream it fails closed
 	// rather than being read cut short (REQ-PG-050).
 	stdout, stderr, runErr := gitx.RunBounded(cmd, "secret scanner")

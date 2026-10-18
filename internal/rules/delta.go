@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pihme/git-warden/internal/config"
 	"github.com/pihme/git-warden/internal/gitx"
 )
 
@@ -58,18 +59,20 @@ type Commit struct {
 // FileChange is one entry of the cumulative diff. Lines are the added lines
 // of Path. Content rules and the Pages rule read them here.
 type FileChange struct {
-	Status  byte // A, M, D, R, T (C is treated as A)
-	Path    string
-	OldPath string // set for renames
-	OldMode string
-	NewMode string
-	OldBlob string
-	NewBlob string
-	Added   int
-	Deleted int
-	Binary  bool
-	NewSize int64
-	Lines   []Line
+	Status     byte // A, M, D, R, T (C is treated as A)
+	Path       string
+	OldPath    string // set for renames
+	OldMode    string
+	NewMode    string
+	OldBlob    string
+	NewBlob    string
+	Added      int
+	Deleted    int
+	Binary     bool
+	NewSize    int64
+	Lines      []Line
+	OldLines   int  // lines in the old blob, for SIZE-MASS-DELETE
+	OldLinesOK bool // OldLines was read; false means the read was skipped
 }
 
 // Paths returns the names a change is checked under (both names for a rename).
@@ -89,24 +92,29 @@ type Line struct {
 // RefDelta is the normalised change of one ref.
 type RefDelta struct {
 	Update
-	OldCommit string // remote old, peeled to a commit
-	NewCommit string // new, peeled to a commit
-	Base      string // base of the cumulative diff (commit or empty tree)
-	Files     []FileChange
-	Added     map[string][]Line // copy of each change's Lines, keyed by Path
-	Commits   []Commit          // new commits reachable from this ref
-	NewBytes  int64             // size of all new objects reachable from this ref
+	OldCommit     string // remote old, peeled to a commit
+	NewCommit     string // new, peeled to a commit
+	Base          string // base of the cumulative diff (commit or empty tree)
+	Files         []FileChange
+	Added         map[string][]Line // copy of each change's Lines, keyed by Path
+	Commits       []Commit          // new commits reachable from this ref
+	HostsRead     bool              // CONTENT-PAGES-SCRIPT looked up hosts in the old tree
+	HostsInTree   map[string]bool   // host → already present in the old tree
+	LookbackRead  bool              // META-UNSIGNED read the lookback commits
+	SignedHistory bool              // those commits are all signed
+	NewBytes      int64             // size of all new objects reachable from this ref
 }
 
 // Delta is a normalised push.
 type Delta struct {
-	Refs          []*RefDelta
-	Commits       []Commit          // all new commits of the push
-	RemoteOIDs    []string          // oids of the remote's heads and tags
-	Remote        map[string]string // the remote's refs
-	DefaultBranch string            // e.g. refs/heads/main; empty if unknown
-	Now           time.Time
-	EmptyTree     string
+	Refs            []*RefDelta
+	Commits         []Commit          // all new commits of the push
+	RemoteOIDs      []string          // oids of the remote's heads and tags
+	Remote          map[string]string // the remote's refs
+	DefaultBranch   string            // e.g. refs/heads/main; empty if unknown
+	Now             time.Time
+	EmptyTree       string
+	ParentCommitter map[string]time.Time // committer time of parents that are not new commits
 }
 
 // Input is what Normalize needs.
@@ -132,7 +140,8 @@ func RemoteOIDs(remote map[string]string) []string {
 }
 
 // Normalize computes ref kinds, cumulative diffs, added lines and new commits.
-func Normalize(ctx context.Context, g *gitx.Git, in Input) (*Delta, error) {
+// cfg decides which rule-specific reads to perform: a disabled rule is not read.
+func Normalize(ctx context.Context, g *gitx.Git, cfg *config.Config, in Input) (*Delta, error) {
 	d := &Delta{Remote: in.Remote, DefaultBranch: in.DefaultBranch, Now: in.Now}
 	d.RemoteOIDs = RemoteOIDs(in.Remote)
 	empty, err := g.Line(ctx, "hash-object", "-t", "tree", "/dev/null")
@@ -152,7 +161,7 @@ func Normalize(ctx context.Context, g *gitx.Git, in Input) (*Delta, error) {
 			return nil, err
 		}
 		if rd.Kind != Delete && rd.Kind != Noop {
-			if err := d.fill(ctx, g, b, rd); err != nil {
+			if err := d.fill(ctx, g, b, cfg, rd); err != nil {
 				return nil, err
 			}
 		}
@@ -163,6 +172,9 @@ func Normalize(ctx context.Context, g *gitx.Git, in Input) (*Delta, error) {
 			}
 		}
 		d.Refs = append(d.Refs, rd)
+	}
+	if err := d.readParents(ctx, b, cfg); err != nil {
+		return nil, err
 	}
 	return d, nil
 }
@@ -231,7 +243,7 @@ func mergeBase(ctx context.Context, g *gitx.Git, a, b string) (string, error) {
 	return "", err
 }
 
-func (d *Delta) fill(ctx context.Context, g *gitx.Git, b *batch, rd *RefDelta) error {
+func (d *Delta) fill(ctx context.Context, g *gitx.Git, b *batch, cfg *config.Config, rd *RefDelta) error {
 	base := ""
 	var err error
 	switch rd.Kind {
@@ -289,8 +301,19 @@ func (d *Delta) fill(ctx context.Context, g *gitx.Git, b *batch, rd *RefDelta) e
 	if rd.IsTag() && rd.New != rd.NewCommit {
 		ids = append(ids, rd.New) // the annotated tag object itself
 	}
-	rd.NewBytes, err = b.totalSize(ctx, ids)
-	return err
+	if rd.NewBytes, err = b.totalSize(ctx, ids); err != nil {
+		return err
+	}
+	if cfg.Rule("SIZE-MASS-DELETE").Enabled {
+		del := cfg.Rule("SIZE-MASS-DELETE")
+		if err := countOldLines(ctx, g, rd.Files, del.MaxDeletedShare, del.MinLines); err != nil {
+			return err
+		}
+	}
+	if err := d.readHosts(ctx, g, cfg, rd); err != nil {
+		return err
+	}
+	return d.readLookback(ctx, g, b, cfg, rd)
 }
 
 // diffFiles runs diff-tree --raw and --numstat with rename detection.
@@ -365,6 +388,169 @@ func addedByPath(files []FileChange) map[string][]Line {
 		}
 	}
 	return out
+}
+
+// countOldLines records the old blob's line count for files whose deletion
+// share SIZE-MASS-DELETE might report. The candidate test matches the rule.
+func countOldLines(ctx context.Context, g *gitx.Git, files []FileChange, share, minLines int64) error {
+	for i := range files {
+		fc := &files[i]
+		if fc.Status != 'M' && fc.Status != 'R' || fc.Binary || int64(fc.Deleted)*100 <= minLines*share {
+			continue
+		}
+		data, err := g.Run(ctx, "cat-file", "blob", fc.OldBlob)
+		if err != nil {
+			return err
+		}
+		fc.OldLines = oldLineCount(data)
+		fc.OldLinesOK = true
+	}
+	return nil
+}
+
+// oldLineCount counts lines the way a mass-deletion share does: a trailing
+// partial line counts as one.
+func oldLineCount(data []byte) int {
+	n := strings.Count(string(data), "\n")
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		n++
+	}
+	return n
+}
+
+// readHosts records, for the Pages branch, whether each external host in the
+// added lines is already in the old tree.
+func (d *Delta) readHosts(ctx context.Context, g *gitx.Git, cfg *config.Config, rd *RefDelta) error {
+	rule := cfg.Rule("CONTENT-PAGES-SCRIPT")
+	if !rule.Enabled || cfg.PagesBranch == "" || rd.Ref != "refs/heads/"+cfg.PagesBranch {
+		return nil
+	}
+	hosts := map[string]bool{}
+	for _, fc := range rd.Files {
+		for _, l := range fc.Lines {
+			for _, h := range externalHosts(l.Text) {
+				hosts[h] = true
+			}
+		}
+	}
+	rd.HostsInTree = map[string]bool{}
+	for host := range hosts {
+		seen, err := hostInTree(ctx, g, rd.OldCommit, host)
+		if err != nil {
+			return err
+		}
+		rd.HostsInTree[host] = seen
+	}
+	rd.HostsRead = true
+	return nil
+}
+
+func hostInTree(ctx context.Context, g *gitx.Git, commit, host string) (bool, error) {
+	if commit == "" {
+		return false, nil
+	}
+	_, err := g.Run(ctx, "grep", "-q", "-I", "-i", "-F", "-e", host, commit, "--")
+	if err == nil {
+		return true, nil
+	}
+	if gitx.ExitCode(err) == 1 {
+		return false, nil
+	}
+	return false, err
+}
+
+// needsLookback reports whether META-UNSIGNED has to read history for rd.
+// A new ref or a tag with no default branch on the remote stays quiet.
+func needsLookback(d *Delta, rd *RefDelta) bool {
+	if rd.OldCommit == "" || rd.Kind == TagMove || rd.IsTag() {
+		_, ok := d.Remote[d.DefaultBranch]
+		return ok && d.DefaultBranch != ""
+	}
+	return true
+}
+
+func (d *Delta) readLookback(ctx context.Context, g *gitx.Git, b *batch, cfg *config.Config, rd *RefDelta) error {
+	rule := cfg.Rule("META-UNSIGNED")
+	if !rule.Enabled || rule.Lookback <= 0 || len(rd.Commits) == 0 || !needsLookback(d, rd) {
+		return nil
+	}
+	signed, err := signedHistory(ctx, g, b, d, rd, int(rule.Lookback))
+	if err != nil {
+		return err
+	}
+	rd.LookbackRead = true
+	rd.SignedHistory = signed
+	return nil
+}
+
+// signedHistory reports whether the last n first-parent commits of the branch
+// (the remote's old state, or the default branch for a new ref) all carry a
+// signature. With fewer than n commits of history the rule stays quiet.
+func signedHistory(ctx context.Context, g *gitx.Git, b *batch, d *Delta, rd *RefDelta, n int) (bool, error) {
+	start := rd.OldCommit
+	if start == "" || rd.Kind == TagMove || rd.IsTag() {
+		def, ok := d.Remote[d.DefaultBranch]
+		if !ok || d.DefaultBranch == "" {
+			return false, nil
+		}
+		var err error
+		if start, err = b.peel(ctx, def); err != nil {
+			return false, err
+		}
+	}
+	oids, err := g.Lines(ctx, "rev-list", "--first-parent", fmt.Sprintf("--max-count=%d", n), start)
+	if err != nil {
+		return false, err
+	}
+	if len(oids) < n {
+		return false, nil
+	}
+	cs, err := b.commits(ctx, oids)
+	if err != nil {
+		return false, err
+	}
+	for _, c := range cs {
+		if !c.Signed {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// readParents loads the committer time of parents that are not themselves new
+// commits, for META-BACKDATED.
+func (d *Delta) readParents(ctx context.Context, b *batch, cfg *config.Config) error {
+	if !cfg.Rule("META-BACKDATED").Enabled {
+		return nil
+	}
+	have := map[string]bool{}
+	for _, c := range d.Commits {
+		have[c.OID] = true
+	}
+	var missing []string
+	seen := map[string]bool{}
+	for _, rd := range d.Refs {
+		for _, c := range rd.Commits {
+			for _, p := range c.Parents {
+				if p != "" && !have[p] && !seen[p] {
+					seen[p] = true
+					missing = append(missing, p)
+				}
+			}
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	cs, err := b.commits(ctx, missing)
+	if err != nil {
+		return err
+	}
+	d.ParentCommitter = map[string]time.Time{}
+	for _, c := range cs {
+		d.ParentCommitter[c.OID] = c.Committer
+	}
+	return nil
 }
 
 func parseRaw(raw []byte) ([]FileChange, error) {

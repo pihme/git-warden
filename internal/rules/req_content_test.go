@@ -435,6 +435,8 @@ func TestREQ_PG_026_PagesScriptHosts(t *testing.T) {
 	html := FileChange{Status: 'A', Path: "index.html", NewMode: "100644", Lines: lines}
 	other := refD(main, FF, html)
 	pg := refD(pages, Create, html)
+	pg.HostsRead = true
+	pg.HostsInTree = map[string]bool{}
 	fs := f.evalDOK(&Delta{Refs: []*RefDelta{other, pg}})
 	hosts := map[string]bool{}
 	for _, x := range findings(fs, "CONTENT-PAGES-SCRIPT") {
@@ -452,11 +454,10 @@ func TestREQ_PG_026_PagesScriptHosts(t *testing.T) {
 			t.Errorf("%s of the Pages branch checked: %v", k, fs)
 		}
 	}
-	// the old tree cannot be searched: fail closed
+	// the host read was skipped: fail closed, without calling git
 	rd := refD(pages, FF, html)
-	rd.OldCommit = bogusOID
-	if _, err := f.evalD(&Delta{Refs: []*RefDelta{rd}}); err == nil {
-		t.Error("git grep failure on the old tree was ignored")
+	if _, err := f.evalD(&Delta{Refs: []*RefDelta{rd}}); err == nil || !strings.Contains(err.Error(), "was not read") {
+		t.Fatalf("missing host read: %v", err)
 	}
 }
 
