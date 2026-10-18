@@ -50,6 +50,7 @@ func (rp *Replay) Run(ctx context.Context) error {
 			return err
 		}
 		defer sc.Close()
+		sc.Env = g.Environ()
 	}
 	counts := map[string]*replayCount{}
 	verdicts := map[config.Color]int{}
@@ -73,11 +74,11 @@ func (rp *Replay) Run(ctx context.Context) error {
 			DefaultBranch: ref,
 			Now:           c.Committer,
 		}
-		d, err := rules.Normalize(ctx, g, in)
+		d, err := rules.Normalize(ctx, g, cfg, in)
 		if err != nil {
 			return fmt.Errorf("step %s: %w", oid, err)
 		}
-		res, err := rules.Evaluate(ctx, g, cfg, d, rules.Options{Scanner: sc, SkipScanner: rp.SkipScanner})
+		res, err := rules.Evaluate(ctx, cfg, d, rules.Options{Scanner: sc, SkipScanner: rp.SkipScanner})
 		if err != nil {
 			return fmt.Errorf("step %s: %w", oid, err)
 		}

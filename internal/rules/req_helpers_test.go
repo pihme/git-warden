@@ -52,7 +52,7 @@ func (f *fixture) normalize(remote map[string]string, updates ...Update) *Delta 
 	if _, ok := remote[main]; ok {
 		def = main
 	}
-	d, err := Normalize(context.Background(), &gitx.Git{Dir: f.repo.Dir},
+	d, err := Normalize(context.Background(), &gitx.Git{Dir: f.repo.Dir}, f.cfg,
 		Input{Updates: updates, Remote: remote, DefaultBranch: def, Now: f.now})
 	if err != nil {
 		f.t.Fatal(err)
@@ -166,7 +166,7 @@ func (f *fixture) evalD(d *Delta) (*Result, error) {
 	if d.Now.IsZero() {
 		d.Now = f.now
 	}
-	return Evaluate(context.Background(), &gitx.Git{Dir: f.repo.Dir}, f.cfg, d, Options{SkipScanner: true})
+	return Evaluate(context.Background(), f.cfg, d, Options{SkipScanner: true})
 }
 
 func (f *fixture) evalDOK(d *Delta) []Finding {
@@ -257,11 +257,12 @@ func scanEval(t *testing.T, f *fixture, g *gitx.Git, remote map[string]string, u
 	if _, ok := remote[main]; ok {
 		def = main
 	}
-	d, err := Normalize(context.Background(), g, Input{Updates: updates, Remote: remote, DefaultBranch: def, Now: f.now})
+	d, err := Normalize(context.Background(), g, f.cfg, Input{Updates: updates, Remote: remote, DefaultBranch: def, Now: f.now})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Evaluate(context.Background(), g, f.cfg, d, Options{Scanner: sc})
+	sc.Env = g.Environ()
+	return Evaluate(context.Background(), f.cfg, d, Options{Scanner: sc})
 }
 
 func readRec(t *testing.T, dir, name string) string {

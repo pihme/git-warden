@@ -115,18 +115,15 @@ Survivors that remain after targeted tests and cannot change observable behaviou
 | rules.go `Evaluate` sort `a.Ref < b.Ref`→`<=` | CONDITIONALS_BOUNDARY | Only reached when the refs differ, so `<=` and `<` agree. |
 | rules.go `contentRules` `break`→`continue` (invalid UTF-8 scan) | INVERT_LOOP_CTRL | Later invalid lines set the same `binary` and message again. |
 | rules.go `pagesRule` `if e.cfg.PagesBranch == ""` return | BRANCH_IF | Without it the Pages ref is `refs/heads/`, which is not a valid ref name and never in a push. |
-| rules.go `pagesRule` `FindAllStringSubmatch(l.Text, -1)`→`-2` | INTEGER_INCREMENT | Any negative n means "all matches". |
-| rules.go `pagesRule` `known[host] = seen` | STATEMENT_REMOVE | Cache only: the host is looked up again with the same result. |
-| rules.go `hostInTree` `return false, err`→`true, err` | RETURN_TRUE | The caller returns on the error and drops the bool. |
-| rules.go `metaRules` `range e.d.Commits` (RANGE_BREAK) and both `parentTimes[…] = …` | RANGE_BREAK, STATEMENT_REMOVE | Cache of committer times only; a missing entry is read from Git with the same value. |
-| rules.go `signedHistory` `rd.Kind == TagMove`→false, `rd.IsTag()`→false, `\|\|`→`&&` | EXPRESSION_REMOVE, INVERT_LOGICAL | TagMove only occurs for tags, and a tag with commits and an old commit is always a TagMove, so each operand alone decides the same. |
-| rules.go `signedHistory` `e.d.DefaultBranch == ""`→false | EXPRESSION_REMOVE | With an empty default branch, `Remote[""]` is never present, so `!ok` already returns. |
-| rules.go `signedHistory` peel error ignored; `return false, err`→`true, err` (2) | BRANCH_IF, RETURN_TRUE | Ignoring the peel error leaves `start` empty and `rev-list ""` fails; on errors the caller drops the bool. |
+| rules.go `externalHosts` `FindAllStringSubmatch(text, -1)`→`-2` | INTEGER_INCREMENT | Any negative n means "all matches". |
+| delta.go `hostInTree` `return false, err`→`true, err` | RETURN_TRUE | The caller returns on the error and drops the bool. |
+| delta.go `signedHistory` `rd.Kind == TagMove`→false, `rd.IsTag()`→false, `\|\|`→`&&` | EXPRESSION_REMOVE, INVERT_LOGICAL | TagMove only occurs for tags, and a tag with commits and an old commit is always a TagMove, so each operand alone decides the same. |
+| delta.go `signedHistory` `d.DefaultBranch == ""`→false | EXPRESSION_REMOVE | With an empty default branch, `Remote[""]` is never present, so `!ok` already returns. |
+| delta.go `signedHistory` peel error ignored; `return false, err`→`true, err` (2) | BRANCH_IF, RETURN_TRUE | Ignoring the peel error leaves `start` empty and `rev-list ""` fails; on errors the caller drops the bool. |
 | rules.go `short` `len(oid) > 12`→`>= 12`, `12`→`11` | CONDITIONALS_BOUNDARY, INTEGER_DECREMENT | For a 12-character oid, `oid[:12]` is the oid. |
 | delta.go `isAncestor` `return false, err`→`true, err` | RETURN_TRUE | The caller returns on the error. |
 | delta.go `fill` `d.DefaultBranch != ""`→true | EXPRESSION_REMOVE | `Remote[""]` is never present, so `ok` already implies a non-empty name. |
 | delta.go `fill` `if rd.IsTag() && rd.New != rd.NewCommit { ids = append(ids, rd.New) }` (6 mutants) | EXPRESSION_REMOVE, INVERT_LOGICAL, CONDITIONALS_NEGATION, BRANCH_IF, STATEMENT_REMOVE | `rev-list --objects` already lists a tag object given as input, and `check` sums a map keyed by oid, so adding or dropping the extra id (or the commit for a lightweight tag) changes nothing. |
-| delta.go `diffFiles` `if !ok { continue }` | BRANCH_IF | Without it a missing numstat entry assigns zero values to fields that are already zero. |
 | delta.go `addedLines` initial scanner buffer `64*1024` (5 mutants) | INTEGER_*, ARITHMETIC_BASE | Starting allocation only; bufio grows it up to the maximum. |
 | delta.go `addedLines` `no := 0`→`1`/`-1` | INTEGER_* | Every added line follows a hunk header, which sets `no` first. |
 | delta.go `hunkStart` `j >= 0`→`> 0`, `0`→`1` | CONDITIONALS_BOUNDARY, INTEGER_INCREMENT | j = 0 means s starts with `,` or space; Atoi of `""` or of that string both give 0. |
@@ -148,7 +145,7 @@ Not equivalent but not killed in rules (deliberately):
 - delta.go maximum diff line: was 256 MiB and not killable on the shared box. Since 2026-10-11 it is 16 MiB (`REQ-PG-049`) and `TestREQ_PG_049_DiffLineLimit` tests exactly 16 MiB and one byte more; the next mutation run shows whether these mutants are now killed.
 - secret.go `temp` `WriteString` error (also `return f.Name(), err`→nil): needs a write failure on a freshly created temp file (disk full or fault injection).
 - secret.go `readBounded` `io.ReadAll` error: a read error on a regular file just opened needs fault injection.
-- rules.go `signedHistory` `b.commits` error after `rev-list` succeeded: needs an object that disappears or is corrupt between two git calls.
+- delta.go `signedHistory` `b.commits` error after `rev-list` succeeded: needs an object that disappears or is corrupt between two git calls.
 - delta.go `parseRaw` `i++`→`i--` (INFRA ERROR), and the loop timeouts in rules.go `longLiteral` and delta.go `parseNumstat`: infinite loops; a timeout counts as detected.
 
 #### internal/backupguard

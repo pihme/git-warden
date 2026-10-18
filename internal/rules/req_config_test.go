@@ -399,19 +399,13 @@ func TestREQ_PG_044_045_DiffBaseAndCommitList(t *testing.T) {
 	if d.Refs[0].Base != base {
 		t.Errorf("FF base = %q, want the old commit", d.Refs[0].Base)
 	}
-	// a file missing from numstat keeps zero counts; later files still get theirs
+	// a raw path missing from numstat fails closed and names that path
 	run := func(g *gitx.Git, remote map[string]string, def string, u Update) (*Delta, error) {
-		return Normalize(context.Background(), g, Input{Updates: []Update{u}, Remote: remote, DefaultBranch: def, Now: f.now})
+		return Normalize(context.Background(), g, f.cfg, Input{Updates: []Update{u}, Remote: remote, DefaultBranch: def, Now: f.now})
 	}
 	g := wrapGit(t, f.repo.Dir, "--numstat", 1, "2\t0\ty.txt\x00", false, 0)
-	d2, err := run(g, map[string]string{main: base}, main, push(main, head))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, fc := range d2.Refs[0].Files {
-		if want := map[string]int{"x.txt": 0, "y.txt": 2}[fc.Path]; fc.Added != want {
-			t.Errorf("%s: Added %d, want %d", fc.Path, fc.Added, want)
-		}
+	if _, err := run(g, map[string]string{main: base}, main, push(main, head)); err == nil || !strings.Contains(err.Error(), "x.txt") {
+		t.Fatalf("missing numstat: %v, want an error naming x.txt", err)
 	}
 	// a non-fast-forward diffs against the merge base
 	f.repo.Git("checkout", "-q", "-b", "side", base)
@@ -421,7 +415,7 @@ func TestREQ_PG_044_045_DiffBaseAndCommitList(t *testing.T) {
 		t.Errorf("non-ff: kind %s base %s files %v", rd.Kind, rd.Base, rd.Files)
 	}
 	// a new ref with a default branch the remote does not have: empty-tree base
-	d, err = run(&gitx.Git{Dir: f.repo.Dir}, map[string]string{}, main, push("refs/heads/new", head))
+	d, err := run(&gitx.Git{Dir: f.repo.Dir}, map[string]string{}, main, push("refs/heads/new", head))
 	if err != nil || d.Refs[0].Base != d.EmptyTree {
 		t.Errorf("create without remote default: %v %v", d, err)
 	}

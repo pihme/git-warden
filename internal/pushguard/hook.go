@@ -210,12 +210,12 @@ func (r *run) main() (int, error) {
 	}
 	in := rules.Input{Remote: refs.Refs, DefaultBranch: defBranch, Now: r.h.Now}
 	in.Updates = approved
-	dApproved, err := rules.Normalize(ctx, r.g, in)
+	dApproved, err := rules.Normalize(ctx, r.g, r.cfg, in)
 	if err != nil {
 		return 1, err
 	}
 	in.Updates = rest
-	dRest, err := rules.Normalize(ctx, r.g, in)
+	dRest, err := rules.Normalize(ctx, r.g, r.cfg, in)
 	if err != nil {
 		return 1, err
 	}
@@ -231,7 +231,8 @@ func (r *run) main() (int, error) {
 			return 1, err
 		}
 		defer sc.Close()
-		if res, err = rules.Evaluate(ctx, r.g, r.cfg, dRest, rules.Options{Scanner: sc}); err != nil {
+		sc.Env = r.g.Environ()
+		if res, err = rules.Evaluate(ctx, r.cfg, dRest, rules.Options{Scanner: sc}); err != nil {
 			return 1, err
 		}
 	}

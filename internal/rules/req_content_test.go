@@ -341,10 +341,9 @@ func TestREQ_PG_021_ScannerAllowOnlyInMarkedFile(t *testing.T) {
 	f := newFixture(t, "")
 	allow := []Line{{No: 1, Text: "// gitleaks:allow"}}
 	rd := refD(main, FF,
-		FileChange{Status: 'A', Path: "sub", NewMode: "160000"},
-		FileChange{Status: 'A', Path: "link", NewMode: "120000"},
-		FileChange{Status: 'A', Path: "a.go", NewMode: "100644"})
-	rd.Added = map[string][]Line{"sub": allow, "link": allow, "a.go": allow}
+		FileChange{Status: 'A', Path: "sub", NewMode: "160000", Lines: allow},
+		FileChange{Status: 'A', Path: "link", NewMode: "120000", Lines: allow},
+		FileChange{Status: 'A', Path: "a.go", NewMode: "100644", Lines: allow})
 	fs := f.evalDOK(&Delta{Refs: []*RefDelta{rd}})
 	if p := paths(fs, "CONTENT-SCANNER-ALLOW"); p["sub"] || p["link"] || !p["a.go"] {
 		t.Errorf("CONTENT-SCANNER-ALLOW on %v, want only a.go", p)
@@ -358,11 +357,10 @@ func TestREQ_PG_021_ScannerAllowOnlyInMarkedFile(t *testing.T) {
 // gives one finding, for its first invisible character.
 func TestREQ_PG_022_InvisibleAtLineStart(t *testing.T) {
 	f := newFixture(t, "")
-	rd := refD(main, FF, FileChange{Status: 'A', Path: "a.go", NewMode: "100644"})
-	rd.Added = map[string][]Line{"a.go": {
+	rd := refD(main, FF, FileChange{Status: 'A', Path: "a.go", NewMode: "100644", Lines: []Line{
 		{No: 1, Text: "\u200bstart"},
 		{No: 2, Text: "x \u200b y \u200c"},
-	}}
+	}})
 	fs := f.evalDOK(&Delta{Refs: []*RefDelta{rd}})
 	byLine := map[int][]string{}
 	for _, x := range findings(fs, "CONTENT-INVISIBLE") {
@@ -430,15 +428,15 @@ func TestREQ_PG_025_LongLiteralCharacterClasses(t *testing.T) {
 func TestREQ_PG_026_PagesScriptHosts(t *testing.T) {
 	f := newFixture(t, "")
 	pages := "refs/heads/gh-pages"
-	html := FileChange{Status: 'A', Path: "index.html", NewMode: "100644"}
 	lines := []Line{
 		{No: 1, Text: `<script src="https://a.example/x.js"></script><script src="https://b.example/y.js"></script>`},
 		{No: 2, Text: `<script src="app.js"></script><link href="https://c.example/s.css">`},
 	}
+	html := FileChange{Status: 'A', Path: "index.html", NewMode: "100644", Lines: lines}
 	other := refD(main, FF, html)
-	other.Added["index.html"] = lines
 	pg := refD(pages, Create, html)
-	pg.Added["index.html"] = lines
+	pg.HostsRead = true
+	pg.HostsInTree = map[string]bool{}
 	fs := f.evalDOK(&Delta{Refs: []*RefDelta{other, pg}})
 	hosts := map[string]bool{}
 	for _, x := range findings(fs, "CONTENT-PAGES-SCRIPT") {
@@ -452,17 +450,14 @@ func TestREQ_PG_026_PagesScriptHosts(t *testing.T) {
 	}
 	for _, k := range []Kind{Delete, Noop} {
 		rd := refD(pages, k, html)
-		rd.Added["index.html"] = lines
 		if fs := f.evalDOK(&Delta{Refs: []*RefDelta{rd}}); len(findings(fs, "CONTENT-PAGES-SCRIPT")) != 0 {
 			t.Errorf("%s of the Pages branch checked: %v", k, fs)
 		}
 	}
-	// the old tree cannot be searched: fail closed
+	// the host read was skipped: fail closed, without calling git
 	rd := refD(pages, FF, html)
-	rd.OldCommit = bogusOID
-	rd.Added["index.html"] = lines
-	if _, err := f.evalD(&Delta{Refs: []*RefDelta{rd}}); err == nil {
-		t.Error("git grep failure on the old tree was ignored")
+	if _, err := f.evalD(&Delta{Refs: []*RefDelta{rd}}); err == nil || !strings.Contains(err.Error(), "was not read") {
+		t.Fatalf("missing host read: %v", err)
 	}
 }
 

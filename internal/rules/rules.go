@@ -10,7 +10,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/pihme/git-warden/internal/config"
-	"github.com/pihme/git-warden/internal/gitx"
 )
 
 // Finding is one rule hit.
@@ -74,7 +73,6 @@ type Options struct {
 
 type eval struct {
 	ctx  context.Context
-	g    *gitx.Git
 	cfg  *config.Config
 	d    *Delta
 	res  *Result
@@ -82,8 +80,9 @@ type eval struct {
 }
 
 // Evaluate runs all deterministic rules except RATE-*, which need the journal.
-func Evaluate(ctx context.Context, g *gitx.Git, cfg *config.Config, d *Delta, opt Options) (*Result, error) {
-	e := &eval{ctx: ctx, g: g, cfg: cfg, d: d, res: &Result{Allowed: map[string]map[string]bool{}}, seen: map[string]bool{}}
+// It reads only the delta and the rule settings. Git reads happen in Normalize.
+func Evaluate(ctx context.Context, cfg *config.Config, d *Delta, opt Options) (*Result, error) {
+	e := &eval{ctx: ctx, cfg: cfg, d: d, res: &Result{Allowed: map[string]map[string]bool{}}, seen: map[string]bool{}}
 	steps := []func() error{e.refRules, e.pathRules, e.modeRules, e.contentRules, e.pagesRule, e.metaRules, e.sizeRules}
 	for _, step := range steps {
 		if err := step(); err != nil {
@@ -234,11 +233,10 @@ func (e *eval) contentRules() error {
 			if fc.Status == 'D' || fc.NewMode == "160000" || fc.NewMode == "120000" {
 				continue
 			}
-			lines := rd.Added[fc.Path]
 			binary := fc.Binary
 			msg := "binary file added or changed"
 			if !binary {
-				for _, l := range lines {
+				for _, l := range fc.Lines {
 					if !utf8.ValidString(l.Text) {
 						binary, msg = true, "file is not valid UTF-8 text"
 						break
@@ -249,7 +247,7 @@ func (e *eval) contentRules() error {
 				e.check("CONTENT-BINARY", fc.Path, true, Finding{Ref: rd.Ref, Path: fc.Path, Message: msg})
 				continue
 			}
-			for _, l := range lines {
+			for _, l := range fc.Lines {
 				f := Finding{Ref: rd.Ref, Path: fc.Path, Line: l.No}
 				lower := strings.ToLower(l.Text)
 				if strings.Contains(lower, "gitleaks:allow") || strings.Contains(lower, "trufflehog:ignore") {
@@ -316,37 +314,38 @@ var (
 	urlHost   = regexp.MustCompile(`(?i)^(?:https?:)?//([^/?#:]+)`)
 )
 
+// externalHosts returns the lower-cased hosts of script and stylesheet URLs on a line.
+func externalHosts(text string) []string {
+	var hosts []string
+	for _, re := range []*regexp.Regexp{scriptSrc, linkHref} {
+		for _, m := range re.FindAllStringSubmatch(text, -1) {
+			if hm := urlHost.FindStringSubmatch(m[1]); hm != nil {
+				hosts = append(hosts, strings.ToLower(hm[1]))
+			}
+		}
+	}
+	return hosts
+}
+
 func (e *eval) pagesRule() error {
 	if e.cfg.PagesBranch == "" {
 		return nil
 	}
+	rule := e.cfg.Rule("CONTENT-PAGES-SCRIPT")
 	pages := "refs/heads/" + e.cfg.PagesBranch
 	for _, rd := range e.d.Refs {
 		if rd.Ref != pages || rd.Kind == Delete || rd.Kind == Noop {
 			continue
 		}
-		known := map[string]bool{}
 		for _, fc := range rd.Files {
-			for _, l := range rd.Added[fc.Path] {
-				var urls []string
-				for _, re := range []*regexp.Regexp{scriptSrc, linkHref} {
-					for _, m := range re.FindAllStringSubmatch(l.Text, -1) {
-						urls = append(urls, m[1])
-					}
-				}
-				for _, u := range urls {
-					m := urlHost.FindStringSubmatch(u)
-					if m == nil {
-						continue
-					}
-					host := strings.ToLower(m[1])
-					seen, ok := known[host]
-					if !ok {
-						var err error
-						if seen, err = e.hostInTree(rd.OldCommit, host); err != nil {
-							return err
+			for _, l := range fc.Lines {
+				for _, host := range externalHosts(l.Text) {
+					seen := false
+					if rule.Enabled {
+						if !rd.HostsRead {
+							return fmt.Errorf("CONTENT-PAGES-SCRIPT: host %s on %s was not read", host, rd.Ref)
 						}
-						known[host] = seen
+						seen = rd.HostsInTree[host]
 					}
 					if !seen {
 						e.check("CONTENT-PAGES-SCRIPT", fc.Path, true, Finding{Ref: rd.Ref, Path: fc.Path, Line: l.No,
@@ -359,59 +358,48 @@ func (e *eval) pagesRule() error {
 	return nil
 }
 
-func (e *eval) hostInTree(commit, host string) (bool, error) {
-	if commit == "" {
-		return false, nil
-	}
-	_, err := e.g.Run(e.ctx, "grep", "-q", "-I", "-i", "-F", "-e", host, commit, "--")
-	if err == nil {
-		return true, nil
-	}
-	if gitx.ExitCode(err) == 1 {
-		return false, nil
-	}
-	return false, err
-}
-
 func branchSubject(ref string) string { return strings.TrimPrefix(ref, "refs/heads/") }
 
 func (e *eval) metaRules() error {
 	unsigned := e.cfg.Rule("META-UNSIGNED")
 	lookback := unsigned.Lookback
-	maxAge := e.cfg.Rule("META-BACKDATED").MaxAge
+	back := e.cfg.Rule("META-BACKDATED")
+	maxAge := back.MaxAge
 	maxSkew := e.cfg.Rule("META-FUTURE").MaxSkew
-	b := newBatch(e.g)
 	parentTimes := map[string]time.Time{}
 	for _, c := range e.d.Commits {
 		parentTimes[c.OID] = c.Committer
+	}
+	for oid, pt := range e.d.ParentCommitter {
+		if _, ok := parentTimes[oid]; !ok {
+			parentTimes[oid] = pt
+		}
 	}
 	for _, rd := range e.d.Refs {
 		if len(rd.Commits) == 0 {
 			continue
 		}
 		subj := branchSubject(rd.Ref)
-		signedHistory := false
+		signed := false
 		if unsigned.Enabled && lookback > 0 {
 			var err error
-			if signedHistory, err = e.signedHistory(b, rd, int(lookback)); err != nil {
+			if signed, err = e.signedResult(rd); err != nil {
 				return err
 			}
 		}
 		for _, c := range rd.Commits {
 			f := Finding{Ref: rd.Ref, Commit: c.OID}
-			if signedHistory && !c.Signed {
+			if signed && !c.Signed {
 				f.Message = fmt.Sprintf("commit is not signed, but the last %d commits on %s are", lookback, subj)
 				e.check("META-UNSIGNED", subj, true, f)
 			}
 			for _, p := range c.Parents {
 				pt, ok := parentTimes[p]
 				if !ok {
-					pcs, err := b.commits(e.ctx, []string{p})
-					if err != nil {
-						return err
+					if !back.Enabled {
+						continue
 					}
-					pt = pcs[0].Committer
-					parentTimes[p] = pt
+					return fmt.Errorf("META-BACKDATED: parent %s was not read", short(p))
 				}
 				if c.Committer.Before(pt) {
 					f.Message = "committer date is earlier than its parent's; recommit with the current date"
@@ -431,38 +419,16 @@ func (e *eval) metaRules() error {
 	return nil
 }
 
-// signedHistory reports whether the last n first-parent commits of the branch
-// (the remote's old state, or the default branch for a new ref) all carry a
-// signature. With fewer than n commits of history the rule stays quiet.
-func (e *eval) signedHistory(b *batch, rd *RefDelta, n int) (bool, error) {
-	start := rd.OldCommit
-	if start == "" || rd.Kind == TagMove || rd.IsTag() {
-		def, ok := e.d.Remote[e.d.DefaultBranch]
-		if !ok || e.d.DefaultBranch == "" {
-			return false, nil
-		}
-		var err error
-		if start, err = b.peel(e.ctx, def); err != nil {
-			return false, err
-		}
-	}
-	oids, err := e.g.Lines(e.ctx, "rev-list", "--first-parent", fmt.Sprintf("--max-count=%d", n), start)
-	if err != nil {
-		return false, err
-	}
-	if len(oids) < n {
+// signedResult is the lookback answer Normalize stored. A delta that skipped
+// the read fails closed instead of calling git.
+func (e *eval) signedResult(rd *RefDelta) (bool, error) {
+	if !needsLookback(e.d, rd) {
 		return false, nil
 	}
-	cs, err := b.commits(e.ctx, oids)
-	if err != nil {
-		return false, err
+	if !rd.LookbackRead {
+		return false, fmt.Errorf("META-UNSIGNED: lookback for %s was not read", rd.Ref)
 	}
-	for _, c := range cs {
-		if !c.Signed {
-			return false, nil
-		}
-	}
-	return true, nil
+	return rd.SignedHistory, nil
 }
 
 func (e *eval) sizeRules() error {
@@ -519,18 +485,18 @@ func (e *eval) sizeRules() error {
 }
 
 func (e *eval) massDeleteShare(rd *RefDelta, share, minLines int64) error {
+	rule := e.cfg.Rule("SIZE-MASS-DELETE")
 	for _, fc := range rd.Files {
 		if fc.Status != 'M' && fc.Status != 'R' || fc.Binary || int64(fc.Deleted)*100 <= minLines*share {
 			continue
 		}
-		data, err := e.g.Run(e.ctx, "cat-file", "blob", fc.OldBlob)
-		if err != nil {
-			return err
+		if !rule.Enabled {
+			continue
 		}
-		old := int64(strings.Count(string(data), "\n"))
-		if len(data) > 0 && data[len(data)-1] != '\n' {
-			old++
+		if !fc.OldLinesOK {
+			return fmt.Errorf("SIZE-MASS-DELETE: old line count missing for %q", fc.Path)
 		}
+		old := int64(fc.OldLines)
 		if old > minLines && int64(fc.Deleted)*100 > old*share {
 			e.check("SIZE-MASS-DELETE", fc.Path, true, Finding{Ref: rd.Ref, Path: fc.Path,
 				Message: fmt.Sprintf("%d of the file's %d lines removed (limit %d%%)", fc.Deleted, old, share)})

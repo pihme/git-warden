@@ -214,8 +214,8 @@ func TestREQ_PG_030_031_DateRulesPerRefAndFailClosed(t *testing.T) {
 	// a parent that cannot be read fails closed
 	orphan := commitD("4444444444444444444444444444444444444444", f.now, bogusOID)
 	m.Commits = []Commit{orphan}
-	if _, err := f.evalD(&Delta{Refs: []*RefDelta{m}, Commits: []Commit{orphan}}); err == nil {
-		t.Error("unreadable parent ignored")
+	if _, err := f.evalD(&Delta{Refs: []*RefDelta{m}, Commits: []Commit{orphan}}); err == nil || !strings.Contains(err.Error(), "was not read") {
+		t.Fatalf("missing parent: %v", err)
 	}
 }
 
@@ -225,8 +225,8 @@ func TestREQ_PG_028_SignedHistoryErrorsAndDisable(t *testing.T) {
 	rd.OldCommit = bogusOID
 	rd.Commits = []Commit{c}
 	d := func() *Delta { return &Delta{Refs: []*RefDelta{rd}, Commits: []Commit{c}} }
-	if _, err := newFixture(t, "").evalD(d()); err == nil {
-		t.Error("rev-list failure on the old tip ignored")
+	if _, err := newFixture(t, "").evalD(d()); err == nil || !strings.Contains(err.Error(), "lookback") || !strings.Contains(err.Error(), "was not read") {
+		t.Fatalf("missing lookback: %v", err)
 	}
 	if _, err := newFixture(t, "rules:\n  META-UNSIGNED: {enabled: false}\n").evalD(d()); err != nil {
 		t.Errorf("disabled META-UNSIGNED still reads history: %v", err)
