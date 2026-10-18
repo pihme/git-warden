@@ -68,15 +68,16 @@ func ParseUpdates(r io.Reader) ([]rules.Update, error) {
 }
 
 type run struct {
-	h       *Hook
-	ctx     context.Context
-	id      string
-	wall    *config.Config
-	cfg     *config.Config
-	jr      *journal.Journal
-	entries []journal.Entry
-	entry   journal.Entry
-	g       *gitx.Git
+	h          *Hook
+	ctx        context.Context
+	id         string
+	wall       *config.Config
+	cfg        *config.Config
+	jr         *journal.Journal
+	entries    []journal.Entry
+	entry      journal.Entry
+	streakLine *journal.Entry // appended with the push line, streak first
+	g          *gitx.Git
 }
 
 func (r *run) say(format string, args ...any) { fmt.Fprintf(r.h.Out, format+"\n", args...) }
@@ -89,6 +90,17 @@ func (h *Hook) Run(ctx context.Context) int {
 	r := &run{h: h, ctx: ctx, id: NewID(h.Now), g: &gitx.Git{Dir: h.GitDir}}
 	r.entry = journal.Entry{Time: h.Now, Event: journal.EventPush, ID: r.id, Repo: h.Repo}
 	code, err := r.main()
+	return r.persist(code, err)
+}
+
+// writeJournal appends one journal line. A test replaces it with a journal
+// that rejects a write.
+var writeJournal = func(j *journal.Journal, e journal.Entry) error { return j.Append(e) }
+
+// persist records the streak line and then the push line. A failed streak
+// append, on a push that was not forwarded, rewrites that push to an internal
+// error and leaves no streak line behind.
+func (r *run) persist(code int, err error) int {
 	if err != nil {
 		r.entry.Verdict, r.entry.Reason, r.entry.Error = string(config.Red), journal.ReasonInternalError, err.Error()
 		r.entry.Forwarded = false
@@ -96,7 +108,16 @@ func (h *Hook) Run(ctx context.Context) int {
 		code = 1
 	}
 	if r.jr != nil {
-		if jerr := r.jr.Append(r.entry); jerr != nil {
+		if r.streakLine != nil {
+			if jerr := writeJournal(r.jr, *r.streakLine); jerr != nil {
+				fallbackLog(r.wall, fmt.Sprintf("push %s: journal: %v (streak)", r.id, jerr))
+				if !r.entry.Forwarded {
+					r.entry.Verdict, r.entry.Reason, r.entry.Error = string(config.Red), journal.ReasonInternalError, jerr.Error()
+					code = 1
+				}
+			}
+		}
+		if jerr := writeJournal(r.jr, r.entry); jerr != nil {
 			fallbackLog(r.wall, fmt.Sprintf("push %s: journal: %v (entry error: %s)", r.id, jerr, r.entry.Error))
 			if code == 0 {
 				// the push went to the remote; the agent's push is accepted anyway
@@ -161,8 +182,15 @@ func (r *run) main() (int, error) {
 	if r.entries, err = r.jr.Read(); err != nil {
 		return 1, err
 	}
-	if limited, err := r.rateLimited(); err != nil || limited {
-		return 1, err
+	pol := step{cfg: r.cfg, entries: r.entries, agent: r.wall.AgentName, repo: r.h.Repo, now: r.h.Now, id: r.id}
+	if limited, finding, warn := pol.rate(); limited {
+		r.entry.Findings = []rules.Finding{finding}
+		r.entry.Verdict, r.entry.Reason = string(finding.Color), journal.ReasonRateLimited
+		if warn {
+			r.notify("rate_limited", nil)
+		}
+		r.say("push-guard: %s", MsgRateLimited)
+		return 1, nil
 	}
 
 	remote, err := gitx.NewRemote(r.g, r.cfg.Remote, r.cfg.Credential, r.cfg.CredentialUsername, r.cfg.KnownHosts)
@@ -236,12 +264,8 @@ func (r *run) main() (int, error) {
 			return 1, err
 		}
 	}
-	findings := res.Findings
-	verdict := rules.Verdict(findings)
-	streak, err := r.streak(&findings, &verdict)
-	if err != nil {
-		return 1, err
-	}
+	findings, verdict, line, streak := pol.streak(res.Findings, rules.Verdict(res.Findings))
+	r.streakLine = line
 	r.entry.Findings, r.entry.Verdict = findings, string(verdict)
 
 	switch verdict {
@@ -286,59 +310,6 @@ func (r *run) unknownRepo() (int, error) {
 	r.notify("unknown_repo", nil)
 	r.say("%s", MsgUnknownRepo)
 	return 1, nil
-}
-
-// rateLimited applies RATE-LIMIT. Rate-limited pushes are not evaluated, and
-// only the first one of a series warns the human.
-func (r *run) rateLimited() (bool, error) {
-	rule := r.cfg.Rule("RATE-LIMIT")
-	if !rule.Enabled {
-		return false, nil
-	}
-	max := rule.MaxPushes
-	window := rule.Window
-	n := journal.PushCount(r.entries, r.wall.AgentName, r.h.Now, window)
-	if int64(n) < max {
-		return false, nil
-	}
-	r.entry.Findings = []rules.Finding{{Rule: "RATE-LIMIT", Color: rule.Color,
-		Message: fmt.Sprintf("%d pushes within %s (limit %d)", n+1, window, max)}}
-	r.entry.Verdict, r.entry.Reason = string(rule.Color), journal.ReasonRateLimited
-	if last := journal.LastPush(r.entries, r.wall.AgentName); last == nil || last.Reason != journal.ReasonRateLimited {
-		r.notify("rate_limited", nil)
-	}
-	r.say("push-guard: %s", MsgRateLimited)
-	return true, nil
-}
-
-// streak applies RATE-YELLOW-STREAK and reports whether it made the push red.
-func (r *run) streak(findings *[]rules.Finding, verdict *config.Color) (bool, error) {
-	rule := r.cfg.Rule("RATE-YELLOW-STREAK")
-	if !rule.Enabled {
-		return false, nil
-	}
-	add := func(msg string) {
-		*findings = append(*findings, rules.Finding{Rule: rule.ID, Color: rule.Color, Message: msg})
-		if rule.Color.Worse(*verdict) {
-			*verdict = rule.Color
-		}
-	}
-	if journal.StreakActive(r.entries, r.h.Repo) {
-		add("yellow streak active; waiting for a human to approve a SHA or reset the streak")
-		return true, nil
-	}
-	if *verdict != config.Yellow {
-		return false, nil
-	}
-	max := rule.MaxYellow
-	window := rule.Window
-	n := journal.YellowCount(r.entries, r.h.Repo, r.h.Now, window) + 1
-	if int64(n) <= max {
-		return false, nil
-	}
-	add(fmt.Sprintf("%d yellow rejections within %s (limit %d)", n, window, max))
-	err := r.jr.Append(journal.Entry{Time: r.h.Now, Event: journal.EventStreak, ID: r.id, Agent: r.wall.AgentName, Repo: r.h.Repo})
-	return true, err
 }
 
 // ensureObjects makes sure the remote's heads and tags are readable locally,
