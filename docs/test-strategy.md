@@ -92,6 +92,7 @@ Survivors that remain after targeted tests and cannot change observable behaviou
 | config.go `checkBounds` `sort.Strings(keys)` removed | STATEMENT_REMOVE | Only the order of out-of-range errors changes. |
 | config.go `checkBounds` both `if !ok { continue }` (duration and count loop) removed | BRANCH_IF | Every configured limit key has an entry in `countBounds` or `durationBounds`. |
 | config.go `checkBounds` `continue`→`break` after a duration limit | INVERT_LOOP_CTRL | Equivalent only because `window` sorts last among duration keys; revisit when duration keys are added. |
+| config.go `bindLimits` `sort.Strings(keys)` removed | STATEMENT_REMOVE | Only the order of limit errors changes. One bad key fails the load. |
 | config.go `ResolveProgram` `p == ""`→false | EXPRESSION_REMOVE | `resolve(dir, "")` returns `""` anyway. |
 | config.go `RemoteKind` `return KindLocal`→zero value (3) | RETURN_ZERO | `KindLocal` is the zero value of `Kind` (`iota` 0). |
 | config.go `RemoteKind` Local case emptied | BRANCH_CASE | The final `return KindLocal` yields the same result. |
@@ -139,6 +140,16 @@ Survivors that remain after targeted tests and cannot change observable behaviou
 | secret.go `refOf` `len(e.d.Refs) > 0`→`>= 0`/`> -1` | CONDITIONALS_BOUNDARY, INTEGER_DECREMENT | refOf runs only for leaks, which need new commits, so there is always at least one ref. |
 | secret.go `firstLine` `i >= 0`→`> 0`, `0`→`1` | CONDITIONALS_BOUNDARY, INTEGER_INCREMENT | s is trimmed first, so it never starts with a newline. |
 | secret.go `firstLine` `len(s) > 300`→`>= 300`, `300`→`299` | CONDITIONALS_BOUNDARY, INTEGER_DECREMENT | The cut is `s[:300]`, which is a no-op for a 300-byte string. |
+| delta.go `diffFiles` / `attachLines` `sort.Strings(extra)` removed | STATEMENT_REMOVE | One unmatched path: sorting a single name does not change the error. |
+| delta.go `attachLines` `continue`→`break` on an unknown patch path | INVERT_LOOP_CTRL | Any unknown path fails closed. With one extra path, `break` and `continue` name it the same. |
+| delta.go `countOldLines` candidate filter (`Status`, `Binary`, `* 100`, `<=`) | EXPRESSION_REMOVE, INVERT_LOGICAL, INTEGER_*, CONDITIONALS_BOUNDARY, BRANCH_IF | `massDeleteShare` repeats the same predicate and ignores an `OldLinesOK` on a file it skips. Counting a file the rule will skip does not change the verdict. A `cat-file` error on a real candidate still returns. |
+| delta.go `readLookback` `!Enabled`, `Lookback <= 0`, `len(Commits) == 0` | EXPRESSION_REMOVE, INVERT_LOGICAL, CONDITIONALS_BOUNDARY, INTEGER_DECREMENT, BRANCH_IF | `metaRules` calls `signedResult` only when the rule is enabled, lookback is positive, and the ref has commits. An extra read that still succeeds does not change the verdict. |
+| delta.go `needsLookback` tag operands, same as `signedHistory` | EXPRESSION_REMOVE, INVERT_LOGICAL | TagMove only occurs for tags, so each operand alone decides the same. |
+| delta.go `readHosts` early return (rule off, empty pages branch, other ref) | EXPRESSION_REMOVE, INVERT_LOGICAL, BRANCH_IF | `pagesRule` reads `HostsRead` only for an enabled rule on the pages ref when a host is present. Other pushes do not use the flag. |
+| delta.go `readParents` filters (`Enabled`, empty parent, already loaded, duplicate) | BRANCH_IF, EXPRESSION_REMOVE, INVERT_LOGICAL, STATEMENT_REMOVE, INTEGER_DECREMENT, RANGE_BREAK | `metaRules` prefers committer times from the new commits and ignores parents when `META-BACKDATED` is off. Fetching a parent twice stores the same time. `len(missing) == -1` never matches, and `commits` of an empty list is a no-op. |
+| rules.go `massDeleteShare` `continue`→`break` when the rule is disabled | INVERT_LOOP_CTRL | The loop body only skips. Leaving early and skipping one by one both produce no finding. |
+| rules.go `signedResult` `return false, err`→`true, err` | RETURN_TRUE | The caller returns on the error and drops the bool. |
+| rules.go `metaRules` `continue`→`break` when `META-BACKDATED` is off | INVERT_LOOP_CTRL | A missing parent is not an error while the rule is off, and later parents are not scored either. |
 
 Not equivalent but not killed in rules (deliberately):
 

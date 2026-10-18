@@ -48,6 +48,26 @@ func TestNormalize_UnmatchedDiffPaths(t *testing.T) {
 	if err := run(g); err == nil || !strings.Contains(err.Error(), "ghost.txt") {
 		t.Fatalf("patch path: %v, want an error naming ghost.txt", err)
 	}
+	// a.txt and y.txt are in the raw diff; x.txt is not in this numstat.
+	g = wrapGit(t, f.repo.Dir, "--numstat", 1, "0\t1\ta.txt\x002\t0\ty.txt\x00", false, 0)
+	if err := run(g); err == nil || !strings.Contains(err.Error(), "numstat missing") || !strings.Contains(err.Error(), "x.txt") {
+		t.Fatalf("missing numstat: %v, want an error naming x.txt", err)
+	}
+}
+
+// Added keeps a one-line file and omits a pure deletion.
+func TestAddedByPath_KeepsOneLineAndOmitsDeletions(t *testing.T) {
+	f := newReqFixture(t, "")
+	base := f.repo.Commit("base", map[string]string{"gone.txt": "old\n"})
+	f.repo.Git("rm", "--quiet", "gone.txt")
+	head := f.repo.Commit("next", map[string]string{"one.txt": "only\n"})
+	added := f.normalize(map[string]string{main: base}, push(main, head)).Refs[0].Added
+	if len(added["one.txt"]) != 1 || added["one.txt"][0].Text != "only" {
+		t.Fatalf("one-line file: %+v", added["one.txt"])
+	}
+	if _, ok := added["gone.txt"]; ok {
+		t.Fatalf("deletion is in Added: %+v", added["gone.txt"])
+	}
 }
 
 // A rename whose new path contains a space carries the added line on that

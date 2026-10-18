@@ -537,3 +537,15 @@ func TestREQ_PG_004_MissingLimitFailsClosed(t *testing.T) {
 		t.Errorf("RATE-LIMIT parsed limits = pushes %d window %s", rate.MaxPushes, rate.Window)
 	}
 }
+
+// A limit key the rule does not declare is refused at load. It is not parsed
+// as a count and then dropped.
+func TestBindLimits_UnknownKey(t *testing.T) {
+	// A wall file cannot introduce a key the built-in rule does not already
+	// have (that fails as "unknown key"). bindLimits rejects a key that is
+	// present but not one of this rule's declared limits.
+	_, err := (&mergedRule{enabled: true, color: "yellow", limits: map[string]any{"max_refs": 10, "max_files": 1}}).compile("REF-COUNT")
+	if err == nil || !strings.Contains(err.Error(), "REF-COUNT") || !strings.Contains(err.Error(), "max_files") || !strings.Contains(err.Error(), "is not used") {
+		t.Fatalf("unknown limit: %v", err)
+	}
+}
