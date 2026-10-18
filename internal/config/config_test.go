@@ -54,6 +54,38 @@ func TestBuiltinDefaults(t *testing.T) {
 	if d, _ := c.Rule("META-BACKDATED").Duration("max_age"); d != 24*time.Hour {
 		t.Fatalf("max_age = %v", d)
 	}
+	// Each limit is stored on the rule, not only in the raw map.
+	blob := c.Rule("CONTENT-BLOB")
+	if blob.MinBase64 != 200 || blob.MinHex != 100 {
+		t.Errorf("CONTENT-BLOB = base64 %d hex %d", blob.MinBase64, blob.MinHex)
+	}
+	if c.Rule("META-UNSIGNED").Lookback != 20 {
+		t.Errorf("lookback = %d", c.Rule("META-UNSIGNED").Lookback)
+	}
+	if c.Rule("META-BACKDATED").MaxAge != 24*time.Hour {
+		t.Errorf("max_age = %s", c.Rule("META-BACKDATED").MaxAge)
+	}
+	if c.Rule("META-FUTURE").MaxSkew != 10*time.Minute {
+		t.Errorf("max_skew = %s", c.Rule("META-FUTURE").MaxSkew)
+	}
+	lim := c.Rule("SIZE-LIMIT")
+	if lim.MaxFiles != 2000 || lim.MaxLines != 50000 || lim.MaxBytes != 50000000 || lim.MaxFileBytes != 10000000 {
+		t.Errorf("SIZE-LIMIT = %+v", lim)
+	}
+	large := c.Rule("SIZE-LARGE")
+	if large.MaxFiles != 200 || large.MaxLines != 5000 || large.MaxCommits != 100 || large.MaxFileBytes != 1000000 {
+		t.Errorf("SIZE-LARGE = %+v", large)
+	}
+	del := c.Rule("SIZE-MASS-DELETE")
+	if del.MaxDeletedFiles != 20 || del.MaxDeletedShare != 50 || del.MinLines != 100 {
+		t.Errorf("SIZE-MASS-DELETE = %+v", del)
+	}
+	if c.Rule("RATE-LIMIT").MaxPushes != 30 || c.Rule("RATE-LIMIT").Window != time.Hour {
+		t.Errorf("RATE-LIMIT = %+v", c.Rule("RATE-LIMIT"))
+	}
+	if c.Rule("RATE-YELLOW-STREAK").MaxYellow != 5 || c.Rule("RATE-YELLOW-STREAK").Window != 24*time.Hour {
+		t.Errorf("RATE-YELLOW-STREAK = %+v", c.Rule("RATE-YELLOW-STREAK"))
+	}
 	if !c.Rule("PATH-RED").Matches(".github/workflows/ci.yml") || !c.Rule("PATH-RED").Matches("docs/agents.md") {
 		t.Fatal("PATH-RED defaults do not match")
 	}

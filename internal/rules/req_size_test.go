@@ -302,6 +302,10 @@ func TestREQ_PG_035_MassDeleteShareEdges(t *testing.T) {
 	if _, err := f.evalD(mod(200, false, 0, false)); err == nil || !strings.Contains(err.Error(), "missing") {
 		t.Fatalf("missing old line count: %v", err)
 	}
+	off := newFixture(t, "rules:\n  SIZE-MASS-DELETE: {enabled: false}\n")
+	if res, err := off.evalD(mod(200, false, 0, false)); err != nil || len(findings(res.Findings, "SIZE-MASS-DELETE")) != 0 {
+		t.Fatalf("disabled SIZE-MASS-DELETE: %v, findings %v", err, res)
+	}
 	if _, err := f.evalD(mod(200, true, 0, false)); err != nil {
 		t.Errorf("binary file read for line counting: %v", err)
 	}
