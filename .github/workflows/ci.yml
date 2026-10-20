@@ -20,29 +20,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Install gitleaks (pinned)
-        env:
-          GITLEAKS_VERSION: 8.30.1
-        run: |
-          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
-          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          cd "$RUNNER_TEMP"
-          curl -fsSLO "$base/$tarball"
-          curl -fsSLO "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
-          grep " $tarball\$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum -c -
-          tar -xzf "$tarball" gitleaks
-          install -m 0755 gitleaks /usr/local/bin/gitleaks
-          gitleaks version
-      - name: Install git-everref (pinned, SHA-256 checked)
-        run: |
-          scripts/install-everref.sh /usr/local/bin
-          git-everref --version
-      - name: Install sshd (for the SSH end-to-end test)
-        run: command -v sshd || test -x /usr/sbin/sshd || (sudo apt-get update -qq && sudo apt-get install -y -qq openssh-server)
+      - uses: cachix/install-nix-action@v31
+      - run: bash .github/scripts/load-nix-env.sh ./nix/scanners
+      # nix openssh provides sshd. The privilege-separation account is a host
+      # user, the same kind of requirement as a KVM device.
+      - name: sshd privilege-separation account
+        run: id sshd >/dev/null 2>&1 || sudo useradd --system --home-dir /var/empty --shell /usr/sbin/nologin sshd
       - run: go vet ./...
       - name: Test with coverage
         run: go test ./... -coverprofile=coverage.out -covermode=atomic
@@ -94,10 +77,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
+      - uses: cachix/install-nix-action@v31
+      - run: bash .github/scripts/load-nix-env.sh ./nix/reference-env
       - name: Fuzz-tag tests (seeds + rapid)
         run: go test -tags=fuzz ./internal/config ./internal/journal ./internal/rules -rapid.checks=100
 
@@ -143,10 +124,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
+      - uses: cachix/install-nix-action@v31
+      - run: bash .github/scripts/load-nix-env.sh ./nix/reference-env
       - name: Live test
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -184,10 +163,8 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
+      - uses: cachix/install-nix-action@v31
+      - run: bash .github/scripts/load-nix-env.sh ./nix/reference-env
       - name: Tag and attach the binaries
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

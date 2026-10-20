@@ -125,7 +125,15 @@ The same preflight runs at start as on a host: without a configuration, repos, a
 
 ## Nix
 
-[flake.nix](flake.nix) (nixpkgs pinned in [flake.lock](flake.lock)) gives a reproducible build and development environment on Linux (x86_64, aarch64). It needs flakes enabled (`experimental-features = nix-command flakes`).
+Two kinds of flake. Both need flakes enabled (`experimental-features = nix-command flakes`).
+
+The reference environment for build and test lives under `nix/`. `nix/reference-env` is the Go toolchain. `nix/git-tools` adds git and OpenSSH. `nix/scanners` adds gitleaks 8.30.1 and git-everref v1.0.0 and includes the other two. CI runs the tests in that shell:
+
+```bash
+nix develop ./nix/scanners -c go test ./...
+```
+
+[flake.nix](flake.nix) at the repo root is the package people install (nixpkgs pinned in [flake.lock](flake.lock)), on Linux (x86_64, aarch64). `nix develop` there is that package's shell, on nixpkgs 26.05. The shells under `nix/` track nixpkgs unstable.
 
 ```bash
 nix build          # ./result/bin/push-guard and ./result/bin/backup-guard; runs go test ./... in the sandbox

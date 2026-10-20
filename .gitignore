@@ -27,3 +27,6 @@ mutation-report.json
 
 # Coverage output (make coverage)
 .cov/
+
+# Nix dev shells
+.pip/

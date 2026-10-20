@@ -10,6 +10,7 @@ License: **PolyForm Noncommercial 1.0.0** (`LICENSE`). Source-available, not OSI
 
 ## How to work here
 
+- Reference environment: `nix/reference-env` is Go. `nix/git-tools` adds git and OpenSSH. `nix/scanners` adds the pinned gitleaks and git-everref and includes the other two: `nix develop ./nix/scanners -c go test ./...`. The root `flake.nix` is the package users install. sshd's privilege-separation account is a host user (`id sshd`), not a package in the shell. Each `flake.lock` under `nix/` is committed; Dependabot updates it.
 Go 1.24 (`go.mod`), one runtime dependency (`gopkg.in/yaml.v3`) and one test-only dependency (`pgregory.net/rapid`, behind `//go:build fuzz`). At runtime: `git` 2.42+, `gitleaks` 8.x (Push Guard, if `CONTENT-SECRET` is enabled, the default) and `git-everref` v1.0.0 (Backup Guard). Both external programs are prerequisites on the host; nothing in Git Warden downloads them at runtime (`scripts/install-everref.sh` is an optional, pinned installer).
 
 - `cmd/push-guard/`: the binary (subcommands `serve`, `pre-receive`, `init-repo`, `approve`, `reset-streak`, `check-config`, `replay`, `version`) and the end-to-end tests.
@@ -23,7 +24,7 @@ Go 1.24 (`go.mod`), one runtime dependency (`gopkg.in/yaml.v3`) and one test-onl
 - `internal/testutil/`: helpers for tests with real temporary Git repos.
 - `examples/warden/`: example wall configuration (placeholder remote and credential); `examples/backup/`: example Backup Guard configuration and systemd units.
 - `scripts/install-everref.sh`: optional installer for the pinned git-everref release (SHA-256 checked).
-- `Dockerfile` (+ `.dockerignore`): one image with both binaries and git, gitleaks 8.30.1 and git-everref v1.0.0, pinned and SHA-256 checked at build time. `flake.nix` (+ `flake.lock`): package (both binaries, runs `go test ./...`) and dev shell with the same pinned gitleaks and git-everref. Keep the gitleaks and everref pins equal in CI, the Dockerfile, `flake.nix` and `scripts/install-everref.sh`.
+- `Dockerfile` (+ `.dockerignore`): one image with both binaries and git, gitleaks 8.30.1 and git-everref v1.0.0, pinned and SHA-256 checked at build time. `flake.nix` (+ `flake.lock`): package (both binaries, runs `go test ./...`) and dev shell with the same pinned gitleaks and git-everref. Keep the gitleaks and everref pins equal in CI, the Dockerfile, `flake.nix`, `nix/scanners/flake.nix` and `scripts/install-everref.sh`.
 - `docs/`: configuration and operation of each guard (`push-guard.md`, `backup-guard.md`, same structure), Push Guard rule reasoning; `docs/agents/` holds the agent working docs.
 - There are exactly two guard posts.
 
