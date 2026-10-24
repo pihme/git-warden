@@ -49,6 +49,7 @@ updates:
         patterns: ["*"]
 
   # All Nix shells in one block and one group: one bundled PR per run.
+  # Add every extra shell (nix/<name>/flake.lock) under `directories:`.
   - package-ecosystem: nix
     directories:
       - /nix/reference-env
