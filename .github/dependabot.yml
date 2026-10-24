@@ -44,8 +44,17 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    groups:
+      docker:
+        patterns: ["*"]
+
+  # All Nix shells in one block and one group: one bundled PR per run.
+  # Add every extra shell (nix/<name>/flake.lock) under `directories:`.
   - package-ecosystem: nix
-    directory: /nix/reference-env
+    directories:
+      - /nix/reference-env
+      - /nix/git-tools
+      - /nix/scanners
     schedule:
       interval: weekly
       day: saturday
@@ -54,23 +63,6 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-  - package-ecosystem: nix
-    directory: /nix/git-tools
-    schedule:
-      interval: weekly
-      day: saturday
-    open-pull-requests-limit: 5
-    labels: [dependencies]
-    commit-message:
-      prefix: chore
-      include: scope
-  - package-ecosystem: nix
-    directory: /nix/scanners
-    schedule:
-      interval: weekly
-      day: saturday
-    open-pull-requests-limit: 5
-    labels: [dependencies]
-    commit-message:
-      prefix: chore
-      include: scope
+    groups:
+      nix:
+        patterns: ["*"]
