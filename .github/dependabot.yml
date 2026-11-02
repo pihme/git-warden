@@ -1,6 +1,9 @@
 # Commit prefixes follow the release rules in AGENTS.md (.github/scripts/release.py):
-#   runtime deps and shipped Docker base images -> fix(deps): patch release
-#   dev deps -> chore(deps-dev), GitHub Actions -> ci(deps), unshipped images -> chore(deps): no release
+#   runtime deps, shipped Docker base images and Nix locks that are release inputs -> fix(deps): patch release
+#   dev deps -> chore(deps-dev), GitHub Actions -> ci(deps), unshipped images and other Nix locks -> chore(deps): no release
+# nix/reference-env/flake.lock is a release input: the release job builds both binaries
+# with its Go toolchain, so it is also a release path in .github/release.json. The nix
+# block bumps all three shells in one commit, so it uses fix.
 # Never reword a Dependabot title into feat! (see AGENTS.md).
 version: 2
 updates:
@@ -61,7 +64,8 @@ updates:
     open-pull-requests-limit: 5
     labels: [dependencies, ready-for-maintainer]
     commit-message:
-      prefix: chore
+      # fix, not chore: nix/reference-env/flake.lock is a release input (see above).
+      prefix: fix
       include: scope
     groups:
       nix:
