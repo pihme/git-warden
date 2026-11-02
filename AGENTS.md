@@ -10,7 +10,7 @@ License: **PolyForm Noncommercial 1.0.0** (`LICENSE`). Source-available, not OSI
 
 ## How to work here
 
-- Reference environment: `nix/reference-env` is Go. `nix/git-tools` adds git and OpenSSH. `nix/scanners` adds the pinned gitleaks and git-everref and includes the other two: `nix develop ./nix/scanners -c go test ./...`. The root `flake.nix` is the package users install. sshd's privilege-separation account is a host user (`id sshd`), not a package in the shell. Each `flake.lock` under `nix/` is committed; Dependabot updates it.
+- Reference environment: `nix/reference-env` is Go. `nix/git-tools` adds git and OpenSSH. `nix/scanners` adds the pinned gitleaks and git-everref and includes the other two: `nix develop ./nix/scanners -c go test ./...`. The root `flake.nix` is the package users install. sshd's privilege-separation account is a host user (`id sshd`), not a package in the shell. Each `flake.lock` under `nix/` is committed; Dependabot updates them together as `fix(deps):`. `nix/reference-env/flake.lock` is a release input: CI builds the release binaries inside `nix/reference-env` with its Go toolchain, so it is a release path and its bump cuts a patch release.
 Go 1.24 (`go.mod`), one runtime dependency (`gopkg.in/yaml.v3`) and one test-only dependency (`pgregory.net/rapid`, behind `//go:build fuzz`). At runtime: `git` 2.42+, `gitleaks` 8.x (Push Guard, if `CONTENT-SECRET` is enabled, the default) and `git-everref` v1.0.0 (Backup Guard). Both external programs are prerequisites on the host; nothing in Git Warden downloads them at runtime (`scripts/install-everref.sh` is an optional, pinned installer).
 
 - `cmd/push-guard/`: the binary (subcommands `serve`, `pre-receive`, `init-repo`, `approve`, `reset-streak`, `check-config`, `replay`, `version`) and the end-to-end tests.
@@ -67,7 +67,7 @@ Tests cover the config merge, every rule against real temporary repos, the journ
 
 ### Dependabot
 
-- Commit prefixes (set in `.github/dependabot.yml`): runtime dependencies and shipped Docker base images `fix(deps):` (patch release), dev dependencies `chore(deps-dev):`, GitHub Actions `ci(deps):`, images that are not shipped (examples, tests) `chore(deps):`.
+- Commit prefixes (set in `.github/dependabot.yml`): runtime dependencies, shipped Docker base images and the Nix locks that are release inputs (`nix/reference-env/flake.lock`) `fix(deps):` (patch release), dev dependencies `chore(deps-dev):`, GitHub Actions `ci(deps):`, images that are not shipped (examples, tests) and other Nix locks `chore(deps):`.
 - **Never turn a dependency update into `feat!:`** or reword its title. A major dependency update is still `fix(deps)` / `chore(deps-dev)`. If it forces a breaking change on users (for example a new minimum runtime), that is a separate, deliberate commit after the maintainer decides.
 - A `gomod` update changes `go.sum`, which needs a new `vendorHash` in `flake.nix`; the `nix` CI job fails and prints the value. Pushing that one-line `vendorHash` fix to the Dependabot branch is the one quick fix allowed by the quick-fix rule in `docs/agents/team.md`. If CI is still red after it, do not try the next fix silently: report it to the coordination role first (not the owner) or open a PR with the root-cause fix.
 - Never merge a Dependabot PR on green CI alone. Dependabot PRs arrive with `ready-for-maintainer` (set by `.github/dependabot.yml`); Maintainer reviews the content and sets `ready-for-qa`; QA merges (squash, keep the Dependabot title). Decisions go to the owner with `ready-for-human`.
