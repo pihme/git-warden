@@ -79,6 +79,9 @@ notify:
   command: [sh, -c, 'cat >> "$0"', %s]
 rules:
   CONTENT-SECRET: {enabled: false}
+  # The test commits are unsigned, and main is all signed squash merges by
+  # GitHub, so META-UNSIGNED would depend on the repository's history.
+  META-UNSIGNED: {enabled: false}
 `, e.state, e.notify),
 		"repos/live/warden.yaml": fmt.Sprintf(`remote: %s
 credential: %s
