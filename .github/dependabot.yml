@@ -10,7 +10,7 @@ updates:
       interval: weekly
       day: saturday
     open-pull-requests-limit: 5
-    labels: [dependencies]
+    labels: [dependencies, ready-for-maintainer]
     commit-message:
       prefix: fix
       include: scope
@@ -24,7 +24,7 @@ updates:
       interval: weekly
       day: saturday
     open-pull-requests-limit: 5
-    labels: [dependencies]
+    labels: [dependencies, ready-for-maintainer]
     commit-message:
       prefix: ci
       include: scope
@@ -40,7 +40,7 @@ updates:
       interval: weekly
       day: saturday
     open-pull-requests-limit: 5
-    labels: [dependencies]
+    labels: [dependencies, ready-for-maintainer]
     commit-message:
       prefix: chore
       include: scope
@@ -59,7 +59,7 @@ updates:
       interval: weekly
       day: saturday
     open-pull-requests-limit: 5
-    labels: [dependencies]
+    labels: [dependencies, ready-for-maintainer]
     commit-message:
       prefix: chore
       include: scope
