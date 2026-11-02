@@ -1,9 +1,11 @@
 # Commit prefixes follow the release rules in AGENTS.md (.github/scripts/release.py):
 #   runtime deps, shipped Docker base images and Nix locks that are release inputs -> fix(deps): patch release
 #   dev deps -> chore(deps-dev), GitHub Actions -> ci(deps), unshipped images and other Nix locks -> chore(deps): no release
-# nix/reference-env/flake.lock is a release input: the release job builds both binaries
-# with its Go toolchain, so it is also a release path in .github/release.json. The nix
-# block bumps all three shells in one commit, so it uses fix.
+# A Nix lock is a release input when CI builds a released artifact inside that Nix
+# environment and the artifact depends on it (e.g. the Go toolchain of a released
+# binary); it is then also a release path in .github/release.json.
+# Here nix/reference-env/flake.lock is one (the release job builds both binaries with
+# its Go toolchain). The nix block bumps all three shells in one commit, so it uses fix.
 # Never reword a Dependabot title into feat! (see AGENTS.md).
 version: 2
 updates:
@@ -64,7 +66,7 @@ updates:
     open-pull-requests-limit: 5
     labels: [dependencies, ready-for-maintainer]
     commit-message:
-      # fix, not chore: nix/reference-env/flake.lock is a release input (see above).
+      # fix when a lock in this block is a release input (see above), otherwise chore.
       prefix: fix
       include: scope
     groups:
