@@ -16,7 +16,7 @@
 #   git-everref     v1.0.0 via scripts/install-everref.sh (SHA-256 pinned there)
 
 # --- build: both binaries, static ------------------------------------------
-FROM golang:1.27-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e AS build
+FROM golang:1.27-trixie@sha256:c65ecfe613b539ac74c62a4c3b2c27e8f8a6076384c8f27e8a3c0f3be17cc385 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
@@ -28,7 +28,7 @@ RUN for bin in push-guard backup-guard; do \
     done
 
 # --- tools: gitleaks and git-everref, checksum-verified --------------------
-FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS tools
+FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS tools
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl \
@@ -54,7 +54,7 @@ RUN set -eu; \
     sh /tmp/install-everref.sh /out
 
 # --- runtime ----------------------------------------------------------------
-FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad
+FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
 ARG DEBIAN_FRONTEND=noninteractive
 # git (and git http-backend), ssh for SSH remotes, CA certificates for HTTPS.
 RUN apt-get update \
