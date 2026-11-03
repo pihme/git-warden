@@ -57,6 +57,7 @@ updates:
   # Add every extra shell (nix/<name>/flake.lock) under `directories:`.
   - package-ecosystem: nix
     directories:
+      - /
       - /nix/reference-env
       - /nix/git-tools
       - /nix/scanners
