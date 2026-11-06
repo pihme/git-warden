@@ -50,7 +50,7 @@ main{margin-left:0;padding:2rem 1.2rem 3rem}.grid{grid-template-columns:1fr}h1{f
 aside{position:static;flex-wrap:wrap;row-gap:1rem;overflow-x:visible;overflow-y:visible}.brand{flex:0 0 100%}aside>nav:not(.ext){flex:0 0 100%;flex-wrap:wrap;margin-left:-.55rem}.marg{flex:0 0 100%;border-left:0;padding:0;margin:-.6rem 0 0 -.55rem}.marg nav{flex-wrap:wrap}}
 /* Site motif kit – local CSS only, no external deps.
    Requires the template variables --acc / --bg / --fg / --line (gen.py) and adds --slate.
-   Body gets a project class: pf-hermetarium | pf-fregoli | pf-git-warden | pf-grok-budget-mcp | pf-claude-budget-mcp */
+   Body gets a project class: pf-hermetarium | pf-fregoli | pf-git-warden | pf-grok-budget-mcp | pf-claude-budget-mcp | pf-hobelbank */
 :root{--slate:#455a6e;--pf-w:2px;color-scheme:light}
 
 
@@ -115,6 +115,10 @@ main ul>li::before{content:"";position:absolute;left:-1.1rem;top:.45em;width:.5e
   repeating-linear-gradient(90deg,color-mix(in srgb,var(--slate) 45%,transparent) 0 10px,transparent 10px 13px) 78px 3px/52px 8px no-repeat,
   linear-gradient(90deg,var(--slate) 0 50%,var(--acc) 50% 100%) 136px 0/14px 14px no-repeat}
 
+/* hobelbank: workbench rule with the shield's slate/wood split as a small badge on the line */
+.pf-hobelbank .pf-div{background:linear-gradient(var(--slate),var(--slate)) 0 6px/100% 2px no-repeat,
+  linear-gradient(90deg,var(--slate) 0 50%,var(--acc) 50% 100%) 18% 0/16px 14px no-repeat}
+
 .dx-sub-on{opacity:1}
 /* Hobelbank link on Jigsaw pages (variant A, r2)
    Family sites are light-only: no dark override. Square corners like .card.
@@ -136,6 +140,21 @@ main ul>li::before{content:"";position:absolute;left:-1.1rem;top:.45em;width:.5e
 .hb-cap .hb-t strong{font:700 1rem/1.25 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--fg)}
 .hb-cap .hb-t em{font:italic .9rem/1.35 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;color:var(--hb-wood-text)}
 
+.gd a{font-size:.9rem}
+.hbp h1{font-size:2.1rem}.hb-kick{font-size:.82rem;color:var(--acc-ui);font-weight:600;margin:.8rem 0 0}
+.hb{max-width:52rem}.hb h2{font-size:1.4rem;padding-top:1.8rem;margin-top:2rem;border-top:1px solid var(--line)}
+.hb h3{font-size:1.1rem;margin:1.6rem 0 .4rem}.hb h4{font-size:.98rem;margin:1.2rem 0 .3rem}
+.hb h2,.hb h3,.hb h4{scroll-margin-top:1rem}.hb-a{margin-left:.4rem;color:var(--mut);text-decoration:none;font-weight:400;opacity:0}
+.hb h2:hover .hb-a,.hb h3:hover .hb-a,.hb h4:hover .hb-a,.hb-a:focus{opacity:1}
+.hb li{margin:.2rem 0}.hb li>p{margin:.3rem 0}.hb td code{white-space:normal}.hb pre code{background:none;padding:0}
+.hb-src{margin-top:2.4rem;padding-top:.9rem;border-top:1px dashed var(--line);color:var(--mut);font-size:.86rem;max-width:52rem}
+.hb-pn{display:flex;justify-content:space-between;gap:1rem;margin-top:1.2rem;max-width:52rem;font-size:.93rem}
+.hb-pn a{text-decoration:none}.hb-pn span{display:block;color:var(--mut);font-size:.78rem}
+.hb-ix{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:1.2rem;margin:1.4rem 0;max-width:56rem}
+.hb-ix div{border:1.5px solid var(--line);border-radius:12px;padding:.9rem 1.2rem}.hb-ix h3{margin:.2rem 0 .5rem;color:var(--acc-ui)}
+.hb-ix ul{margin:0;padding-left:1.1rem}.hb-ix li{margin:.25rem 0}
+@media(max-width:860px){.gd{display:none!important}.hb-pn{flex-direction:column}}
+
 .period{max-width:46rem}.period h2{font-size:1.3rem}.period h2 .span{color:var(--mut);font-weight:400;font-size:.95rem}
 .period p{font:1.12rem/1.8 "Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;margin:0}
 .period p::first-letter{float:left;font-size:3.4em;line-height:.8;padding:.1em .12em 0 0;color:var(--acc-ui);font-weight:600}
@@ -154,8 +173,11 @@ main ul>li::before{content:"";position:absolute;left:-1.1rem;top:.45em;width:.5e
 .cfsp{color:var(--acc-ui)}
 .period::after{content:"";display:block;clear:both}
 @media(max-width:600px){.cf.r{float:none;width:100%;max-width:300px;margin:.6rem 0 0}}</style></head><body class="pf-git-warden"><aside><a class="brand" href="../"><img class="mark" src="../favicon.svg" alt="" width="32" height="32">Git Warden</a><div class="ver">Go · git · gitleaks · git-everref · Linux</div>
-<div class="lbl">Handbook</div><nav><a href="../#what">What it is</a><a href="../#status">Current status</a><a href="../#concepts">Key concepts</a><a href="../#start">Getting started</a><a href="../#rules">Push Guard rules</a><a href="../#backup">Backup Guard</a><a href="../#config">Configuration &amp; credentials</a><a href="../#layout">Architecture &amp; layout</a></nav>
-<div class="lbl ext">Links</div><nav class="ext"><a href="https://github.com/pihme/git-warden">Repository</a><a href="https://github.com/pihme/git-warden#readme">Readme</a><a href="https://github.com/pihme/git-warden/issues">Issues</a><a href="https://github.com/pihme/git-warden/releases">Releases</a><a href="https://github.com/pihme/git-warden/blob/main/SPEC.md">Specification</a><a href="https://github.com/pihme/git-warden/blob/main/docs/push-guard.md">Push Guard docs</a><a href="https://github.com/pihme/git-warden/blob/main/docs/backup-guard.md">Backup Guard docs</a><a href="https://github.com/pihme/git-warden/blob/main/SECURITY.md">Security</a></nav>
+<div class="lbl">Handbook</div><nav><a href="../#what">What it is</a><a href="../#status">Current status</a><a href="../#concepts">Key concepts</a><a href="../#handbooks">Handbooks</a><a href="../#start">Getting started</a><a href="../#rules">Push Guard rules</a><a href="../#backup">Backup Guard</a><a href="../#config">Configuration &amp; credentials</a><a href="../#layout">Architecture &amp; layout</a></nav>
+<div class="lbl">Push Guard handbook</div><nav class="gd"><a href="../handbook/push-guard/">Setup and reference</a><a href="../handbook/push-guard-configuring-rules/">Configuring the rules</a><a href="../handbook/push-guard-rules/">Rules and reasoning</a></nav>
+<div class="lbl">Backup Guard handbook</div><nav class="gd"><a href="../handbook/backup-guard/">Setup and reference</a></nav>
+<div class="lbl">Both guards</div><nav class="gd"><a href="../handbook/install/">Install</a><a href="../handbook/configuration/">Shared settings</a><a href="../handbook/credentials/">Credentials</a></nav>
+<div class="lbl ext">Links</div><nav class="ext"><a href="https://github.com/pihme/git-warden">Repository</a><a href="https://github.com/pihme/git-warden#readme">Readme</a><a href="https://github.com/pihme/git-warden/issues">Issues</a><a href="https://github.com/pihme/git-warden/releases">Releases</a><a href="https://github.com/pihme/git-warden/blob/main/SPEC.md">Specification</a><a href="https://github.com/pihme/git-warden/blob/main/SECURITY.md">Security</a></nav>
 <div class="marg"><div class="marg-t"><span aria-hidden="true">❦</span> Marginalia</div><div class="marg-s">doodles in the margin</div><nav><a href="../chronik/" aria-current="page" class="on">Chronicles</a><a href="../jigsaw/">Jigsaw</a></nav></div></aside>
 <main><div class="crumb"><a href="../">pihme / git-warden</a> / marginalia / chronicles</div><h1>Chronicles</h1>
 <p class="lead">The history of Git Warden as set down so far, newest first.</p>
@@ -163,4 +185,4 @@ main ul>li::before{content:"";position:absolute;left:-1.1rem;top:.45em;width:.5e
 <dialog class="cfbox" aria-label="Enlarged Code Fireworks render"><img alt="" width="900" height="900"><button type="button" class="cfx" aria-label="Close">&times;</button></dialog>
 <script>(function(){var d=document.querySelector('.cfbox');if(!d||!d.showModal)return;var i=d.querySelector('img');
 document.querySelectorAll('a.cfz').forEach(function(a){a.addEventListener('click',function(e){e.preventDefault();i.src=a.href;i.alt=a.querySelector('img').alt;d.showModal();});});
-d.addEventListener('click',function(){d.close();});d.addEventListener('close',function(){i.removeAttribute('src');});})();</script><footer>Last updated 2026-10-31 · generated from <a href="https://github.com/pihme/git-warden/tree/ea132c776ea4464883a194be773bd6c32ecd3263"><code>main@ea132c7</code></a> · <a href="https://github.com/pihme/git-warden/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a></footer></main></body></html>
+d.addEventListener('click',function(){d.close();});d.addEventListener('close',function(){i.removeAttribute('src');});})();</script><footer>Last updated 2026-11-07 · generated from <a href="https://github.com/pihme/git-warden/tree/ab1ea27f304508c678ac96038c2b9d072eb3ace5"><code>main@ab1ea27</code></a> · <a href="https://github.com/pihme/git-warden/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a></footer></main></body></html>

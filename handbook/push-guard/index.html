@@ -1,0 +1,396 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Push Guard: configuration and operation — Git Warden</title><meta name="description" content="Guard posts between AI agents and their Git remote: a Push Guard that checks every push with deterministic rules, and a Backup Guard that keeps an append-only backup of every branch and tag."><link rel="icon" href="../../favicon.svg" type="image/svg+xml"><link rel="icon" href="../../favicon.ico" sizes="16x16 32x32 48x48"><link rel="icon" href="../../favicon.png" sizes="32x32" type="image/png"><link rel="apple-touch-icon" href="../../apple-touch-icon.png"><style>*{box-sizing:border-box}html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}body{margin:0}
+table{width:100%;border-collapse:collapse}.tbl{overflow-x:auto}pre{overflow-x:auto}img{max-width:100%}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em}
+:root{--acc:#1d7fb3;--acc-ui:#1a6fa0;--bg:#ffffff;--side:#f7f6f3;--fg:#1c1c1e;--mut:#66666e;--line:#e8e6e1;--code:#f5f3ef;--on-acc:#fff;color-scheme:light}
+
+body{background:var(--bg);color:var(--fg);font:15.5px/1.7 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--acc-ui)}
+aside{position:fixed;inset:0 auto 0 0;width:270px;background:var(--side);border-right:1px solid var(--line);padding:1.6rem 1.3rem;overflow-y:auto;display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:.65rem;font-weight:700;font-size:1.15rem;color:var(--fg);text-decoration:none}
+.mark{width:2rem;height:2rem;display:block}
+.ver{font-size:.78rem;color:var(--mut);margin:.4rem 0 1.6rem}
+.lbl{font-size:.8rem;letter-spacing:.01em;color:var(--mut);margin:1.2rem 0 .4rem;font-weight:600}
+aside nav a{display:block;padding:.32rem .7rem;border-radius:7px;color:var(--fg);text-decoration:none;font-size:.93rem;border-left:2px solid transparent}
+aside nav a:hover{background:color-mix(in srgb,var(--acc) 10%,transparent);border-left-color:var(--acc)}
+.marg{margin-top:auto;padding-top:1rem;border-top:1px dashed var(--line);font-family:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif}
+.marg-t{font-style:italic;font-size:1rem;color:var(--acc-ui);letter-spacing:.02em}.marg-t span{font-style:normal;margin-right:.15rem}
+.marg-s{font-style:italic;font-size:.78rem;color:var(--mut);margin:.1rem 0 .45rem}
+aside .marg nav a{font-style:italic;font-size:.98rem}
+aside nav a.on{border-left-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+main{margin-left:270px;padding:3rem clamp(1.5rem,5vw,4.5rem) 4rem;max-width:calc(270px + 900px)}
+.crumb{font-size:.82rem;color:var(--mut)}h1{font-size:2.6rem;letter-spacing:-.03em;margin:.3rem 0 .6rem;line-height:1.1}
+.lead{font-size:1.18rem;color:var(--mut);margin:0 0 1.2rem;max-width:44rem}.badges{font-size:.85rem;color:var(--mut)}
+section{padding-top:2.4rem;margin-top:2.4rem;border-top:1px solid var(--line)}
+h2{font-size:1.45rem;margin:0 0 1rem;letter-spacing:-.01em}h2 .hash{color:var(--acc-ui);margin-right:.4rem;font-weight:400}
+h3{font-size:1rem;margin:1.1rem 0 .3rem}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 2rem}.card{padding:.2rem 0 .9rem;border-bottom:1px dashed var(--line)}
+.card h3{margin-top:.8rem;color:var(--acc-ui)}.card code{white-space:nowrap}.card p{margin:0;color:var(--mut);font-size:.93rem}
+pre{background:var(--code);border-radius:8px;padding:.9rem 1rem;font-size:.85rem;line-height:1.55;border-left:3px solid var(--acc)}
+p code,li code,td code{background:var(--code);padding:.1em .35em;border-radius:4px}
+th,td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--line);vertical-align:top;font-size:.92rem}th{color:var(--mut);font-weight:600}
+.note{background:color-mix(in srgb,var(--acc) 8%,transparent);border-radius:8px;padding:.8rem 1rem;font-size:.93rem}
+footer{margin-top:3rem;padding-top:1.4rem;border-top:1px solid var(--line);color:var(--mut);font-size:.84rem}
+
+.st-asof{font-size:.85rem;color:var(--mut);margin:-.4rem 0 .6rem}#status p code{white-space:nowrap}
+.btns{display:flex;flex-wrap:wrap;gap:.6rem;margin:0 0 1.1rem}
+.btn{display:inline-flex;align-items:center;padding:.62rem 1.15rem;border-radius:9px;font-weight:600;text-decoration:none;border:1.5px solid var(--acc-ui);color:var(--acc-ui);background:transparent}
+.btn:hover{background:color-mix(in srgb,var(--acc-ui) 10%,transparent)}
+.btn.p{background:var(--acc-ui);color:var(--on-acc)}.btn.p:hover{background:color-mix(in srgb,var(--acc-ui) 85%,var(--fg))}
+.dia{overflow-x:auto;margin:.4rem 0 1.4rem;border:1px solid var(--line);border-radius:10px;background:var(--side);padding:.8rem}
+.dia svg{display:block;width:100%;height:auto;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.dx-box{fill:var(--bg);stroke:var(--acc);stroke-opacity:.8}.dx-box.s{fill:var(--acc-ui);stroke:var(--acc-ui)}
+.dx-t{fill:var(--fg);font-size:15px;font-weight:600}.dx-s{fill:var(--mut);font-size:12px}.s+.dx-t,.s~.dx-on{fill:var(--on-acc)}
+.dx-on{fill:var(--on-acc)}.dx-sub-on{fill:var(--on-acc);opacity:.85;font-size:12px}
+.dx-reg{fill:none;stroke:var(--acc);stroke-dasharray:6 6;stroke-opacity:.9}.dx-rl{fill:var(--acc-ui);font-size:13px;font-weight:600}
+.dx-a{stroke:var(--acc);stroke-width:2;fill:none}.dx-a.d{stroke-dasharray:5 5}.dx-m{fill:var(--acc)}.dx-l{fill:var(--mut);font-size:12px}
+.dia-cap{font-size:.85rem;color:var(--mut);margin:-.8rem 0 1.2rem}
+@media(max-width:860px){aside{position:sticky;top:0;inset:auto;width:auto;height:auto;flex-direction:row;align-items:center;gap:1rem;padding:.7rem 1rem;z-index:3;overflow-x:auto;white-space:nowrap}
+.ver,.lbl,.ext,.marg-t,.marg-s{display:none}.marg{margin:0;padding:0 0 0 .6rem;border-top:0;border-left:1px dashed var(--line)}aside nav{display:flex}aside nav a{border-left:0;padding:.25rem .55rem}
+main{margin-left:0;padding:2rem 1.2rem 3rem}.grid{grid-template-columns:1fr}h1{font-size:2.1rem}
+aside{position:static;flex-wrap:wrap;row-gap:1rem;overflow-x:visible;overflow-y:visible}.brand{flex:0 0 100%}aside>nav:not(.ext){flex:0 0 100%;flex-wrap:wrap;margin-left:-.55rem}.marg{flex:0 0 100%;border-left:0;padding:0;margin:-.6rem 0 0 -.55rem}.marg nav{flex-wrap:wrap}}
+/* Site motif kit – local CSS only, no external deps.
+   Requires the template variables --acc / --bg / --fg / --line (gen.py) and adds --slate.
+   Body gets a project class: pf-hermetarium | pf-fregoli | pf-git-warden | pf-grok-budget-mcp | pf-claude-budget-mcp | pf-hobelbank */
+:root{--slate:#455a6e;--pf-w:2px;color-scheme:light}
+
+
+/* 1. Vise brackets: one free-standing pair [ ] around the hero title and subtitle; code blocks are plain rounded surfaces */
+.pf-hero{margin:0 0 1.2rem;max-width:52rem}
+main pre{border-left:0}
+.pf-brk{position:relative;box-sizing:border-box;width:fit-content;max-width:100%;padding:.9rem 27px;margin:.4rem 0 1.1rem}
+.pf-brk h1{margin-top:0}.pf-brk .lead{margin-bottom:0}
+.pf-brk::before,.pf-brk::after{content:"";position:absolute;top:0;bottom:0;width:14px;box-sizing:border-box;border:3px solid var(--slate);pointer-events:none}
+.pf-brk::before{left:0;border-right:0}
+.pf-brk::after{right:0;border-left:0}
+
+/* 2. Section heading mark: two-colour half-split square instead of "#" */
+h2 .hash{display:inline-block;width:.8em;height:.8em;margin-right:.6rem;vertical-align:-.05em;font-size:inherit;color:transparent;overflow:hidden;
+  background:linear-gradient(90deg,var(--slate) 0 50%,var(--acc) 50% 100%);border-radius:3px}
+
+/* 3. Two-colour accents: primary button (single --acc-ui fill, white text, narrow slate stripe with no text on it) + cards */
+.btn.p{background:var(--acc-ui);border-color:var(--acc-ui)}
+.btn.p:hover{background:color-mix(in srgb,var(--acc-ui) 85%,var(--fg));border-color:color-mix(in srgb,var(--acc-ui) 85%,var(--fg))}
+.card{border-top:3px solid transparent;border-image:linear-gradient(90deg,var(--slate) 0 50%,var(--acc) 50% 100%) 1}
+
+/* 4. Split-square bullets */
+main ul{list-style:none;padding-left:1.4rem}
+main ul>li{position:relative}
+main ul>li::before{content:"";position:absolute;left:-1.1rem;top:.45em;width:.5em;height:.5em;
+  background:linear-gradient(90deg,var(--slate) 0 50%,var(--acc) 50% 100%);border-radius:2px}
+
+/* 5. Section divider base */
+.pf-div{height:14px;margin:2.4rem 0 0;background-repeat:no-repeat}
+.pf-div+section{border-top:0;margin-top:0}
+
+/* — per project — */
+/* hermetarium: console hero with prompt + cursor, code blocks labelled >_ */
+.pf-hermetarium .pf-prompt{font:600 .9rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--acc-ui);margin-bottom:.7rem;letter-spacing:.02em}
+.pf-hermetarium .pf-prompt::after{content:"";display:inline-block;width:.55em;height:1em;margin-left:.15em;vertical-align:-.15em;background:var(--acc);animation:pf-blink 1.1s steps(1) infinite}
+@keyframes pf-blink{50%{opacity:0}}
+@media(prefers-reduced-motion:reduce){.pf-hermetarium .pf-prompt::after{animation:none}}
+.pf-hermetarium pre{position:relative}
+.pf-hermetarium pre::before{content:">_";position:absolute;top:.35rem;right:.7rem;font-size:.72rem;color:var(--acc-ui)}
+.pf-hermetarium .pf-div{background:linear-gradient(var(--slate),var(--slate)) 0 6px/100% 2px no-repeat,
+  linear-gradient(var(--acc),var(--acc)) calc(50% - 7px) 0/14px 14px no-repeat}
+
+/* fregoli: module-tile divider (3 slate + 1 offset accent plugin), feature cards as tile grid */
+.pf-fregoli .pf-div{width:46px;background:
+  linear-gradient(var(--slate),var(--slate)) 0 0/10px 6px,linear-gradient(var(--slate),var(--slate)) 12px 0/10px 6px,
+  linear-gradient(var(--slate),var(--slate)) 24px 0/10px 6px,linear-gradient(var(--acc),var(--acc)) 37px 3px/10px 6px;background-repeat:no-repeat}
+.pf-fregoli .grid{gap:.6rem}
+.pf-fregoli .grid .card:last-child{border-image:linear-gradient(var(--acc),var(--acc)) 1;transform:translate(3px,3px)}
+
+/* git-warden: branch-line divider + numbered steps as a commit timeline */
+.pf-git-warden .pf-div{background:linear-gradient(var(--slate),var(--slate)) 0 6px/100% 2px no-repeat,
+  radial-gradient(circle,var(--slate) 0 4px,transparent 4.5px) 20% 0/14px 14px no-repeat,
+  radial-gradient(circle,var(--acc) 0 4px,transparent 4.5px) 60% 0/14px 14px no-repeat}
+.pf-git-warden main ol{list-style:none;counter-reset:pf-step;padding-left:1.8rem;border-left:var(--pf-w) solid var(--slate);margin-left:.4rem}
+.pf-git-warden main ol>li{counter-increment:pf-step;position:relative;margin:.5rem 0}
+.pf-git-warden main ol>li::before{content:"";position:absolute;left:calc(-1.8rem - 6px);top:.45em;width:10px;height:10px;border-radius:50%;background:var(--slate)}
+.pf-git-warden main ol>li:last-child::before{background:var(--acc)}
+
+/* MCP: budget-meter divider (segments, part used) ending in a $ square */
+.pf-grok-budget-mcp .pf-div,.pf-claude-budget-mcp .pf-div{width:150px;background:
+  repeating-linear-gradient(90deg,var(--acc) 0 10px,transparent 10px 13px) 0 3px/78px 8px no-repeat,
+  repeating-linear-gradient(90deg,color-mix(in srgb,var(--slate) 45%,transparent) 0 10px,transparent 10px 13px) 78px 3px/52px 8px no-repeat,
+  linear-gradient(90deg,var(--slate) 0 50%,var(--acc) 50% 100%) 136px 0/14px 14px no-repeat}
+
+/* hobelbank: workbench rule with the shield's slate/wood split as a small badge on the line */
+.pf-hobelbank .pf-div{background:linear-gradient(var(--slate),var(--slate)) 0 6px/100% 2px no-repeat,
+  linear-gradient(90deg,var(--slate) 0 50%,var(--acc) 50% 100%) 18% 0/16px 14px no-repeat}
+
+.dx-sub-on{opacity:1}
+/* Hobelbank link on Jigsaw pages (variant A, r2)
+   Family sites are light-only: no dark override. Square corners like .card.
+   --hb-wood: edge/decoration; --hb-wood-text: text (AA, ~5.3:1 on the tint). */
+:root{--hb-wood:#a8742a;--hb-wood-text:#8a5a2b}
+.hb-cap{
+  display:flex;align-items:center;gap:.9rem;max-width:36rem;
+  margin:1.1rem 0 0;padding:.85rem 1.1rem .9rem;
+  border:1.5px solid var(--line);
+  border-top:3px solid transparent;
+  border-image:linear-gradient(90deg,var(--slate) 0 50%,var(--hb-wood) 50% 100%) 1;
+  background:color-mix(in srgb,var(--hb-wood) 6%,var(--bg));
+  text-decoration:none;color:inherit;
+}
+.hb-cap:hover{background:color-mix(in srgb,var(--hb-wood) 11%,var(--bg))}
+.hb-cap:focus-visible{outline:2px solid var(--slate);outline-offset:2px}
+.hb-cap .hb-mark{width:2.25rem;height:2.25rem;flex:none}
+.hb-cap .hb-t{display:flex;flex-direction:column;gap:.15rem;min-width:0}
+.hb-cap .hb-t strong{font:700 1rem/1.25 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--fg)}
+.hb-cap .hb-t em{font:italic .9rem/1.35 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;color:var(--hb-wood-text)}
+
+.gd a{font-size:.9rem}
+.hbp h1{font-size:2.1rem}.hb-kick{font-size:.82rem;color:var(--acc-ui);font-weight:600;margin:.8rem 0 0}
+.hb{max-width:52rem}.hb h2{font-size:1.4rem;padding-top:1.8rem;margin-top:2rem;border-top:1px solid var(--line)}
+.hb h3{font-size:1.1rem;margin:1.6rem 0 .4rem}.hb h4{font-size:.98rem;margin:1.2rem 0 .3rem}
+.hb h2,.hb h3,.hb h4{scroll-margin-top:1rem}.hb-a{margin-left:.4rem;color:var(--mut);text-decoration:none;font-weight:400;opacity:0}
+.hb h2:hover .hb-a,.hb h3:hover .hb-a,.hb h4:hover .hb-a,.hb-a:focus{opacity:1}
+.hb li{margin:.2rem 0}.hb li>p{margin:.3rem 0}.hb td code{white-space:normal}.hb pre code{background:none;padding:0}
+.hb-src{margin-top:2.4rem;padding-top:.9rem;border-top:1px dashed var(--line);color:var(--mut);font-size:.86rem;max-width:52rem}
+.hb-pn{display:flex;justify-content:space-between;gap:1rem;margin-top:1.2rem;max-width:52rem;font-size:.93rem}
+.hb-pn a{text-decoration:none}.hb-pn span{display:block;color:var(--mut);font-size:.78rem}
+.hb-ix{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:1.2rem;margin:1.4rem 0;max-width:56rem}
+.hb-ix div{border:1.5px solid var(--line);border-radius:12px;padding:.9rem 1.2rem}.hb-ix h3{margin:.2rem 0 .5rem;color:var(--acc-ui)}
+.hb-ix ul{margin:0;padding-left:1.1rem}.hb-ix li{margin:.25rem 0}
+@media(max-width:860px){.gd{display:none!important}.hb-pn{flex-direction:column}}
+</style></head><body class="pf-git-warden"><aside><a class="brand" href="../../"><img class="mark" src="../../favicon.svg" alt="" width="32" height="32">Git Warden</a><div class="ver">Go · git · gitleaks · git-everref · Linux</div>
+<div class="lbl">On this page</div><nav><a href="#using-it">Using it</a><a href="#prerequisites">Prerequisites</a><a href="#configuration-directory">Configuration directory</a><a href="#running-it">Running it</a><a href="#commands">Commands</a><a href="#state">State</a><a href="#looking-and-restoring">Looking and restoring</a><a href="#warnings">Warnings</a></nav>
+<div class="lbl">Push Guard handbook</div><nav class="gd"><a href="../../handbook/push-guard/" aria-current="page" class="on">Setup and reference</a><a href="../../handbook/push-guard-configuring-rules/">Configuring the rules</a><a href="../../handbook/push-guard-rules/">Rules and reasoning</a></nav>
+<div class="lbl">Backup Guard handbook</div><nav class="gd"><a href="../../handbook/backup-guard/">Setup and reference</a></nav>
+<div class="lbl">Both guards</div><nav class="gd"><a href="../../handbook/install/">Install</a><a href="../../handbook/configuration/">Shared settings</a><a href="../../handbook/credentials/">Credentials</a></nav>
+<div class="lbl ext">Links</div><nav class="ext"><a href="https://github.com/pihme/git-warden">Repository</a><a href="https://github.com/pihme/git-warden#readme">Readme</a><a href="https://github.com/pihme/git-warden/issues">Issues</a><a href="https://github.com/pihme/git-warden/releases">Releases</a><a href="https://github.com/pihme/git-warden/blob/main/SPEC.md">Specification</a><a href="https://github.com/pihme/git-warden/blob/main/SECURITY.md">Security</a></nav>
+<div class="marg"><div class="marg-t"><span aria-hidden="true">❦</span> Marginalia</div><div class="marg-s">doodles in the margin</div><nav><a href="../../chronik/">Chronicles</a><a href="../../jigsaw/">Jigsaw</a></nav></div></aside>
+<main><div class="hbp"><div class="crumb"><a href="../../">pihme / git-warden</a> / <a href="../">handbooks</a> / setup and reference</div><p class="hb-kick">Push Guard handbook</p><h1 id="push-guard-configuration-and-operation">Push Guard: configuration and operation</h1><article class="hb"><p>The Push Guard (<code>push-guard</code>) stands between the agents and the remote. Agents push to the guard. It checks every push with deterministic rules. It forwards only a push that comes out green, and it forwards exactly the commits it checked.</p>
+<p>Where to read more:</p>
+<ul><li>Design and the decisions already taken: <a href="https://github.com/pihme/git-warden/blob/main/SPEC.md#push-guard">SPEC.md</a> and <a href="https://github.com/pihme/git-warden/blob/main/SPEC.md#push-guard-what-the-implementation-settled">what the implementation settled</a>.</li><li>Why each rule exists: <a href="../push-guard-rules/">push-guard-rules.md</a>.</li><li>How to change the rules, and how to try them on history you already have: <a href="../push-guard-configuring-rules/">push-guard-configuring-rules.md</a>.</li><li>The testable requirements: <a href="https://github.com/pihme/git-warden/blob/main/docs/push-guard-spec.md#requirements">push-guard-spec.md</a>.</li><li>Which risks the guard covers: <a href="https://github.com/pihme/git-warden/blob/main/SPEC.md#coverage-by-git-warden">Coverage by Git Warden</a>.</li><li>Settings both guards share: <a href="../configuration/">docs/configuration.md</a>.</li><li>Which credential to create: <a href="../credentials/">docs/credentials.md</a>.</li></ul>
+<h2 id="using-it">Using it<a class="hb-a" href="#using-it" aria-label="Link to this section">#</a></h2>
+<p>This walk-through uses <strong>this repository</strong>, <a href="https://github.com/pihme/git-warden">github.com/pihme/git-warden</a>. The configuration refuses every push that includes <code>main</code>. Other branches are still checked by the other rules. The files are <a href="https://github.com/pihme/git-warden/tree/main/examples/warden">examples/warden</a>.</p>
+<p>Words used below:</p>
+<div class="tbl"><table><thead><tr><th>Word</th><th>Meaning</th></tr></thead><tbody><tr><td>Wall</td><td>The host the agents do not run on. The configuration and the write credential live here.</td></tr><tr><td>Ref</td><td>A branch or tag name, such as <code>refs/heads/main</code>.</td></tr><tr><td>SHA</td><td>The id of one commit.</td></tr><tr><td>Green</td><td>The push is forwarded to the remote.</td></tr><tr><td>Yellow</td><td>The push is rejected with the reason. The agent fixes it.</td></tr><tr><td>Red</td><td>The push is rejected with no reason. A human decides.</td></tr><tr><td><code>notify.command</code></td><td>An optional setting in <code>defaults.yaml</code>: a program that receives each warning as JSON.</td></tr><tr><td><code>agent.token_file</code></td><td>A setting in <code>defaults.yaml</code>: the file holding the password the agent sends to <code>serve</code>.</td></tr><tr><td>Bundle</td><td>The file that holds the commits of a red push, so you can look at them.</td></tr></tbody></table></div>
+<h3 id="1-put-a-write-credential-on-the-wall">1. Put a write credential on the wall<a class="hb-a" href="#1-put-a-write-credential-on-the-wall" aria-label="Link to this section">#</a></h3>
+<p>On the wall, create a credential that can write to this repository. Save it as a file there, for example <code>/etc/warden/keys/git-warden</code>. The agents do not get a copy of this file. If they can push to GitHub directly, the guard sees nothing.</p>
+<ul><li>For SSH, the file is a deploy key. On GitHub, create it with <strong>Allow write access</strong>.</li><li>For HTTPS, the file holds a token that can write the repository contents.</li></ul>
+<p>GitHub and GitLab each have a few ways to do this. The rights for each one are in <a href="../credentials/">Credentials and the rights they need</a>.</p>
+<p>The next step writes the configuration. The path of this file is the value of <code>credential</code> in <code>repos/git-warden/warden.yaml</code>.</p>
+<h3 id="2-write-the-configuration">2. Write the configuration<a class="hb-a" href="#2-write-the-configuration" aria-label="Link to this section">#</a></h3>
+<p>The Push Guard reads one configuration directory on the wall. This walk-through uses <code>/etc/warden</code>. That directory holds <code>defaults.yaml</code> for the guard, and one folder under <code>repos/</code> for each remote. It is a different directory from the Backup Guard's.</p>
+<h4 id="gitleaks">gitleaks<a class="hb-a" href="#gitleaks" aria-label="Link to this section">#</a></h4>
+<p>gitleaks is the program that scans new commits for secrets. Install it on the wall (see <a href="#prerequisites">Prerequisites</a>), then name the binary in <code>defaults.yaml</code>:</p>
+<pre><code class="language-yaml"># /etc/warden/defaults.yaml
+gitleaks:
+  path: /usr/local/bin/gitleaks   # the binary you installed</code></pre>
+<p>A bare name <code>gitleaks</code> is the default, looked up on <code>PATH</code>. Leave <code>gitleaks</code> out when that is where yours is.</p>
+<h4 id="where-the-guard-keeps-its-state">Where the guard keeps its state<a class="hb-a" href="#where-the-guard-keeps-its-state" aria-label="Link to this section">#</a></h4>
+<p>Add <code>state_dir</code> to the same <code>defaults.yaml</code>. This is the directory where the guard writes its log, the commits of a red push, and its own copy of each remote.</p>
+<pre><code class="language-yaml">state_dir: /var/lib/warden</code></pre>
+<h4 id="the-agent">The agent<a class="hb-a" href="#the-agent" aria-label="Link to this section">#</a></h4>
+<p>One Push Guard serves one agent. <code>agent.name</code> is that agent's name in every log line and warning.</p>
+<p><code>serve</code> listens on a port. A push the rules mark green is then forwarded with the write credential from step 1. A fetch returns the repository the guard holds.</p>
+<p><code>agent.token_file</code> is the password that agent must send before any of that happens. It is a different file from the write credential. The agent has this password. The write credential stays on the wall.</p>
+<p>Without the password, anyone who can open the port can push and fetch as this agent. The rules still run on those pushes. They allow ordinary work, such as a fast-forward to a branch that is not reserved. They do not take the place of the password.</p>
+<p>Write the password into a file on the wall, for example <code>/etc/warden/agent-token</code>. The file contains the password and nothing else. Point <code>token_file</code> at it:</p>
+<pre><code class="language-yaml">agent:
+  name: hermit-1
+  token_file: /etc/warden/agent-token</code></pre>
+<p>Git sends a user name along with the password. The guard does not read that user name. There is only one agent, and <code>agent.name</code> is already the name in the log.</p>
+<h4 id="the-remote-and-its-credential">The remote and its credential<a class="hb-a" href="#the-remote-and-its-credential" aria-label="Link to this section">#</a></h4>
+<p>Each remote is one folder under <code>repos/</code>. The folder name is the name the agent pushes to. This walk-through guards this repository, so the folder is <code>repos/git-warden/</code> and the file inside it is <code>warden.yaml</code>:</p>
+<pre><code class="language-yaml"># /etc/warden/repos/git-warden/warden.yaml
+remote: git@github.com:pihme/git-warden.git
+credential: /etc/warden/keys/git-warden   # path of the write key from step 1
+known_hosts: /etc/warden/known_hosts      # optional, SSH only
+default_branch: main
+rules:
+  REF-NAMESPACE:
+    deny: [&#x27;refs/heads/main&#x27;]             # any push that includes main is red</code></pre>
+<p><code>remote</code> is the Git URL the guard writes to. <code>credential</code> is the path of the key or token file. The YAML never contains the key itself.</p>
+<p><code>REF-NAMESPACE</code> looks at every ref in the push. The <code>deny</code> line makes a push that updates <code>main</code> red, including an ordinary fast-forward. A push of another branch, such as <code>agent/fix-typo</code>, does not match that line. The full rule list is under <a href="#rules">Rules</a>. Why this rule is the one that protects a branch: <a href="../push-guard-rules/">push-guard-rules.md</a>.</p>
+<p>A second remote is another folder next to this one, for example <code>repos/another-repo/warden.yaml</code>, with its own URL and its own write credential. Add as many folders as you have remotes.</p>
+<h4 id="a-warning-when-a-push-needs-you">A warning when a push needs you<a class="hb-a" href="#a-warning-when-a-push-needs-you" aria-label="Link to this section">#</a></h4>
+<p><code>notify.command</code> is optional. It is a setting in the same <code>defaults.yaml</code>. Set it when you want a program to be started each time the guard warns you.</p>
+<ol><li>Choose a program that reads one JSON object from its standard input and delivers it where you will see it (mail, ntfy, or anything else). The guard does not include that program. <code>/usr/local/bin/warden-notify</code> below is only a path you might use.</li><li>Add the program, then its arguments, as a list:</li></ol>
+<pre><code class="language-yaml">notify:
+  command: [/usr/local/bin/warden-notify]</code></pre>
+<p>A red push starts that program. The guard writes the warning to the program's standard input. A yellow rejection is returned to the agent and does not start the program. The other warnings, and the shape of the JSON, are under <a href="#warnings">Warnings</a>.</p>
+<p>A name with no slash is looked up on <code>PATH</code>. A name with a slash is the path of the program file. Leave <code>notify</code> out and no program is started. The push is still written to <code>state_dir/push.jsonl</code>.</p>
+<p><code>defaults.yaml</code> for this walk-through is then:</p>
+<pre><code class="language-yaml"># /etc/warden/defaults.yaml
+agent:
+  name: hermit-1
+  token_file: /etc/warden/agent-token
+gitleaks:
+  path: /usr/local/bin/gitleaks
+state_dir: /var/lib/warden
+notify:
+  command: [/usr/local/bin/warden-notify]</code></pre>
+<h3 id="3-check-it-then-start-it">3. Check it, then start it<a class="hb-a" href="#3-check-it-then-start-it" aria-label="Link to this section">#</a></h3>
+<pre><code class="language-bash">push-guard check-config --config /etc/warden
+push-guard check-config --config /etc/warden --remote   # also contacts GitHub
+push-guard serve --config /etc/warden --listen 0.0.0.0:8418</code></pre>
+<p><code>check-config</code> names every problem and starts nothing. Run it before <code>serve</code>.</p>
+<p><code>serve</code> is the program the agent talks to over HTTP. Leave it running. It refuses to start until the same checks pass. Once it is running, it accepts a push for every folder under <code>repos/</code>.</p>
+<p>Put TLS in front of <code>serve</code> when the traffic leaves the host. The agent's password is in the request.</p>
+<h3 id="4-point-the-agent-at-the-guard">4. Point the agent at the guard<a class="hb-a" href="#4-point-the-agent-at-the-guard" aria-label="Link to this section">#</a></h3>
+<pre><code class="language-bash">git remote set-url origin http://hermit:$TOKEN@warden.internal:8418/git-warden.git
+git push origin agent/fix-typo</code></pre>
+<p><code>git-warden</code> in that URL is the folder name from step 2, <code>repos/git-warden</code>.</p>
+<p><code>$TOKEN</code> is the password in the file <code>agent.token_file</code> points at. The user name <code>hermit</code> can be any word. The guard does not check it. The log still says <code>hermit-1</code>, which is <code>agent.name</code>.</p>
+<p>This URL is the agent's only remote for this repository. The write credential from step 1 stays on the wall. The agent never uses the GitHub URL.</p>
+<h3 id="5-what-the-agent-gets-back">5. What the agent gets back<a class="hb-a" href="#5-what-the-agent-gets-back" aria-label="Link to this section">#</a></h3>
+<div class="tbl"><table><thead><tr><th>Result</th><th>The agent sees</th><th>What happens next</th></tr></thead><tbody><tr><td>Green</td><td>The push is accepted</td><td>The commits are on GitHub</td></tr><tr><td>Yellow</td><td>One line per finding: rule, ref, path, line, why</td><td>The agent changes the commit and pushes again. You do nothing</td></tr><tr><td>Red</td><td><code>rejected: waiting for a human (push &lt;id&gt;)</code></td><td>You decide. The steps are below</td></tr><tr><td>Rate limit</td><td><code>rate limited, try later</code></td><td>Wait until the hour passes</td></tr><tr><td>Internal error</td><td><code>internal error, try again later</code></td><td>You fix the missing piece (gitleaks, the remote, a timeout). It is not a rule violation, and there is nothing to approve</td></tr></tbody></table></div>
+<h3 id="6-resolve-a-red-push">6. Resolve a red push<a class="hb-a" href="#6-resolve-a-red-push" aria-label="Link to this section">#</a></h3>
+<p>You do this on the wall. Being able to run the commands there is the authentication. Nothing is approved through a GitHub issue or through the agent's chat.</p>
+<ol><li>Read the warning. The JSON, including the exact <code>approve</code> line, is under <a href="#warnings">Warnings</a>. The same facts are in <code>state_dir/push.jsonl</code>.</li><li>Look at the commits. They are in the bundle named by the warning: <code>git fetch &lt;bundle&gt; &#x27;refs/*:refs/pending/*&#x27;</code> in a scratch clone.</li><li>Either run the <code>approve</code> line from the warning, or do nothing and the commits stay unforwarded.</li></ol>
+<pre><code class="language-bash">push-guard approve --config /etc/warden git-warden refs/heads/agent/fix-typo 3f2a9c1e4b8d</code></pre>
+<p>A unique prefix of the rejected commit is enough. You do not have to type the full SHA. A prefix that matches two different rejected commits approves nothing.</p>
+<p>The agent then pushes <strong>that same commit</strong> again. The guard forwards it and does not run the rules a second time. Any other commit is checked from scratch.</p>
+<p>A yellow streak (more than five yellow rejections in 24 hours) turns every later push of this repository red until you approve one commit or run:</p>
+<pre><code class="language-bash">push-guard reset-streak --config /etc/warden git-warden</code></pre>
+<p><code>reset-streak</code> approves nothing. A green push does not end the streak.</p>
+<h2 id="prerequisites">Prerequisites<a class="hb-a" href="#prerequisites" aria-label="Link to this section">#</a></h2>
+<ul><li><code>git</code> 2.42 or newer.</li><li><code>gitleaks</code> (MIT) 8.x, on <code>PATH</code> or at <code>gitleaks.path</code>. The secret scan (<code>CONTENT-SECRET</code>) is on by default, and then gitleaks is required. Switch that rule off for a repo that should not be scanned, and gitleaks is optional for that repo. <code>push-guard</code> never downloads gitleaks. Without it, <code>serve</code> refuses to start, and every push is rejected with <code>internal error, try again later</code>. CI pins 8.30.1. The <a href="../install/#docker">container image</a> and the <a href="../install/#nix">Nix flake</a> bring that release along.</li><li>One write credential per remote. The rights for each platform are in <a href="../credentials/#credentials-and-the-rights-they-need">Credentials and the rights they need</a>. The agents must not have a write credential of their own for that remote. If they can push to the remote directly, the guard never sees the push.</li><li>A host that is not the agents' machine. That host is the wall.</li></ul>
+<h2 id="configuration-directory">Configuration directory<a class="hb-a" href="#configuration-directory" aria-label="Link to this section">#</a></h2>
+<p>Everything lives on the wall, never in a repo. Separate from the Backup Guard's configuration (keys differ, and unknown keys are errors):</p>
+<pre><code>warden/
+  defaults.yaml            # required: agent; optional: notify, state_dir, timeout, gitleaks, rule changes
+  gitleaks.toml            # optional: scanner config for every repo
+  gitleaksignore           # optional: known false positives for every repo
+  repos/
+    git-warden/            # folder name = repo name = the path the agent pushes to
+      warden.yaml          # required: remote (+ credential), plus what differs here
+      gitleaks.toml        # optional: per-repo scanner config (use [extend] path = &quot;.../gitleaks.toml&quot;)
+      gitleaksignore       # optional</code></pre>
+<p>See <a href="https://github.com/pihme/git-warden/tree/main/examples/warden">examples/warden</a>. Relative file paths in either file are relative to the configuration directory.</p>
+<p><strong>Layers.</strong> Three layers are merged, in this order:</p>
+<ol><li>The built-in defaults, compiled into the program from <a href="https://github.com/pihme/git-warden/blob/main/internal/config/defaults.yaml">internal/config/defaults.yaml</a>.</li><li>The wall's <code>defaults.yaml</code>.</li><li>The repo's <code>warden.yaml</code>.</li></ol>
+<p>A number, a duration, <code>enabled</code>, and <code>color</code> in a later layer replace the earlier value.</p>
+<p><code>match</code>, <code>allow</code>, and <code>deny</code> are lists of patterns. A list in a later layer is added to the list from earlier. The earlier patterns stay. To take one pattern off, repeat that same text under <code>match_remove</code>, <code>allow_remove</code>, or <code>deny_remove</code>. The text has to be a copy of a pattern that is already on the list. A pattern that is not on the list is an error, so a typo cannot quietly do nothing.</p>
+<p>An unknown key is an error. An unknown rule id is an error.</p>
+<h3 id="defaultsyaml"><code>defaults.yaml</code><a class="hb-a" href="#defaultsyaml" aria-label="Link to this section">#</a></h3>
+<div class="tbl"><table><thead><tr><th>Key</th><th>Default</th><th>Meaning</th></tr></thead><tbody><tr><td><code>agent.name</code></td><td>required</td><td>The agent this Push Guard serves; in every log entry and warning. One Push Guard per agent.</td></tr><tr><td><code>agent.token_file</code></td><td>unset</td><td>File holding the password the agent sends to <code>serve</code>. The user name in the URL is not checked; logs use <code>agent.name</code>. Required for <code>serve</code>: without it the listen port accepts pushes and fetches from anyone who can connect, and a green push is forwarded with the write credential.</td></tr><tr><td><code>gitleaks.path</code></td><td><code>gitleaks</code> on <code>PATH</code></td><td>The gitleaks binary: a bare name is looked up on <code>PATH</code>, a path is relative to the configuration directory. May also be set per repo.</td></tr><tr><td><code>notify.command</code></td><td>unset</td><td>argv list; gets a warning as JSON on stdin (see <a href="#warnings">Warnings</a>).</td></tr><tr><td><code>state_dir</code></td><td><code>&lt;config&gt;/state</code></td><td>Guard repositories, <code>push.jsonl</code>, pending bundles, locks.</td></tr><tr><td><code>timeout</code></td><td><code>60s</code></td><td>Per push; the push fails closed when it is exceeded.</td></tr><tr><td><code>pages_branch</code></td><td><code>gh-pages</code></td><td>The branch <code>CONTENT-PAGES-SCRIPT</code> looks at. An empty value disables the rule entirely (no fallback to <code>gh-pages</code>).</td></tr><tr><td><code>forward.atomic</code></td><td><code>true</code></td><td>Forward all refs of a push in one atomic push.</td></tr><tr><td><code>rules</code></td><td>built-in</td><td>Rule changes for every repo (see <a href="#rules">Rules</a>).</td></tr></tbody></table></div>
+<h3 id="reposnamewardenyaml"><code>repos/&lt;name&gt;/warden.yaml</code><a class="hb-a" href="#reposnamewardenyaml" aria-label="Link to this section">#</a></h3>
+<div class="tbl"><table><thead><tr><th>Key</th><th>Required</th><th>Meaning</th></tr></thead><tbody><tr><td><code>remote</code></td><td>yes</td><td>The remote: <code>ssh://…</code> or <code>user@host:path</code> (SSH), <code>https://…</code> or <code>http://…</code> (HTTPS), or a local repository as an absolute path or <code>file://</code> URL.</td></tr><tr><td><code>credential</code></td><td>for SSH and HTTPS</td><td>A file path, never the value: an SSH private key for SSH remotes, a file holding a token for HTTPS remotes. Not allowed for a local remote. <strong>Needs write access</strong> to the remote: <a href="../credentials/#credentials-and-the-rights-they-need">rights per platform</a>.</td></tr><tr><td><code>credential_username</code></td><td>no</td><td>HTTPS only: the user name sent with the token. Default <code>x-access-token</code>.</td></tr><tr><td><code>known_hosts</code></td><td>no</td><td>SSH only: a known_hosts file for this remote instead of the guard user's own (the system-wide file is then ignored as well). Unknown or changed host keys are always refused.</td></tr><tr><td><code>default_branch</code></td><td>no</td><td>Otherwise taken from the remote (<code>ls-remote --symref HEAD</code>).</td></tr><tr><td><code>gitleaks.path</code>, <code>rules</code></td><td>no</td><td>Override the wall's values for this repo.</td></tr></tbody></table></div>
+<p><code>remote</code>, <code>credential</code>, <code>credential_username</code>, <code>known_hosts</code>, and <code>default_branch</code> are read only from the repo's file. <code>agent</code> and <code>state_dir</code> are read only from <code>defaults.yaml</code>. A repo file cannot change which agent this guard serves, and <code>defaults.yaml</code> cannot point one repo at another repo's remote.</p>
+<p>For an SSH remote the guard runs <code>ssh -F none -i &lt;key&gt; -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes</code>. <code>-F none</code> means no <code>ssh_config</code> on the wall can change where or how it connects.</p>
+<p>For an HTTPS remote, git asks a small helper for the password, and the helper reads the credential file at that moment. The token is not written into a URL, onto a command line, or into a log.</p>
+<pre><code class="language-yaml">remote: git@github.com:pihme/git-warden.git  # any Git URL or an absolute local path
+credential: /etc/warden/keys/git-warden      # SSH key, or token file for https://
+known_hosts: /etc/warden/known_hosts         # optional, SSH only
+default_branch: main                         # optional
+rules:
+  REF-NAMESPACE:
+    deny: [&#x27;refs/heads/main&#x27;]                # any push that includes main is red</code></pre>
+<h3 id="rules">Rules<a class="hb-a" href="#rules" aria-label="Link to this section">#</a></h3>
+<p>Each rule can be turned off. <code>enabled</code> defaults to <code>true</code>. A repository in which every rule is turned off is refused.</p>
+<p><code>color</code> is <code>red</code> or <code>yellow</code>. The default for each rule is in the table below. Red means a human decides. Yellow means the agent is told the reason and is expected to fix the push.</p>
+<p><code>allow</code> and <code>deny</code> are regular expressions. The guard matches each one against the whole subject: a pattern of <code>agent/.*</code> does not match <code>refs/heads/agent/fix-typo</code>. <code>deny</code> wins when the subject matches both lists.</p>
+<p>The subject is the string the pattern is compared with:</p>
+<ul><li>For <code>REF-*</code>, the full ref name, such as <code>refs/heads/main</code>.</li><li>For <code>PATH-*</code>, <code>MODE-*</code>, <code>CONTENT-*</code>, and a limit that applies to one file, the path, with no leading slash.</li><li>For a <code>SIZE-*</code> total that covers a whole ref, the ref name.</li><li>For <code>META-*</code>, the branch name, without the <code>refs/heads/</code> prefix.</li><li><code>REF-COUNT</code> and <code>RATE-*</code> have no subject. <code>allow</code> and <code>deny</code> do not apply to them.</li></ul>
+<p><code>REF-NAMESPACE</code> looks at every ref in the push. <code>PATH-*</code> looks at every changed path. A <code>deny</code> on those rules fires by itself, so it can reserve a ref or a path. The other rules fire only when their own event happens, such as a delete or a file that is not a fast-forward. On those, <code>deny</code> beats <code>allow</code> for a subject the event already hit. It does not create the event.</p>
+<p>How the lists are added to the defaults, and how to take one pattern off, is under <a href="#configuring-the-rules">Configuring the rules</a>.</p>
+<div class="tbl"><table><thead><tr><th>Rule</th><th>Default</th><th>Fires on</th></tr></thead><tbody><tr><td><code>REF-DELETE</code></td><td>red</td><td>a branch or tag is deleted</td></tr><tr><td><code>REF-NON-FF</code></td><td>red</td><td>a branch moves to a commit that doesn't contain the remote's old commit</td></tr><tr><td><code>REF-TAG-MOVE</code></td><td>red</td><td>an existing tag is moved</td></tr><tr><td><code>REF-TAG-NEW</code></td><td>yellow</td><td>a new tag</td></tr><tr><td><code>REF-NAMESPACE</code></td><td>red</td><td>a ref outside <code>refs/heads/*</code> and <code>refs/tags/*</code></td></tr><tr><td><code>REF-COUNT</code></td><td>red</td><td>more than <code>max_refs</code> (10) refs in one push</td></tr><tr><td><code>PATH-RED</code> / <code>PATH-YELLOW</code></td><td>red / yellow</td><td>a changed path (both names of a rename) matches the rule's <code>match</code> list</td></tr><tr><td><code>MODE-EXEC</code> / <code>MODE-SYMLINK</code> / <code>MODE-SUBMODULE</code></td><td>yellow</td><td>a file becomes executable; a symlink or gitlink is added or changed</td></tr><tr><td><code>CONTENT-SECRET</code></td><td>red</td><td>gitleaks finds something in any new commit</td></tr><tr><td><code>CONTENT-SCANNER-ALLOW</code></td><td>red</td><td>an added <code>gitleaks:allow</code> or <code>trufflehog:ignore</code></td></tr><tr><td><code>CONTENT-INVISIBLE</code></td><td>red</td><td>bidi controls, zero-width characters, U+FEFF other than at the very start of a file, Unicode tag characters</td></tr><tr><td><code>CONTENT-BINARY</code></td><td>yellow</td><td>a binary file (or text that isn't UTF-8) is added or changed</td></tr><tr><td><code>CONTENT-BLOB</code></td><td>yellow</td><td>200+ characters of base64 or 100+ of hex on one added line</td></tr><tr><td><code>CONTENT-PAGES-SCRIPT</code></td><td>yellow</td><td>on the Pages branch: <code>&lt;script src&gt;</code> or <code>&lt;link href&gt;</code> to a host not found in the old tree; empty <code>pages_branch</code> turns the rule off</td></tr><tr><td><code>META-UNSIGNED</code></td><td>yellow</td><td>an unsigned commit where the last <code>lookback</code> (20) commits of the branch carry a signature</td></tr><tr><td><code>META-BACKDATED</code></td><td>yellow</td><td>committer date before a parent's, or more than <code>max_age</code> (24h) before the push</td></tr><tr><td><code>META-FUTURE</code></td><td>yellow</td><td>author or committer date more than <code>max_skew</code> (10m) after the push</td></tr><tr><td><code>SIZE-LIMIT</code></td><td>red</td><td>over 2,000 files, 50,000 lines, 50 MB of new objects or a 10 MB file</td></tr><tr><td><code>SIZE-LARGE</code></td><td>yellow</td><td>over 200 files, 5,000 lines, 100 commits or a 1 MB file</td></tr><tr><td><code>SIZE-MASS-DELETE</code></td><td>yellow</td><td>more than 20 files deleted, or more than 50 % of a file over 100 lines removed</td></tr><tr><td><code>RATE-LIMIT</code></td><td>red</td><td>more than 30 pushes per hour (answer: <code>rate limited, try later</code>)</td></tr><tr><td><code>RATE-YELLOW-STREAK</code></td><td>red</td><td>more than 5 yellow rejections in a repo within 24 h; then every push is red until a human approves a SHA or resets</td></tr></tbody></table></div>
+<p>The full reasoning per rule: <a href="../push-guard-rules/">push-guard-rules.md</a>.</p>
+<h3 id="configuring-the-rules">Configuring the rules<a class="hb-a" href="#configuring-the-rules" aria-label="Link to this section">#</a></h3>
+<p>The table above is what each rule does with the built-in defaults.</p>
+<p>A change goes under <code>rules:</code> in one of two files.</p>
+<ul><li><code>defaults.yaml</code> applies to every repo of this guard.</li><li><code>repos/&lt;name&gt;/warden.yaml</code> applies to that one repo.</li></ul>
+<p>For one rule you can:</p>
+<ul><li>turn it off, with <code>enabled: false</code></li><li>choose who deals with a hit, with <code>color: red</code> or <code>color: yellow</code></li><li>add a pattern, with <code>match</code>, <code>allow</code>, or <code>deny</code></li><li>take a pattern away, with <code>match_remove</code>, <code>allow_remove</code>, or <code>deny_remove</code></li><li>set one of its limits, such as <code>max_files</code> or <code>max_age</code></li></ul>
+<p><code>match</code>, <code>allow</code> and <code>deny</code> are lists of patterns. A list you write is added to the list the rule already has. The patterns already there stay.</p>
+<p><code>PATH-RED</code> uses <code>match</code>. That list already contains the workflows, the licence files, and the agent instruction files. This adds <code>scripts/release.sh</code>. The workflow pattern stays, and so does every other pattern already on the list.</p>
+<pre><code class="language-yaml">rules:
+  PATH-RED:
+    match: [&#x27;scripts/release\.sh&#x27;]</code></pre>
+<p>To stop protecting one of those paths, name its pattern under <code>match_remove</code>. The text has to be a copy of the pattern already on the list. GitHub Actions workflows are on the list as <code>\.github/workflows/.*</code>, which is every file under <code>.github/workflows/</code>. Copy that pattern. The name of one workflow file, such as <code>ci.yml</code>, is not the list entry, so it does not remove anything.</p>
+<pre><code class="language-yaml">rules:
+  PATH-RED:
+    match_remove: [&#x27;\.github/workflows/.*&#x27;]</code></pre>
+<p>After this, a change under <code>.github/workflows/</code> is no longer red from <code>PATH-RED</code>. The other CI patterns stay, including <code>\.github/actions/.*</code>, <code>\.gitlab-ci\.yml</code>, and <code>Jenkinsfile</code>.</p>
+<p><code>allow_remove</code> and <code>deny_remove</code> do the same thing for the <code>allow</code> and <code>deny</code> lists. A pattern that is not on the list is an error. A shorter or reworded pattern does not match the entry, and the old pattern stays.</p>
+<p><code>check-config</code> refuses the file in four cases: the rule id is unknown, a pattern is not a valid regular expression, a limit is outside its range, or a <code>*_remove</code> pattern is not on that list. It prints the problem and changes nothing.</p>
+<p>Then run <code>replay</code> against a clone that already has the history. It treats each commit on one branch as a push, forwards nothing, and prints which rules would have fired. That is how you see whether a change is too strict before an agent pushes.</p>
+<pre><code class="language-bash">push-guard check-config --config /etc/warden
+push-guard replay --config /etc/warden git-warden --git-dir ~/src/git-warden</code></pre>
+<p><a href="../push-guard-configuring-rules/">Configuring the rules</a> has the rest: examples of changes you are likely to want (reserving <code>main</code>, letting the agent rewrite its own branches, allowing images), how a pattern is matched against a whole ref or path, and how to read the replay output.</p>
+<p><strong>Secret scanner.</strong> gitleaks runs as <code>gitleaks git --log-opts &quot;&lt;new&gt; --not &lt;remote refs&gt;&quot;</code>. The range is the new commits, and not the commits the remote already has. A secret that was added and then removed again in the same push is still a hit.</p>
+<p>The guard passes three flags so the pushed repository cannot change the scan:</p>
+<ul><li><code>--config</code> is the repo folder's <code>gitleaks.toml</code> when that file exists, otherwise the wall's <code>gitleaks.toml</code>. When neither exists, the guard writes a temporary config that extends the gitleaks defaults.</li><li><code>--gitleaks-ignore-path</code> is the repo folder's <code>gitleaksignore</code>, otherwise the wall's, otherwise an empty file.</li><li><code>--ignore-gitleaks-allow</code> makes an inline <code>gitleaks:allow</code> comment in the pushed repository do nothing.</li></ul>
+<p>Findings are redacted before they are shown or stored. The only way to run without gitleaks is to switch <code>CONTENT-SECRET</code> off, with <code>rules: {CONTENT-SECRET: {enabled: false}}</code>. That is a deliberate choice, for one repo or for the whole wall.</p>
+<p>Check a configuration with:</p>
+<pre><code class="language-bash">push-guard check-config --config /etc/warden            # preflight, files, credentials
+push-guard check-config --config /etc/warden --remote   # plus ls-remote per repo</code></pre>
+<h2 id="running-it">Running it<a class="hb-a" href="#running-it" aria-label="Link to this section">#</a></h2>
+<p>The agent reaches the wall through <code>serve</code>. A hook in the guard repository runs the rules. A green push is forwarded with the write credential.</p>
+<p>This is the setup in <a href="#using-it">Using it</a>. Nothing on the wall is already listening for Git over HTTP, so <code>serve</code> is the listener. Start it and leave it running:</p>
+<pre><code class="language-bash">push-guard serve --config /etc/warden --listen 0.0.0.0:8418</code></pre>
+<p>The agent pushes to <code>http://hermit:$TOKEN@warden.internal:8418/git-warden.git</code>. <code>$TOKEN</code> is the password in <code>agent.token_file</code>. The user name is not checked; the log name is <code>agent.name</code>.</p>
+<p><code>serve</code> answers only Git's smart HTTP routes, the paths under <code>/&lt;name&gt;.git/</code>. It hands those requests to <code>git http-backend</code>.</p>
+<p>The caller must send the password from <code>agent.token_file</code>. A green push is then forwarded with the write credential, and a fetch returns the repository the guard holds. Without the password, anyone who can open the listen port can push and fetch.</p>
+<p>The repository does not have to exist beforehand. The first request for a configured repository creates <code>state_dir/repos/&lt;name&gt;.git</code> and installs the hook. Before every fetch or push, <code>serve</code> copies the remote's branches, tags and default branch into that repository. A fetch then shows the current remote, including a commit that landed without going through the guard. Other refs, such as notes, are not copied.</p>
+<p>Put TLS in front of <code>serve</code> when the traffic leaves the host. The agent's password is in the request.</p>
+<p><strong>Preflight.</strong> <code>serve</code> refuses to start when any of these is true. It names every problem, and it serves nothing.</p>
+<ul><li><code>defaults.yaml</code> is missing or does not load.</li><li><code>git</code> is older than 2.42.</li><li>No repo is configured.</li><li>A repo has every rule disabled.</li><li>A repo needs gitleaks for <code>CONTENT-SECRET</code>, and the binary is missing or is not version 8.x.</li></ul>
+<p>The hook repeats the checks that belong to one repo on every push. When one of them fails, the push is rejected with <code>internal error, try again later</code>. <code>check-config</code> reports the same problems and does not start the guard.</p>
+<p>On every push the hook does four things:</p>
+<ol><li>It reads the remote's current refs.</li><li>It fetches any remote objects it does not yet have into the push's quarantine. The quarantine is discarded with the push if the push is rejected.</li><li>It runs every rule.</li><li>It then forwards the push (green), rejects it and returns the findings (yellow), or rejects it without the findings, keeps the commits, and warns a human (red).</li></ol>
+<p>The walk-through of a real repository is <a href="#using-it">Using it</a>.</p>
+<h2 id="commands">Commands<a class="hb-a" href="#commands" aria-label="Link to this section">#</a></h2>
+<div class="tbl"><table><thead><tr><th>Command</th><th>What it does</th></tr></thead><tbody><tr><td><code>push-guard serve --config DIR --listen ADDR</code></td><td>The HTTP listener. Stays running. Creates each guard repository on the first request and copies the remote before every fetch or push.</td></tr><tr><td><code>push-guard pre-receive --config DIR --repo NAME</code></td><td>The hook; run by Git, not by hand.</td></tr><tr><td><code>push-guard approve --config DIR &lt;repo&gt; &lt;ref&gt; &lt;sha&gt;</code></td><td>Forwards the agent's next push of exactly that SHA without checking the rules again. The paragraphs under this table say when a prefix is enough, and what the lease is.</td></tr><tr><td><code>push-guard reset-streak --config DIR &lt;repo&gt;</code></td><td>Ends a <code>RATE-YELLOW-STREAK</code> without approving anything.</td></tr><tr><td><code>push-guard check-config --config DIR [--remote]</code></td><td>Preflight, files and credentials; <code>--remote</code> adds <code>ls-remote</code> per repo.</td></tr><tr><td><code>push-guard replay --config DIR &lt;repo&gt; --git-dir PATH [--branch main] [--skip-scanner] [-v]</code></td><td>Treats every first-parent step of a branch's history as one push (with the commit's committer time as the time of the push), forwards nothing, writes nothing, and prints the hits per rule. How to read it: <a href="../push-guard-configuring-rules/#try-the-rules-on-existing-history">Configuring the rules</a>.</td></tr><tr><td><code>push-guard version</code></td><td>Prints the version.</td></tr></tbody></table></div>
+<p><code>approve</code> forwards one commit you have already decided to allow. You pass the repo, the ref, and the SHA. A unique prefix of a rejected SHA is enough. A prefix that matches more than one rejected SHA approves nothing.</p>
+<p>The next push of exactly that SHA to that ref is forwarded, and the rules are not run again. Any other SHA is checked from scratch.</p>
+<p>If that push rewrites or deletes the ref, the approval carries a lease. The lease is the remote's tip at the time of the rejected push. The forward is refused when the remote tip has moved since then. An approval you type by hand, with no rejected push behind it, is leased against the id Git uses for a missing ref, so the ref must not exist on the remote yet.</p>
+<p>An approval ends an active yellow streak. The log line names the rule ids of the push you overruled.</p>
+<p><code>approve</code>, <code>reset-streak</code>, and <code>replay</code> run on the wall. Being able to run them there is the authentication. Exit codes: <code>0</code> success, <code>1</code> failure, <code>2</code> usage error.</p>
+<h2 id="state">State<a class="hb-a" href="#state" aria-label="Link to this section">#</a></h2>
+<ul><li><code>state_dir/repos/&lt;name&gt;.git</code>: the guard repositories, with the hook installed.</li><li><code>state_dir/push.jsonl</code>: one JSON line per push. The line has the time, the push id, the agent, the repo, and the updates. Each update names the ref, the old tip, the new tip, and a kind: <code>create</code>, <code>delete</code>, <code>ff</code> (fast-forward), <code>non_ff</code>, <code>tag_move</code>, or <code>noop</code> when the remote was already at that commit. The line also has the findings, the verdict, whether the push was forwarded, and the message from the remote. Approvals, streak resets, and streak events are lines in the same file. The file is append-only. A line that is not valid JSON makes every push fail with <code>internal error, try again later</code> until a human repairs the file.</li><li><code>state_dir/pending/&lt;repo&gt;/&lt;id&gt;.bundle</code>: new commits of red pushes, kept for now.</li><li><code>state_dir/error.log</code>: errors that could not go into <code>push.jsonl</code>.</li></ul>
+<h2 id="looking-and-restoring">Looking and restoring<a class="hb-a" href="#looking-and-restoring" aria-label="Link to this section">#</a></h2>
+<p>The remote never received a rejected push. There is nothing to undo on the remote.</p>
+<p>The commits of a red push are in <code>state_dir/pending/&lt;repo&gt;/&lt;id&gt;.bundle</code>. To look at them, make a scratch clone and run:</p>
+<pre><code class="language-bash">git fetch &lt;bundle&gt; &#x27;refs/*:refs/pending/*&#x27;</code></pre>
+<p>Then approve the SHA, or leave the bundle where it is.</p>
+<p><code>push.jsonl</code> is the record of what was pushed, what was decided, and what was forwarded.</p>
+<h2 id="warnings">Warnings<a class="hb-a" href="#warnings" aria-label="Link to this section">#</a></h2>
+<p>When <code>notify.command</code> is set in <code>defaults.yaml</code>, the guard starts that program and writes one JSON object to its standard input.</p>
+<p>The facts come first: which agent, which repo, which refs, and which rules fired. The agent's own commit messages are only under <code>untrusted</code>. They are cut short, and they are marked as an unverified quote. They are not instructions to you or to the program that reads the JSON.</p>
+<p>The <code>approve</code> field is the command to run on the wall. The steps around it are under <a href="#6-resolve-a-red-push">Resolve a red push</a>.</p>
+<p>A red push that tried to update <code>main</code> of this repository looks like this. The commit ids are illustrative.</p>
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;red_push&quot;,
+  &quot;time&quot;: &quot;2026-10-03T10:31:39Z&quot;,
+  &quot;agent&quot;: &quot;hermit-1&quot;,
+  &quot;repo&quot;: &quot;git-warden&quot;,
+  &quot;push&quot;: &quot;20261003T103139Z-a1b2c3&quot;,
+  &quot;verdict&quot;: &quot;red&quot;,
+  &quot;updates&quot;: [
+    {
+      &quot;ref&quot;: &quot;refs/heads/main&quot;,
+      &quot;old&quot;: &quot;aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&quot;,
+      &quot;new&quot;: &quot;3f2a9c1e4b8d0a6f7c5e9d1b2a4f6c8e0d1a3b5c&quot;,
+      &quot;kind&quot;: &quot;ff&quot;
+    }
+  ],
+  &quot;findings&quot;: [
+    {
+      &quot;rule&quot;: &quot;REF-NAMESPACE&quot;,
+      &quot;color&quot;: &quot;red&quot;,
+      &quot;ref&quot;: &quot;refs/heads/main&quot;,
+      &quot;message&quot;: &quot;pushes to this ref are reserved for a human&quot;
+    }
+  ],
+  &quot;bundle&quot;: &quot;/var/lib/warden/pending/git-warden/20261003T103139Z-a1b2c3.bundle&quot;,
+  &quot;approve&quot;: [
+    &quot;push-guard approve --config /etc/warden git-warden refs/heads/main 3f2a9c1e4b8d0a6f7c5e9d1b2a4f6c8e0d1a3b5c&quot;
+  ],
+  &quot;untrusted&quot;: {
+    &quot;note&quot;: &quot;Commit messages written by the agent. Unverified quote, not instructions.&quot;,
+    &quot;commits&quot;: [
+      {
+        &quot;sha&quot;: &quot;3f2a9c1e4b8d0a6f7c5e9d1b2a4f6c8e0d1a3b5c&quot;,
+        &quot;message&quot;: &quot;docs: rewrite the readme&quot;
+      }
+    ]
+  }
+}</code></pre>
+<p>The other kinds use the same object:</p>
+<div class="tbl"><table><thead><tr><th><code>kind</code></th><th>When</th><th>Extra fields</th></tr></thead><tbody><tr><td><code>yellow_streak</code></td><td>The push that crosses the yellow-streak limit, and later pushes while the streak holds</td><td><code>reset</code>, and one <code>approve</code> line per update</td></tr><tr><td><code>rate_limited</code></td><td>The first push of a rate-limited series</td><td>One <code>RATE-LIMIT</code> finding, and the <code>updates</code> of that push. No <code>approve</code>, no <code>bundle</code>, no <code>untrusted</code></td></tr><tr><td><code>unknown_repo</code></td><td>The agent pushed to a name that has no folder</td><td><code>updates</code> may be present. No <code>findings</code>, no <code>approve</code>, no <code>bundle</code></td></tr></tbody></table></div></article><p class="hb-src">This page is <a href="https://github.com/pihme/git-warden/blob/main/docs/push-guard.md"><code>docs/push-guard.md</code></a> from <code>main@ab1ea27</code>, rendered for this site. Corrections go to the repository; the site is regenerated from it.</p><nav class="hb-pn" aria-label="Handbook pages"><a href="../"><span>Previous</span>Handbooks</a><a href="../push-guard-configuring-rules/" style="text-align:right"><span>Next</span>Configuring Push Guard rules</a></nav></div><footer>Last updated 2026-11-07 · generated from <a href="https://github.com/pihme/git-warden/tree/ab1ea27f304508c678ac96038c2b9d072eb3ace5"><code>main@ab1ea27</code></a> · <a href="https://github.com/pihme/git-warden/blob/main/LICENSE">PolyForm Noncommercial 1.0.0</a></footer></main></body></html>
