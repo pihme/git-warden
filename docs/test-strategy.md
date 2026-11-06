@@ -4,7 +4,7 @@ How Git Warden (`push-guard` and `backup-guard`) is tested, and why. The details
 
 ## Goals
 
-- Every numbered requirement (`REQ-PG-…` in [push-guard-rules.md](push-guard-rules.md)) has at least one test named after it (`TestREQ_PG_<nnn>_…`). Tests are written against the spec, not against the code: a test that fails because the code does not meet the spec stays red until the code is fixed or the spec is changed.
+- Every numbered requirement (`REQ-PG-…` in [push-guard-spec.md](push-guard-spec.md#requirements)) has at least one test named after it (`TestREQ_PG_<nnn>_…`). Tests are written against the spec, not against the code: a test that fails because the code does not meet the spec stays red until the code is fixed or the spec is changed.
 - The guards fail closed. For every error path that matters, a test checks that the push is rejected (or the backup run fails), never that it slips through.
 - Statement coverage is a signal, not the target. Mutation testing shows whether the tests actually check what the covered code does.
 - A test is filed and named after the behaviour it checks, never after the tool or campaign that found the gap. Mutation testing, fuzzing and exploratory testing only point at missing tests; the tests that close the gap are ordinary unit or requirement tests (see [Where tests go](#where-tests-go)).
@@ -234,7 +234,7 @@ New candidates are added when a bug or clarification shows a class of inputs rat
 
 ## Backup Guard
 
-`backup-guard` has numbered requirements, `REQ-BG-…` in [backup-guard.md § Requirements](backup-guard.md#requirements); requirement tests are named `TestREQ_BG_<nnn>_…`. Its tests (`internal/backupguard`, `cmd/backup-guard`) follow the same rules; a test specification follows. Mutation testing does not cover it in the default `make mutate` set; select it with `PKGS='./internal/backupguard'` when QA is ready.
+`backup-guard` has numbered requirements, `REQ-BG-…` in [backup-guard-spec.md § Requirements](backup-guard-spec.md#requirements); requirement tests are named `TestREQ_BG_<nnn>_…`. Its tests (`internal/backupguard`, `cmd/backup-guard`) follow the same rules; a test specification follows. Mutation testing does not cover it in the default `make mutate` set; select it with `PKGS='./internal/backupguard'` when QA is ready.
 
 ## Roles
 

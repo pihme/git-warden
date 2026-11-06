@@ -2,7 +2,7 @@
 # built-in defaults (internal/config/defaults.yaml) needs to be here.
 agent:
   name: hermit-1                     # goes into every log entry and warning
-  token_file: /etc/warden/agent-token  # HTTP basic auth password for push-guard serve
+  token_file: /etc/warden/agent-token  # password the agent sends to serve; the URL user name is not checked
 notify:
   # Gets the warning as JSON on stdin. Any channel: mail, ntfy, Signal, ...
   command: [/usr/local/bin/warden-notify]
@@ -13,5 +13,3 @@ gitleaks:
 rules:
   REF-DELETE:
     allow: ['refs/heads/agent/.*']   # agents may delete their own agent/* branches
-  REF-NAMESPACE:
-    deny: ['refs/heads/main']        # every push to main is red: main changes go through PRs

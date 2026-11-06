@@ -1,6 +1,6 @@
 # Push Guard: test specification
 
-This document maps every requirement in [push-guard-rules.md](push-guard-rules.md) (`REQ-PG-001` to `REQ-PG-053`) to the automated tests that check it. Test names start with `TestREQ_PG_<nnn>_`, so `go test ./... -run 'TestREQ_PG_020'` runs the tests of one requirement.
+This document maps every requirement in [push-guard-spec.md](push-guard-spec.md#requirements) (`REQ-PG-001` to `REQ-PG-053`) to the automated tests that check it. Test names start with `TestREQ_PG_<nnn>_`, so `go test ./... -run 'TestREQ_PG_020'` runs the tests of one requirement.
 
 Status is as of `main` @ `f223de4` plus branch `qa/journal-tests` (5.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
 
@@ -278,7 +278,7 @@ gitleaks also loads `<source>/.gitleaksignore` next to `--gitleaks-ignore-path`.
 
 ## Clarifications during tests
 
-Points the tests raised that are now decided. The spec (`push-guard-rules.md`, section Decided) and the code follow them; the tests named in the table above check them.
+Points the tests raised that are now decided. The spec ([push-guard-spec.md](push-guard-spec.md#decided), section Decided) and the code follow them; the tests named in the table above check them.
 
 | # | Requirement | Question | Decision |
 | --- | --- | --- | --- |

@@ -1,7 +1,7 @@
 package backupguard
 
 // Requirement tests for the Backup Guard decisions of 2026-10-06
-// (docs/backup-guard.md, "Requirements" and "Decided"): a failed preflight is
+// (docs/backup-guard-spec.md, "Requirements" and "Decided"): a failed preflight is
 // recorded and warned, the preflight loads every backup.yaml, only the major
 // version of git-everref is checked, a locked repo is skipped instead of
 // waited for, notify.command paths are relative to the configuration

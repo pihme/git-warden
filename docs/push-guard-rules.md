@@ -1,8 +1,8 @@
 # Push Guard: rules and reasoning
 
-The reasoning behind every Push Guard rule. Configuration and operation (rule table, configuration, commands including `replay`) are in [docs/push-guard.md](push-guard.md), the overview for both guards in the [README](../README.md#configuration-and-operation); what the implementation settled or changed is in [SPEC.md](../SPEC.md). Design of both guard posts and the risk register (risk IDs R1–R22): [SPEC.md](../SPEC.md).
+The reasoning behind every Push Guard rule. Configuration and operation (rule table, configuration, commands including `replay`) are in [docs/push-guard.md](push-guard.md); shared settings are in [docs/configuration.md](configuration.md); credential rights are in [docs/credentials.md](credentials.md). What the implementation settled or changed is in [SPEC.md](../SPEC.md). Design of both guard posts and the risk register (risk IDs R1–R22): [SPEC.md](../SPEC.md).
 
-Focus for now: only the Push Guard, only deterministic rules. **No AI at all:** the Push Guard has to decide fast, pass or fail, while the push is running, and the same input must always give the same answer. No LLM, no platform API, nothing but Git. Every rule below can be decided from the pushed objects and the remote's current refs alone, with the same result every time. Testable requirements for QA are numbered as `REQ-PG-*` in [Requirements](#requirements).
+Focus for now: only the Push Guard, only deterministic rules. **No AI at all:** the Push Guard has to decide fast, pass or fail, while the push is running, and the same input must always give the same answer. No LLM, no platform API, nothing but Git. Every rule below can be decided from the pushed objects and the remote's current refs alone, with the same result every time. Testable requirements for QA are numbered as `REQ-PG-*` in [docs/push-guard-spec.md](push-guard-spec.md#requirements). Open questions are in [docs/push-guard-spec.md](push-guard-spec.md#open-questions).
 
 ## Assumption: one Push Guard per agent
 
@@ -24,68 +24,6 @@ For now, each monitored agent gets its own Push Guard. Its configuration names t
 
 Why `red` stays silent: a `yellow` message helps an honest agent fix its change, but it also teaches a manipulated agent what the rules look for. For `red` cases that lesson would be too valuable, so the agent only learns that the push didn't go through.
 
-## Requirements
-
-Testable Push Guard behaviours for QA. **Requirement IDs** (`REQ-PG-*`) are stable: never renumber; only append. They are a separate layer from **rule IDs** (`REF-*`, `PATH-*`, …) and from SPEC **risk IDs** (`R1`–`R22`); do not reuse those namespaces.
-
-Each requirement is one shall/must behaviour. Where a rule ID applies, it is named. Settled quirks from [SPEC.md § Push Guard rules](../SPEC.md#push-guard-rules) are included so tests match the implementation.
-
-| ID | Shall / must | Rule / notes |
-| --- | --- | --- |
-| `REQ-PG-001` | Any `red` finding shall reject the push **without naming the rule**; the response only states rejection and that a human is needed; the owner shall be warned. Named fixed-message exceptions (not silent red): `RATE-LIMIT` (`rate limited, try later`, `REQ-PG-036`) and remote-moved-since-approval (`Remote moved since approval`, `REQ-PG-003`). | Verdict |
-| `REQ-PG-002` | Any `yellow` finding shall reject with an agent-usable message (which rule, on which ref/path/line, and why). `yellow` shall **not** go to a human. | Verdict |
-| `REQ-PG-003` | Only `green` shall forward **exactly the checked SHAs** to the remote, then accept the agent's push. Forwarding shall never use `--force`. A rewrite, tag move or deletion shall use `--force-with-lease`, and only if the rule's `allow` exempts that ref or a human approved that SHA. Allow-list exemptions lease against the remote state just read. Human-approved rewrites/tag-moves/deletes lease against the **old OID recorded with the approval** (tip at check/approval time). If the remote tip differs at repush, reject with the fixed agent message `Remote moved since approval` (named fixed-message exception, analogous to `REQ-PG-036` / rate-limit — not a silent red / not "waiting for a human"); consume/invalidate the approval; a new check and approval are required. | Verdict |
-| `REQ-PG-004` | A rule that errors, times out or cannot read its input shall count as `red` with the message `internal error, try again later` (**fail-closed**). The next push shall be checked from scratch. | Verdict |
-| `REQ-PG-005` | Human approval shall be **per SHA**: approve `ref` + `new-oid` (a unique prefix of a rejected push is enough). If the prefix matches more than one distinct rejected SHA of that ref, approve shall refuse and ask for more digits (same SHA rejected twice is not ambiguous). The agent's next push of exactly that SHA to that ref shall be forwarded without re-checking. Any other SHA shall be checked from scratch. | Verdict |
-| `REQ-PG-006` | `REF-DELETE` shall fire `red` when a branch or tag is deleted. | `REF-DELETE` |
-| `REQ-PG-007` | `REF-NON-FF` shall fire `red` when a branch moves to a commit that does not contain its old commit. | `REF-NON-FF` |
-| `REQ-PG-008` | `REF-TAG-MOVE` shall fire `red` when an existing tag is pointed elsewhere. | `REF-TAG-MOVE` |
-| `REQ-PG-009` | `REF-TAG-NEW` shall fire `yellow` when a new tag is created. | `REF-TAG-NEW` |
-| `REQ-PG-010` | `REF-NAMESPACE` shall fire `red` when a ref is outside `refs/heads/*` and `refs/tags/*`. | `REF-NAMESPACE` |
-| `REQ-PG-011` | `REF-COUNT` shall fire `red` when a push contains more than `max_refs` refs (default 10). | `REF-COUNT` |
-| `REQ-PG-012` | `PATH-RED` shall fire `red` when a changed path (added, modified, deleted or renamed) matches the rule's `match` list. | `PATH-RED` |
-| `REQ-PG-013` | `PATH-YELLOW` shall fire `yellow` when a changed path matches the rule's `match` list. | `PATH-YELLOW` |
-| `REQ-PG-014` | A rename shall be checked under **both** the old and the new path name for path rules. | `PATH-RED`, `PATH-YELLOW` |
-| `REQ-PG-015` | A path that matches both `PATH-RED` and `PATH-YELLOW` shall be treated as `red` (`PATH-RED` overrides yellow). | `PATH-RED`, `PATH-YELLOW` |
-| `REQ-PG-016` | `MODE-EXEC` shall fire `yellow` when a file becomes executable (mode `100755`). | `MODE-EXEC` |
-| `REQ-PG-017` | `MODE-SYMLINK` shall fire `yellow` when a symlink (mode `120000`) is added or changed. | `MODE-SYMLINK` |
-| `REQ-PG-018` | `MODE-SUBMODULE` shall fire `yellow` when a gitlink (mode `160000`) is added or changed. | `MODE-SUBMODULE` |
-| `REQ-PG-019` | `CONTENT-SECRET` shall fire `red` when gitleaks finds a secret in the new commits (`gitleaks git --log-opts="<range>"`). Every commit in the range shall count, including a secret added and later removed. | `CONTENT-SECRET` |
-| `REQ-PG-020` | `CONTENT-SECRET` shall run only with wall scanner configuration (`--config`, `--gitleaks-ignore-path`, `--ignore-gitleaks-allow`), never with the repo's `.gitleaks.toml`, `.gitleaksignore` or inline `gitleaks:allow`. | `CONTENT-SECRET` |
-| `REQ-PG-021` | `CONTENT-SCANNER-ALLOW` shall fire `red` when an added line introduces an inline secret-scanner exception (`gitleaks:allow`, `trufflehog:ignore`). | `CONTENT-SCANNER-ALLOW` |
-| `REQ-PG-022` | `CONTENT-INVISIBLE` shall fire `red` on Bidi controls (U+202A–U+202E, U+2066–U+2069), zero-width characters (U+200B–U+200D, U+2060), U+FEFF outside the first byte, or Unicode tag characters (U+E0000–U+E007F) in added lines. | `CONTENT-INVISIBLE` |
-| `REQ-PG-023` | `CONTENT-BINARY` shall fire `yellow` when a binary file is added or changed (`git diff --numstat` reports `-`), including under test directories. | `CONTENT-BINARY` |
-| `REQ-PG-024` | `CONTENT-BINARY` shall also fire for added text that is not valid UTF-8 (undecodable text counts as binary). | `CONTENT-BINARY` (SPEC settled) |
-| `REQ-PG-025` | `CONTENT-BLOB` shall fire `yellow` on a literal of 200+ characters of base64 or 100+ characters of hex on one added line. | `CONTENT-BLOB` |
-| `REQ-PG-026` | `CONTENT-PAGES-SCRIPT` shall fire `yellow` on the Pages branch (`gh-pages` or configured) when a `<script src>` or `<link>` points to a new external host. An empty `pages_branch` disables the rule entirely (no default to `gh-pages`). | `CONTENT-PAGES-SCRIPT` |
-| `REQ-PG-027` | For `CONTENT-PAGES-SCRIPT`, a host shall count as **new** if `git grep -i -F <host>` finds it nowhere in the remote's old tree of the Pages branch. | `CONTENT-PAGES-SCRIPT` (SPEC settled) |
-| `REQ-PG-028` | `META-UNSIGNED` shall fire `yellow` when a commit has no signature and the last `lookback` commits (default 20) on that branch were all signed. Only signature **presence** counts; keys are not verified. | `META-UNSIGNED` |
-| `REQ-PG-029` | For `META-UNSIGNED`, the lookback shall be first-parent commits of the remote's old state (default branch for a new ref or a tag). With fewer than `lookback` commits the rule shall stay quiet. | `META-UNSIGNED` (SPEC settled) |
-| `REQ-PG-030` | `META-BACKDATED` shall fire `yellow` when the committer date is earlier than a parent's committer date, or more than 24 h before the push. Only the committer date shall be used. | `META-BACKDATED` |
-| `REQ-PG-031` | `META-FUTURE` shall fire `yellow` when the author or committer date is more than 10 min after the push. | `META-FUTURE` |
-| `REQ-PG-032` | `SIZE-LIMIT` shall fire `red` when the delta exceeds the hard limits: `max_files` 2,000, `max_lines` 50,000, `max_bytes` 50 MB of new objects, or `max_file_bytes` 10 MB for a single file (defaults; configurable). | `SIZE-LIMIT` |
-| `REQ-PG-033` | `SIZE-LARGE` shall fire `yellow` when the soft limits are exceeded: `max_files` 200, `max_lines` 5,000, `max_commits` 100, or `max_file_bytes` 1 MB (defaults; configurable). | `SIZE-LARGE` |
-| `REQ-PG-034` | `SIZE-MASS-DELETE` shall fire `yellow` when more than `max_deleted_files` (default 20) files are deleted, or more than `max_deleted_share` (default 50 %) of a file's lines are removed in files over `min_lines` (default 100). | `SIZE-MASS-DELETE` |
-| `REQ-PG-035` | For `SIZE-MASS-DELETE`, the share check shall apply to **modified and renamed** files; fully deleted files shall count only toward `max_deleted_files`. | `SIZE-MASS-DELETE` (SPEC settled) |
-| `REQ-PG-036` | `RATE-LIMIT` shall fire `red` when an agent exceeds `max_pushes` (default 30) pushes per `window` (default 1 h). The response shall say `rate limited, try later`. | `RATE-LIMIT` |
-| `REQ-PG-037` | `RATE-YELLOW-STREAK` shall fire `red` when an agent exceeds `max_yellow` (default 5) `yellow` rejections in the same repo (all refs) within `window` (default 24 h). A human shall be warned; further pushes by that agent to that repo shall be `red` (no rule details) until a human approves one of its SHAs there or resets the streak. A `green` push shall **not** reset the streak. | `RATE-YELLOW-STREAK` |
-| `REQ-PG-038` | Every rule shall be **on by default** and shall be disableable via `enabled: false`. | Configuration |
-| `REQ-PG-039` | Each rule's `color` shall be configurable (`red` or `yellow`, default as in the rule tables). | Configuration |
-| `REQ-PG-040` | `allow` shall be regexes over the rule's subject; a match means the rule does **not** fire for that subject. | Configuration |
-| `REQ-PG-041` | `deny` shall win over `allow`: when a rule is evaluated for a subject, a `deny` match means the rule fires even if `allow` also matches. Subject-scanning rules (`REF-NAMESPACE`, `PATH-*`) are evaluated for every relevant subject and therefore fire on `deny` alone. Event rules (`REF-DELETE`, `REF-NON-FF`, `REF-TAG-NEW`, `REF-TAG-MOVE`, `MODE-*`, `META-*`, `SIZE-*`, `CONTENT-*`) apply `deny` only when their trigger has already fired; a `deny` match without that trigger does not fire the rule. Once triggered (or subject-scanned), a rule fires if `deny` matches, or if it is triggered and `allow` does not match. | Configuration |
-| `REQ-PG-042` | Patterns shall match the **whole** subject: each pattern is wrapped as `^(?:…)$` so partial matches do not exempt or deny unintended subjects. | Configuration |
-| `REQ-PG-043` | Subjects shall be: full ref name for `REF-*`; path for `PATH-*`, `MODE-*`, `CONTENT-*` and per-file `SIZE-*`; ref name for per-ref `SIZE-*` totals; branch (without `refs/heads/` for branches; full ref for tags) for `META-*`. `REF-COUNT` and `RATE-*` have no subject; `allow`/`deny` shall not apply to them. | Configuration |
-| `REQ-PG-044` | Path and content rules shall run over the **cumulative diff**; metadata rules shall run over **each new commit**. | What a rule sees |
-| `REQ-PG-045` | Remote state shall come from a fresh `git ls-remote --symref` per push; the agent's `old-oid` shall not be trusted. | What a rule sees |
-| `REQ-PG-046` | Every limit in [Limit bounds](#limit-bounds) shall be checked against its range when the configuration loads. A value outside the range shall be refused with an error naming the rule, the key and the range (`check-config` exits `1`); it shall never be clamped. | Configuration (2026-10-11) |
-| `REQ-PG-047` | `timeout` shall be from `1s` to `1h`. Anything else shall be refused when the configuration loads. | Configuration (2026-10-11) |
-| `REQ-PG-048` | A line in `push.jsonl` of up to 64 MiB (counted without its newline) shall be read. A longer line shall make the push fail closed (internal error). | Limits (2026-10-11) |
-| `REQ-PG-049` | A line of up to 16 MiB in the diff of a push (counted without the leading `+` or `-` and the newline) shall be read. A longer line shall make the push fail closed (internal error). | Limits (2026-10-11) |
-| `REQ-PG-050` | Output of a program the Push Guard starts and evaluates (gitleaks' report and its stdout and stderr, `gitleaks version`, `git version`) shall be read up to 1 MiB per file or stream. More shall make the check fail closed, never be evaluated cut short. | Limits (2026-10-11) |
-| `REQ-PG-051` | Output of a program the Push Guard starts only to show or log it (`notify.command`) shall be kept up to its last 1 MiB, stdout and stderr together; the rest shall be dropped and the program shall run on normally. | Limits (2026-10-11) |
-| `REQ-PG-052` | Text shall be shortened to these fixed lengths: a SHA in messages to 12 characters, an error text from a program to 300 characters (for `notify.command` its last 300, since the cause is usually at the end; for the others their first 300), a commit subject in `replay` to 72 characters; an alert shall quote at most 20 commits and at most 500 characters per commit message. | Limits (2026-10-11) |
-| `REQ-PG-053` | These fixed time limits shall apply: `gitleaks version` and `git version` 30 s each; after a program is killed, at most 5 s more for its output pipes to close; the HTTP server 30 s to read request headers and 30 s to shut down. | Limits (2026-10-11) |
-
 ## What a rule sees
 
 For each ref in the push (`old-oid new-oid ref-name` from `pre-receive`):
@@ -104,7 +42,7 @@ Path rules and content rules run over the **cumulative diff**, so splitting a ch
 
 ## Rules
 
-IDs are stable so findings, approvals and config can refer to them. Every list, pattern and limit is configuration with the default shown. **Every rule is on by default and can be disabled** (`REQ-PG-038`), and most can be narrowed with allow and deny lists (`REQ-PG-040`, `REQ-PG-041`; see [Configuration](#configuration)). Testable requirements for each rule are in [Requirements](#requirements) and in the **Requirements** column of the tables below.
+IDs are stable so findings, approvals and config can refer to them. Every list, pattern and limit is configuration with the default shown. **Every rule is on by default and can be disabled** (`REQ-PG-038`), and most can be narrowed with allow and deny lists (`REQ-PG-040`, `REQ-PG-041`; see [Configuration](#configuration)). Testable requirements for each rule are in [docs/push-guard-spec.md](push-guard-spec.md#requirements) and in the **Requirements** column of the tables below.
 
 ### Refs
 
@@ -296,14 +234,14 @@ Every configurable limit has a range (`REQ-PG-046`). A value outside it is refus
 The Push Guard knows nothing about owners or platforms. **Each repo gets a short name** chosen by the owner (`[a-z0-9._-]+`, unique within one Push Guard) and **one Git URL** where its real remote lives. The name is all the agent sees: it pushes to `<push guard>/<name>.git`, and the Push Guard forwards to the URL. GitHub, GitLab, Gitea/Forgejo and a bare repo over SSH look the same here; `owner/repo` only appears inside the URL, if at all.
 
 ```yaml
-# warden/repos/hermetarium/warden.yaml
-remote: git@github.com:example/hermetarium.git # any Git URL: ssh://, https://, git@host:path, /srv/git/x.git
-credential: /etc/warden/keys/hermetarium        # write credential for exactly this remote (SSH key or token file)
-known_hosts: /etc/warden/known_hosts           # optional, SSH only; default: the guard user's own
-default_branch: main                            # optional; otherwise read via ls-remote --symref
+# warden/repos/git-warden/warden.yaml
+remote: git@github.com:pihme/git-warden.git # any Git URL: ssh://, https://, git@host:path, /srv/git/x.git
+credential: /etc/warden/keys/git-warden      # write credential for exactly this remote (SSH key or token file)
+known_hosts: /etc/warden/known_hosts         # optional, SSH only; default: the guard user's own
+default_branch: main                         # optional; otherwise read via ls-remote --symref
 rules:
-  PATH-YELLOW:
-    allow: ['package-lock\.json']
+  REF-NAMESPACE:
+    deny: ['refs/heads/main']                # every push that includes main is red
 ```
 
 `remote` and `credential` are required per repo (`credential` may only be left out for a local path or `file://` remote) and never come from `defaults.yaml`, so one repo can't accidentally push to another repo's remote. A push to a name that has no folder is rejected (`red`, "unknown repo"). The credential stays a file reference, never a value in the YAML, so config can be shown and diffed without leaking it. `known_hosts` (SSH only, optional) points to the host keys for this remote; an unknown or changed host key is refused, and `ssh` runs with `-F none`, so no ssh_config on the wall host can change where or how the guard connects.
@@ -317,7 +255,7 @@ warden/
   defaults.yaml          # applies to every repo: agent.name, all rules with their defaults
   gitleaks.toml          # secret scanner rules for every repo
   repos/
-    hermetarium/         # folder name = repo name = the path the agent pushes to
+    git-warden/          # folder name = repo name = the path the agent pushes to
       warden.yaml        # remote + credential, plus only what differs from defaults.yaml
       gitleaks.toml      # optional: extra scanner rules; starts with [extend] path = "/etc/warden/gitleaks.toml"
       gitleaksignore     # optional: known false positives of the scanner in this repo
@@ -325,7 +263,7 @@ warden/
       warden.yaml        # a repo without its own scanner files uses the shared gitleaks.toml as is
 ```
 
-For a push to `hermetarium.git`, the Push Guard reads `defaults.yaml`, then applies `repos/hermetarium/warden.yaml` on top; the scanner runs with that folder's `gitleaks.toml` (or the shared one) and `gitleaksignore`. Only `warden.yaml` with `remote` and `credential` is required in a repo folder.
+For a push to `git-warden.git`, the Push Guard reads `defaults.yaml`, then applies `repos/git-warden/warden.yaml` on top; the scanner runs with that folder's `gitleaks.toml` (or the shared one) and `gitleaksignore`. Only `warden.yaml` with `remote` and `credential` is required in a repo folder.
 
 ## Statistics
 
@@ -353,24 +291,3 @@ A human acts only on `red`, and only on the wall host where the configuration li
 The commits of a rejected `red` push are kept as a bundle `pending/<repo>/<id>.bundle` for the human to inspect. Refs can't be written inside the push's quarantine, and its objects vanish once the push is rejected, so a ref namespace like `refs/warden/pending` doesn't work here.
 
 Warnings go out through `notify.command` in `defaults.yaml`: a command that gets the warning as JSON on stdin (facts first, the agent's texts only as a marked quote). Which channel sits behind it (email, ntfy, Signal, …) is the owner's choice and not part of the Push Guard.
-
-## Decided
-
-- **Agent configuration** (`AGENTS.md` & co.) stays in `PATH-RED` by default. A repo where agents maintain it moves the pattern with `PATH-RED: match_remove` plus `PATH-YELLOW: match`.
-- **Scanner: gitleaks.** It runs offline, its flags make the repo's own exceptions ineffective (see [Scanner configuration](#scanner-configuration)), and it is MIT-licensed. trufflehog verifies findings against live services, which needs network access during the push; it can come later as a second scanner.
-- **Defaults are tuned before the first live run:** the Push Guard gets a `replay` mode (`push-guard replay`) that runs the rules over a repo's existing history without forwarding anything; the hits on the first repos show which defaults are too strict.
-
-- **Clarified during tests (2026-10-05).** The details and commits are in [Clarifications during tests](push-guard-testspec.md#clarifications-during-tests).
-  - An approved rewrite, tag move or deletion leases against the remote tip recorded with the approval. If the remote moved since then, the push is rejected with `Remote moved since approval` and the approval is dropped. The owner gets no warning for this (`REQ-PG-003`).
-  - `deny` makes only subject-scanning rules (`REF-NAMESPACE`, `PATH-*`) fire on its own; event rules apply it only when they already fire (`REQ-PG-041`).
-  - A SHA prefix that fits more than one distinct rejected SHA approves nothing (`REQ-PG-005`).
-  - Limits are checked for the kind the rule reads when the config loads (`REQ-PG-032`). Count and duration limits must not be negative (zero was allowed as the strictest finite bound; since 2026-10-11 the ranges in [Limit bounds](#limit-bounds) decide, and most of them start at 1). A negative `max_age` would make `META-BACKDATED` fire on every commit.
-  - Paths with spaces are seen by every content rule (`REQ-PG-021`, `022`, `025`, `026`).
-  - A `.gitleaksignore` in the scanned directory makes the scan fail closed (`REQ-PG-020`).
-  - An empty `pages_branch` switches `CONTENT-PAGES-SCRIPT` off (`REQ-PG-026`).
-
-- **Limits (Peter, 2026-10-11).** Every configurable limit has a lower and an upper bound and is refused outside it, never clamped ([Limit bounds](#limit-bounds), `REQ-PG-046`, `047`). Fixed internal limits are requirements with their exact value (`REQ-PG-048`–`053`). The maximum diff line drops from 256 MiB to 16 MiB so it can be tested. Output of programs the guard starts is bounded: what is evaluated fails closed above 1 MiB, what is only shown keeps its last 1 MiB. Output of the guard's own `git` calls is not bounded this way; its size follows the repository, and `REQ-PG-049` bounds the diff lines.
-
-## Open questions
-
-None that block the Push Guard. Hosting and the notification channel are open in [SPEC.md](../SPEC.md#open-questions).

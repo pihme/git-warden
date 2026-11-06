@@ -1,0 +1,11 @@
+# One repo of the Backup Guard. Read access is enough: use a read-only deploy
+# key (SSH) or a read-only token file (HTTPS), never the Push Guard's write key.
+remote: git@github.com:pihme/git-warden.git
+credential: /etc/warden-backup/keys/git-warden  # read-only deploy key (relative: to this config dir)
+known_hosts: /etc/warden-backup/known_hosts      # optional, SSH only; default: the guard user's own
+exclude_branches: ['dependabot/.*']              # anchored; tags are always backed up
+# For an HTTPS remote: a file holding a read-only token, and the user name the
+# platform expects with it (default x-access-token).
+#   remote: https://github.com/pihme/git-warden.git
+#   credential: /etc/warden-backup/keys/git-warden.token
+#   credential_username: x-access-token

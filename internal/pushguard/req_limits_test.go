@@ -1,7 +1,7 @@
 package pushguard
 
 // Requirement tests for the Push Guard limits REQ-PG-050 to 053
-// (docs/push-guard-rules.md); see docs/push-guard-testspec.md.
+// (docs/push-guard-spec.md); see docs/push-guard-testspec.md.
 
 import (
 	"context"

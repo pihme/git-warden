@@ -1,6 +1,6 @@
 package backupguard
 
-// Requirement tests for docs/backup-guard.md § Requirements (REQ-BG-*).
+// Requirement tests for docs/backup-guard-spec.md § Requirements (REQ-BG-*).
 // One test per requirement or small group of closely related ones; the
 // mapping is in docs/backup-guard-testspec.md.
 

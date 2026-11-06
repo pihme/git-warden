@@ -1,6 +1,6 @@
 # Backup Guard: test specification
 
-This document maps every requirement in [backup-guard.md](backup-guard.md#requirements) (`REQ-BG-001` to `REQ-BG-118`) to the automated tests that check it. Requirement tests are named `TestREQ_BG_<nnn>_…`, so `go test ./internal/backupguard ./cmd/backup-guard -run 'TestREQ_BG_081'` runs the tests of one requirement. Older tests that already covered a requirement before the numbering are listed with their own names.
+This document maps every requirement in [backup-guard-spec.md](backup-guard-spec.md#requirements) (`REQ-BG-001` to `REQ-BG-118`) to the automated tests that check it. Requirement tests are named `TestREQ_BG_<nnn>_…`, so `go test ./internal/backupguard ./cmd/backup-guard -run 'TestREQ_BG_081'` runs the tests of one requirement. Older tests that already covered a requirement before the numbering are listed with their own names.
 
 Status is as of `main` @ `0d52412` (Peter's decisions of 2026-10-06 included) plus branch `qa/backup-guard-tests` (6.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
 
@@ -8,7 +8,7 @@ Status is as of `main` @ `0d52412` (Peter's decisions of 2026-10-06 included) pl
 
 - 118 of 118 requirements have at least one test; `REQ-BG-114` to `118` (limits, 2026-10-11) are listed below. `REQ-BG-071` (one pass, then exit) is covered implicitly by every `run` test in `cmd/backup-guard`.
 - 85 requirement tests (65 from QA, 20 from Maintainer with the 2026-10-06 decisions), plus 12 older tests mapped below.
-- 87 green, 0 red. `TestREQ_BG_081_OutputTail` was red until the fix on this branch (see Findings).
+- 87 green, 0 red. `TestREQ_BG_081_OutputTail` was red until the fix recorded under Findings.
 
 ## Coverage
 

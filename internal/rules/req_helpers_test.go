@@ -2,7 +2,7 @@ package rules
 
 // Helpers for the requirement tests (req_*_test.go). Every requirement test is
 // named TestREQ_PG_<nnn>_<what> after the requirement in
-// docs/push-guard-rules.md it checks; docs/push-guard-testspec.md maps them.
+// docs/push-guard-spec.md it checks; docs/push-guard-testspec.md maps them.
 
 import (
 	"context"

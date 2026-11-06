@@ -4,7 +4,7 @@ This file is for the coding agent working in this repo. Read it at the start of 
 
 ## What this repo is
 
-**Git Warden** puts guard posts between AI agents and their Git remote. This monorepo holds both guard posts: the **Push Guard** (`cmd/push-guard`): agents push to it, it checks every push with deterministic rules and forwards only green pushes to the real remote; and the **Backup Guard** (`cmd/backup-guard`): on a timer it runs git-everref to keep an append-only backup of every branch and tag. `SPEC.md` is the one authoritative document: design, decisions, risks R1–R22 and coverage. Reference, the same structure for both guards: `docs/push-guard.md` (Push Guard configuration and operation), `docs/push-guard-rules.md` (rule reasoning), `docs/backup-guard.md` (Backup Guard configuration and operation). User docs: `README.md`.
+**Git Warden** puts guard posts between AI agents and their Git remote. This monorepo holds both guard posts: the **Push Guard** (`cmd/push-guard`): agents push to it, it checks every push with deterministic rules and forwards only green pushes to the real remote; and the **Backup Guard** (`cmd/backup-guard`): on a timer it runs git-everref to keep an append-only backup of every branch and tag. `SPEC.md` is the one authoritative document: design, decisions, risks R1–R22 and coverage. Reference, the same structure for both guards: `docs/push-guard.md` (Push Guard configuration and operation), `docs/push-guard-rules.md` (rule reasoning), `docs/push-guard-spec.md` (Push Guard requirements), `docs/backup-guard.md` (Backup Guard configuration and operation), `docs/backup-guard-spec.md` (Backup Guard requirements). User docs: `README.md`.
 
 License: **PolyForm Noncommercial 1.0.0** (`LICENSE`). Source-available, not OSI Open Source. Do not relicense to Apache/MIT/GPL.
 
@@ -22,10 +22,10 @@ Go 1.24 (`go.mod`), one runtime dependency (`gopkg.in/yaml.v3`) and one test-onl
 - `cmd/backup-guard/`: the Backup Guard binary (subcommands `run`, `check-config`, `version`).
 - `internal/backupguard/`: Backup Guard configuration, preflight, bridge and backup setup, branch selection, everref runner, `backup.jsonl`, notify.
 - `internal/testutil/`: helpers for tests with real temporary Git repos.
-- `examples/warden/`: example wall configuration (placeholder remote and credential); `examples/backup/`: example Backup Guard configuration and systemd units.
+- `examples/warden/`: example Push Guard configuration for this repository (placeholder credential paths; `REF-NAMESPACE` denies `refs/heads/main`); `examples/backup/`: example Backup Guard configuration for this repository, and systemd units.
 - `scripts/install-everref.sh`: optional installer for the pinned git-everref release (SHA-256 checked).
 - `Dockerfile` (+ `.dockerignore`): one image with both binaries and git, gitleaks 8.30.1 and git-everref v1.0.0, pinned and SHA-256 checked at build time. `flake.nix` (+ `flake.lock`): package (both binaries, runs `go test ./...`) and dev shell with the same pinned gitleaks and git-everref. Keep the gitleaks and everref pins equal in CI, the Dockerfile, `flake.nix`, `nix/scanners/flake.nix` and `scripts/install-everref.sh`.
-- `docs/`: configuration and operation of each guard (`push-guard.md`, `backup-guard.md`, same structure), Push Guard rule reasoning; `docs/agents/` holds the agent working docs.
+- `docs/`: configuration and operation of each guard (`push-guard.md`, `backup-guard.md`, same structure), settings both guards share (`configuration.md`), credential rights (`credentials.md`), install (`install.md`), Backup Guard requirements (`backup-guard-spec.md`), Push Guard requirements (`push-guard-spec.md`), Push Guard rule reasoning; `docs/agents/` holds the agent working docs.
 - There are exactly two guard posts.
 
 Invariants that must not break:
@@ -85,7 +85,8 @@ Tests cover the config merge, every rule against real temporary repos, the journ
 
 ### Website
 
-No website yet.
+- Site: <https://pihme.github.io/git-warden/>, generated onto the `gh-pages` branch from outside this repo. Do not edit `gh-pages` by hand and never merge it into `main`.
+- The repo description is the site tagline; change them together. Writing style rules for the site live with the site generator, not in this repo.
 
 ## Do not invent
 

@@ -1,6 +1,6 @@
 package main
 
-// Requirement tests for the backup-guard command (docs/backup-guard.md,
+// Requirement tests for the backup-guard command (docs/backup-guard-spec.md,
 // REQ-BG-*). The mapping is in docs/backup-guard-testspec.md.
 
 import (
