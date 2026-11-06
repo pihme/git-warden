@@ -25,7 +25,7 @@ Part of [Hobelbank](https://pihme.github.io/hobelbank/), a set of projects on bu
 
 Both guard posts are built and covered by tests. The live test in CI pushes to this repository on GitHub over HTTPS.
 
-What each guard does not cover is in [SPEC.md](SPEC.md#coverage-by-git-warden). The handbook is at [pihme.github.io/git-warden](https://pihme.github.io/git-warden/).
+What each guard does not cover is in [SPEC.md](SPEC.md#coverage-by-git-warden). The handbooks are on the website: [Push Guard](https://pihme.github.io/git-warden/handbook/push-guard/), [Backup Guard](https://pihme.github.io/git-warden/handbook/backup-guard/), and [all pages](https://pihme.github.io/git-warden/handbook/), including install, shared settings and credentials.
 
 ## Start here
 
