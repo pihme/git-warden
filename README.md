@@ -16,10 +16,10 @@
 
 Git Warden puts guard posts between AI agents and their Git remote: a **Push Guard** that checks every push with deterministic rules, and a **Backup Guard** that keeps an append-only backup of every branch and tag. The remote can be GitHub, GitLab, Gitea/Forgejo or a bare repo over SSH. Neither guard uses AI: every decision is a deterministic rule.
 
-Part of [Hobelbank](https://pihme.github.io/hobelbank/), a set of projects on building software in the age of AI.
-
 - **Push Guard** (`push-guard`): agents push to it instead of the remote, it checks every push while the push is running, and only it holds a write credential for the remote. A clean push is forwarded with exactly the checked SHAs; a `yellow` finding goes back to the agent with a message it can act on; a `red` finding is rejected without details and waits for a human.
 - **Backup Guard** (`backup-guard`): on a timer on a separate backup host, it runs [git-everref](https://github.com/daojyun/git-everref) against each remote with a read-only credential. A force push, deletion or moved tag upstream becomes a new lineage or a tombstone in the backup; nothing that a run has seen is ever lost.
+
+Part of [Hobelbank](https://pihme.github.io/hobelbank/), a set of projects on building software in the age of AI.
 
 ## Status
 
