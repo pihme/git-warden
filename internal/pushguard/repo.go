@@ -70,8 +70,9 @@ func EnsureRepo(ctx context.Context, cfg *config.Config, binary string) (string,
 	return path, nil
 }
 
-// Sync updates the guard repository's branches and tags from the remote, so
-// agents fetch the remote's state through the guard and pushes start from it.
+// Sync updates the guard repository's branches, tags and default branch from
+// the remote, so agents fetch the remote's state through the guard and pushes
+// start from it. Other refs are left behind.
 func Sync(ctx context.Context, cfg *config.Config, path string) error {
 	g := &gitx.Git{Unset: []string{"GIT_DIR", "GIT_WORK_TREE"}}
 	remote, err := gitx.NewRemote(g.With("GIT_DIR="+path), cfg.Remote, cfg.Credential, cfg.CredentialUsername, cfg.KnownHosts)

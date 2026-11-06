@@ -405,7 +405,7 @@ The agent pushes to `http://hermit:$TOKEN@warden.internal:8418/git-warden.git`. 
 
 The caller must send the password from `agent.token_file`. A green push is then forwarded with the write credential, and a fetch returns the repository the guard holds. Without the password, anyone who can open the listen port can push and fetch.
 
-The repository does not have to exist beforehand. The first request for a configured repository creates `state_dir/repos/<name>.git` and installs the hook. Before every fetch or push, `serve` copies the remote's branches and tags into that repository. A fetch then shows the current remote.
+The repository does not have to exist beforehand. The first request for a configured repository creates `state_dir/repos/<name>.git` and installs the hook. Before every fetch or push, `serve` copies the remote's branches, tags and default branch into that repository. A fetch then shows the current remote, including a commit that landed without going through the guard. Other refs, such as notes, are not copied.
 
 Put TLS in front of `serve` when the traffic leaves the host. The agent's password is in the request.
 

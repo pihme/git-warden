@@ -4,7 +4,11 @@ package main
 // pre-receive hook running the compiled push-guard binary. The suite creates
 // that repository with EnsureRepo and Sync, then drives the hook by a
 // file-path push. That push is test setup, not a supported agent path.
-// TestServeOverHTTP pushes over HTTP through serve.
+// TestServeOverHTTP pushes over HTTP through serve. A later fetch must show
+// commits, branches, a moved tag and the default branch that landed on the
+// remote without going through the guard. The new file must be readable, a
+// following push must start from that commit, a deleted ref must disappear,
+// and a broken remote must not be advertised.
 
 import (
 	"context"
@@ -489,5 +493,80 @@ func TestServeOverHTTP(t *testing.T) {
 	unknown := strings.Replace(hs.URL, "http://", "http://agent:synthetic-test-token@", 1) + "/nope.git"
 	if _, err := testutil.Try(e.base, nil, "ls-remote", unknown); err == nil {
 		t.Fatal("unknown repo served")
+	}
+
+	// Someone else pushes to the remote, past the guard: a new main tip, a
+	// branch, a tag that then moves, a note, and a new default branch. The
+	// user name in the URL is not checked. serve copies branches, tags and
+	// the default branch only, so the note must not be advertised.
+	other := testutil.Open(t, filepath.Join(e.base, "other"))
+	testutil.Run(t, "", "clone", "--quiet", e.remote.Dir, other.Dir)
+	tip := other.Commit("landed elsewhere", map[string]string{"elsewhere.txt": "y\n"})
+	other.Git("branch", "side")
+	other.Git("tag", "v1")
+	other.Git("push", "--quiet", "origin", "HEAD:main", "side", "v1")
+	moved := other.Commit("tag moved", map[string]string{"moved.txt": "m\n"})
+	other.Git("tag", "-f", "v1")
+	other.Git("push", "--quiet", "origin", "+v1", tip+":refs/notes/commits")
+	testutil.Run(t, e.remote.Dir, "symbolic-ref", "HEAD", "refs/heads/side")
+
+	anyUser := strings.Replace(hs.URL, "http://", "http://not-the-agent:synthetic-test-token@", 1) + "/" + repoName + ".git"
+	listed, err := clone.Try("ls-remote", "--symref", anyUser)
+	if err != nil {
+		t.Fatalf("fetch after the remote moved: %v\n%s", err, listed)
+	}
+	for _, want := range []string{
+		tip + "\trefs/heads/main",
+		tip + "\trefs/heads/side",
+		moved + "\trefs/tags/v1",
+		"ref: refs/heads/side\tHEAD",
+	} {
+		if !strings.Contains(listed, want) {
+			t.Fatalf("ls-remote missing %q:\n%s", want, listed)
+		}
+	}
+	if strings.Contains(listed, "refs/notes/") {
+		t.Fatalf("note advertised:\n%s", listed)
+	}
+	if strings.Contains(listed, tip+"\trefs/tags/v1") {
+		t.Fatalf("tag still at the old target:\n%s", listed)
+	}
+
+	// ls-remote only reads the advertisement. The fetch has to deliver the file.
+	if listed, err = clone.Try("fetch", "--quiet", anyUser, "refs/heads/main"); err != nil {
+		t.Fatalf("fetch of the new tip: %v\n%s", err, listed)
+	}
+	if body := clone.Git("show", "FETCH_HEAD:elsewhere.txt"); body != "y" {
+		t.Fatalf("fetched elsewhere.txt = %q", body)
+	}
+
+	// The next push has to start from that tip, not from the copy serve held before.
+	clone.Git("merge", "--ff-only", "--quiet", "FETCH_HEAD")
+	next := clone.Commit("on top of elsewhere", map[string]string{"more.txt": "z\n"})
+	if listed, err = clone.Try("push", "origin", "main"); err != nil {
+		t.Fatalf("push on top of the fetched tip: %v\n%s", err, listed)
+	}
+	if e.remoteRef("refs/heads/main") != next {
+		t.Fatal("push on top of the fetched tip was not forwarded")
+	}
+
+	testutil.Run(t, e.remote.Dir, "symbolic-ref", "HEAD", "refs/heads/main")
+	other.Git("push", "--quiet", "origin", ":refs/heads/side", ":refs/tags/v1")
+	listed = clone.Git("ls-remote", "--symref", "origin")
+	if strings.Contains(listed, "refs/heads/side") || strings.Contains(listed, "refs/tags/v1") || strings.Contains(listed, "refs/notes/") {
+		t.Fatalf("deleted ref still advertised:\n%s", listed)
+	}
+	if !strings.Contains(listed, next+"\trefs/heads/main") {
+		t.Fatalf("main tip lost after prune:\n%s", listed)
+	}
+	if !strings.Contains(listed, "ref: refs/heads/main\tHEAD") {
+		t.Fatalf("default branch not restored:\n%s", listed)
+	}
+
+	if err := os.Rename(e.remote.Dir, e.remote.Dir+".gone"); err != nil {
+		t.Fatal(err)
+	}
+	if listed, err = clone.Try("ls-remote", "origin"); err == nil || strings.Contains(listed, next) {
+		t.Fatalf("stale advertisement after the remote disappeared: %v\n%s", err, listed)
 	}
 }
