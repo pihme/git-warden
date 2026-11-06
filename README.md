@@ -19,6 +19,8 @@ Git Warden puts guard posts between AI agents and their Git remote: a **Push Gua
 - **Push Guard** (`push-guard`): agents push to it instead of the remote, it checks every push while the push is running, and only it holds a write credential for the remote. A clean push is forwarded with exactly the checked SHAs; a `yellow` finding goes back to the agent with a message it can act on; a `red` finding is rejected without details and waits for a human.
 - **Backup Guard** (`backup-guard`): on a timer on a separate backup host, it runs [git-everref](https://github.com/daojyun/git-everref) against each remote with a read-only credential. A force push, deletion or moved tag upstream becomes a new lineage or a tombstone in the backup; nothing that a run has seen is ever lost.
 
+Part of [Hobelbank](https://pihme.github.io/hobelbank/), a set of projects on building software in the age of AI.
+
 ## Status
 
 Both guard posts are built. The Push Guard (`push-guard`): all rules of the spec, the pre-receive hook, the HTTP server, the human commands and `replay`, covered by offline tests against real temporary Git repositories, plus a live test in CI against GitHub over HTTPS and an SSH test against a local `sshd` (see [Limits](#limits)). The Backup Guard (`backup-guard`): preflight, bridge and backup setup, branch selection and the git-everref run, covered by tests with a stand-in everref and end to end with the real git-everref against a local remote (force push, deletion, moved tag, unreachable remote, an HTTP remote that requires a token, first runs killed at every stage). Neither is **in production use yet**.
