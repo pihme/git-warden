@@ -1,10 +1,13 @@
 package main
 
 // End-to-end tests: a bare "remote", the guard's bare repository with the
-// pre-receive hook running the compiled push-guard binary, and an agent clone
-// that pushes to the guard by file path (and once over HTTP through serve).
+// pre-receive hook running the compiled push-guard binary. The suite creates
+// that repository with EnsureRepo and Sync, then drives the hook by a
+// file-path push. That push is test setup, not a supported agent path.
+// TestServeOverHTTP pushes over HTTP through serve.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
@@ -14,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pihme/git-warden/internal/config"
 	"github.com/pihme/git-warden/internal/journal"
 	"github.com/pihme/git-warden/internal/pushguard"
 	"github.com/pihme/git-warden/internal/testutil"
@@ -56,6 +60,26 @@ type env struct {
 	guardDir string
 }
 
+// prepareGuard creates the guard repository the way serve does on first use
+// (EnsureRepo, then Sync). Callers then push to it by file path to drive the
+// hook. That push is test setup, not a supported agent path.
+func (e *env) prepareGuard(repo string) {
+	e.t.Helper()
+	cfg, err := config.LoadRepo(e.config, repo)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	ctx := context.Background()
+	path, err := pushguard.EnsureRepo(ctx, cfg, binary)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if err := pushguard.Sync(ctx, cfg, path); err != nil {
+		e.t.Fatal(err)
+	}
+	e.guardDir = path
+}
+
 // setup builds remote, config, guard repository and agent clone. rules is
 // YAML placed under "rules:" in the repo's warden.yaml.
 func setup(t *testing.T, rules string) *env {
@@ -84,8 +108,7 @@ rules:
 		"agent-token":                        "synthetic-test-token\n",
 		"repos/" + repoName + "/warden.yaml": "remote: " + e.remote.Dir + "\nrules:\n" + indent(rules) + "\n",
 	})
-	e.run("init-repo", "--config", e.config, repoName)
-	e.guardDir = pushguard.RepoPath(e.state, repoName)
+	e.prepareGuard(repoName)
 	e.agent = testutil.Open(t, filepath.Join(base, "agent"))
 	testutil.Run(t, "", "clone", "--quiet", e.guardDir, e.agent.Dir)
 	return e
@@ -356,13 +379,10 @@ func TestMissingScannerFailsClosed(t *testing.T) {
 	if !strings.Contains(p.Error, "preflight: gitleaks not found") {
 		t.Fatalf("hook did not fail in its preflight: %s", p.Error)
 	}
-	// init-repo and serve refuse to start at all
-	if out, err := exec.Command(binary, "init-repo", "--config", e.config, repoName).CombinedOutput(); err == nil ||
+	// serve refuses to start at all
+	if out, err := exec.Command(binary, "serve", "--config", e.config, "--listen", "127.0.0.1:0").CombinedOutput(); err == nil ||
 		!strings.Contains(string(out), "gitleaks not found") {
-		t.Fatalf("init-repo without gitleaks: %v\n%s", err, out)
-	}
-	if _, err := pushguard.NewServer(e.config, binary); err == nil || !strings.Contains(err.Error(), "gitleaks not found") {
-		t.Fatalf("serve without gitleaks: %v", err)
+		t.Fatalf("serve without gitleaks: %v\n%s", err, out)
 	}
 }
 

@@ -174,6 +174,8 @@ All values are configurable per rule (defaults shown).
 
 ## Configuration
 
+How to change these rules, try the change with `replay`, and a set of worked examples: [Configuring the rules](push-guard-configuring-rules.md).
+
 Many `red` and `yellow` rules have legitimate uses, e.g. an agent cleaning up its own branches or moving snapshot tags. So each rule has, besides its limits and patterns:
 
 - `enabled` (default `true`): a disabled rule never fires (`REQ-PG-038`).

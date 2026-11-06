@@ -1,6 +1,16 @@
 # Push Guard: configuration and operation
 
-The Push Guard (`push-guard`) stands between the agents and the remote: agents push to it, it checks every push with deterministic rules and forwards only green pushes, with exactly the checked commits. Design and decisions: [SPEC.md](../SPEC.md#push-guard) and [what the implementation settled](../SPEC.md#push-guard-what-the-implementation-settled); the reasoning per rule: [push-guard-rules.md](push-guard-rules.md); testable requirements: [push-guard-spec.md](push-guard-spec.md#requirements); the risks it covers: [Coverage by Git Warden](../SPEC.md#coverage-by-git-warden). Settings the two guards share: [docs/configuration.md](configuration.md). Which credential to create: [docs/credentials.md](credentials.md).
+The Push Guard (`push-guard`) stands between the agents and the remote. Agents push to the guard. It checks every push with deterministic rules. It forwards only a push that comes out green, and it forwards exactly the commits it checked.
+
+Where to read more:
+
+- Design and the decisions already taken: [SPEC.md](../SPEC.md#push-guard) and [what the implementation settled](../SPEC.md#push-guard-what-the-implementation-settled).
+- Why each rule exists: [push-guard-rules.md](push-guard-rules.md).
+- How to change the rules, and how to try them on history you already have: [push-guard-configuring-rules.md](push-guard-configuring-rules.md).
+- The testable requirements: [push-guard-spec.md](push-guard-spec.md#requirements).
+- Which risks the guard covers: [Coverage by Git Warden](../SPEC.md#coverage-by-git-warden).
+- Settings both guards share: [docs/configuration.md](configuration.md).
+- Which credential to create: [docs/credentials.md](credentials.md).
 
 ## Using it
 
@@ -59,7 +69,11 @@ state_dir: /var/lib/warden
 
 One Push Guard serves one agent. `agent.name` is that agent's name in every log line and warning.
 
-`serve` listens on a port. A push the rules mark green is then forwarded with the write credential from step 1, and a fetch returns the repository the guard holds. `agent.token_file` is the password that agent must send to get that far. It is a different file from the write credential: the agent has this password, and the write credential stays on the wall. Without the password, anyone who can open the port can push and fetch as this agent. The rules still run on those pushes. They allow ordinary work, so they do not take the place of the password.
+`serve` listens on a port. A push the rules mark green is then forwarded with the write credential from step 1. A fetch returns the repository the guard holds.
+
+`agent.token_file` is the password that agent must send before any of that happens. It is a different file from the write credential. The agent has this password. The write credential stays on the wall.
+
+Without the password, anyone who can open the port can push and fetch as this agent. The rules still run on those pushes. They allow ordinary work, such as a fast-forward to a branch that is not reserved. They do not take the place of the password.
 
 Write the password into a file on the wall, for example `/etc/warden/agent-token`. The file contains the password and nothing else. Point `token_file` at it:
 
@@ -104,7 +118,9 @@ notify:
   command: [/usr/local/bin/warden-notify]
 ```
 
-A red push starts that program and writes the warning to its standard input. A yellow rejection is returned to the agent and does not start it. The other warnings are under [Warnings](#warnings). A name without a slash is looked up on `PATH`. A path is the program file. Leave `notify` out and no program is started. The push is still written to `state_dir/push.jsonl`.
+A red push starts that program. The guard writes the warning to the program's standard input. A yellow rejection is returned to the agent and does not start the program. The other warnings, and the shape of the JSON, are under [Warnings](#warnings).
+
+A name with no slash is looked up on `PATH`. A name with a slash is the path of the program file. Leave `notify` out and no program is started. The push is still written to `state_dir/push.jsonl`.
 
 `defaults.yaml` for this walk-through is then:
 
@@ -128,7 +144,11 @@ push-guard check-config --config /etc/warden --remote   # also contacts GitHub
 push-guard serve --config /etc/warden --listen 0.0.0.0:8418
 ```
 
-`check-config` names every problem and starts nothing. `serve` is the program the agent talks to over HTTP. Leave it running. It refuses to start until the same checks pass, then accepts a push for every folder under `repos/`. Put TLS in front of it if the traffic leaves the host. Pushing over SSH is a different setup: `init-repo` prepares a repository and exits, and the wall's SSH server is what stays running. That is described under [Running it](#running-it).
+`check-config` names every problem and starts nothing. Run it before `serve`.
+
+`serve` is the program the agent talks to over HTTP. Leave it running. It refuses to start until the same checks pass. Once it is running, it accepts a push for every folder under `repos/`.
+
+Put TLS in front of `serve` when the traffic leaves the host. The agent's password is in the request.
 
 ### 4. Point the agent at the guard
 
@@ -137,7 +157,11 @@ git remote set-url origin http://hermit:$TOKEN@warden.internal:8418/git-warden.g
 git push origin agent/fix-typo
 ```
 
-`git-warden` in that URL is the folder name from step 2, `repos/git-warden`. `$TOKEN` is the password in the file `agent.token_file` points at. The user name `hermit` can be any word; the guard does not check it, and the log still says `hermit-1`. This URL is the agent's only remote for this repository. The write credential from step 1 stays on the wall.
+`git-warden` in that URL is the folder name from step 2, `repos/git-warden`.
+
+`$TOKEN` is the password in the file `agent.token_file` points at. The user name `hermit` can be any word. The guard does not check it. The log still says `hermit-1`, which is `agent.name`.
+
+This URL is the agent's only remote for this repository. The write credential from step 1 stays on the wall. The agent never uses the GitHub URL.
 
 ### 5. What the agent gets back
 
@@ -161,7 +185,9 @@ You do this on the wall. Being able to run the commands there is the authenticat
 push-guard approve --config /etc/warden git-warden refs/heads/agent/fix-typo 3f2a9c1e4b8d
 ```
 
-A unique prefix of the rejected commit is enough. A prefix that matches two different rejected commits approves nothing. Then the agent pushes **that same commit** again. The guard forwards it without checking the rules a second time. Any other commit is checked from scratch.
+A unique prefix of the rejected commit is enough. You do not have to type the full SHA. A prefix that matches two different rejected commits approves nothing.
+
+The agent then pushes **that same commit** again. The guard forwards it and does not run the rules a second time. Any other commit is checked from scratch.
 
 A yellow streak (more than five yellow rejections in 24 hours) turns every later push of this repository red until you approve one commit or run:
 
@@ -174,9 +200,9 @@ push-guard reset-streak --config /etc/warden git-warden
 ## Prerequisites
 
 - `git` 2.42 or newer.
-- `gitleaks` (MIT) 8.x, on `PATH` or at `gitleaks.path`. **Required if `CONTENT-SECRET` is enabled, which it is by default**; optional only for repos where that rule is switched off on purpose. `push-guard` never downloads it; without it `serve` and `init-repo` refuse to start and every push fails closed. CI pins 8.30.1; the [container image](install.md#docker) and the [Nix flake](install.md#nix) bring that release along.
-- A write credential per remote (see [Credentials and the rights they need](credentials.md#credentials-and-the-rights-they-need)). The agents must not have any other write credential for the remote, otherwise the guard is decoration.
-- A host that is not the agents' machine (the wall).
+- `gitleaks` (MIT) 8.x, on `PATH` or at `gitleaks.path`. The secret scan (`CONTENT-SECRET`) is on by default, and then gitleaks is required. Switch that rule off for a repo that should not be scanned, and gitleaks is optional for that repo. `push-guard` never downloads gitleaks. Without it, `serve` refuses to start, and every push is rejected with `internal error, try again later`. CI pins 8.30.1. The [container image](install.md#docker) and the [Nix flake](install.md#nix) bring that release along.
+- One write credential per remote. The rights for each platform are in [Credentials and the rights they need](credentials.md#credentials-and-the-rights-they-need). The agents must not have a write credential of their own for that remote. If they can push to the remote directly, the guard never sees the push.
+- A host that is not the agents' machine. That host is the wall.
 
 ## Configuration directory
 
@@ -196,7 +222,17 @@ warden/
 
 See [examples/warden](../examples/warden). Relative file paths in either file are relative to the configuration directory.
 
-**Layers.** The built-in defaults ([internal/config/defaults.yaml](../internal/config/defaults.yaml), compiled in) come first, then the wall's `defaults.yaml`, then the repo's `warden.yaml`. Scalars and limits override. The lists `match`, `allow` and `deny` are appended to, so a default can't vanish unnoticed; `match_remove`, `allow_remove` and `deny_remove` remove an exact entry from the layers below (an entry that isn't there is an error). Unknown keys and rule IDs are errors.
+**Layers.** Three layers are merged, in this order:
+
+1. The built-in defaults, compiled into the program from [internal/config/defaults.yaml](../internal/config/defaults.yaml).
+2. The wall's `defaults.yaml`.
+3. The repo's `warden.yaml`.
+
+A number, a duration, `enabled`, and `color` in a later layer replace the earlier value.
+
+`match`, `allow`, and `deny` are lists of patterns. A list in a later layer is added to the list from earlier. The earlier patterns stay. To take one pattern off, repeat that same text under `match_remove`, `allow_remove`, or `deny_remove`. The text has to be a copy of a pattern that is already on the list. A pattern that is not on the list is an error, so a typo cannot quietly do nothing.
+
+An unknown key is an error. An unknown rule id is an error.
 
 ### `defaults.yaml`
 
@@ -223,7 +259,11 @@ See [examples/warden](../examples/warden). Relative file paths in either file ar
 | `default_branch` | no | Otherwise taken from the remote (`ls-remote --symref HEAD`). |
 | `gitleaks.path`, `rules` | no | Override the wall's values for this repo. |
 
-`remote`, `credential`, `credential_username`, `known_hosts` and `default_branch` only come from the repo's file; `agent` and `state_dir` only from `defaults.yaml`. The credential is used like this: SSH with `ssh -F none -i <key> -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes`, so no ssh_config on the wall host can change where or how the guard connects; HTTPS through an inline credential helper that reads the token file when git asks, so the token never appears in a URL, on a command line or in a log.
+`remote`, `credential`, `credential_username`, `known_hosts`, and `default_branch` are read only from the repo's file. `agent` and `state_dir` are read only from `defaults.yaml`. A repo file cannot change which agent this guard serves, and `defaults.yaml` cannot point one repo at another repo's remote.
+
+For an SSH remote the guard runs `ssh -F none -i <key> -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes`. `-F none` means no `ssh_config` on the wall can change where or how it connects.
+
+For an HTTPS remote, git asks a small helper for the password, and the helper reads the credential file at that moment. The token is not written into a URL, onto a command line, or into a log.
 
 ```yaml
 remote: git@github.com:pihme/git-warden.git  # any Git URL or an absolute local path
@@ -237,7 +277,23 @@ rules:
 
 ### Rules
 
-Each rule has `enabled` (default `true`), `color` (`red` or `yellow`), `allow` and `deny` (regular expressions over the rule's subject) and its limits. Patterns always match the whole subject (they are wrapped as `^(?:…)$`). `deny` fires even if `allow` matches; `REF-NAMESPACE` looks at every pushed ref and `PATH-*` at every changed path, so a `deny` there protects a ref or path outright. Subjects: the full ref name for `REF-*`, the path for `PATH-*`, `MODE-*`, `CONTENT-*` and per-file `SIZE-*` limits, the ref name for per-ref `SIZE-*` totals, the branch name for `META-*`; `REF-COUNT` and `RATE-*` have no subject. A repo with every rule disabled is refused.
+Each rule can be turned off. `enabled` defaults to `true`. A repository in which every rule is turned off is refused.
+
+`color` is `red` or `yellow`. The default for each rule is in the table below. Red means a human decides. Yellow means the agent is told the reason and is expected to fix the push.
+
+`allow` and `deny` are regular expressions. The guard matches each one against the whole subject: a pattern of `agent/.*` does not match `refs/heads/agent/fix-typo`. `deny` wins when the subject matches both lists.
+
+The subject is the string the pattern is compared with:
+
+- For `REF-*`, the full ref name, such as `refs/heads/main`.
+- For `PATH-*`, `MODE-*`, `CONTENT-*`, and a limit that applies to one file, the path, with no leading slash.
+- For a `SIZE-*` total that covers a whole ref, the ref name.
+- For `META-*`, the branch name, without the `refs/heads/` prefix.
+- `REF-COUNT` and `RATE-*` have no subject. `allow` and `deny` do not apply to them.
+
+`REF-NAMESPACE` looks at every ref in the push. `PATH-*` looks at every changed path. A `deny` on those rules fires by itself, so it can reserve a ref or a path. The other rules fire only when their own event happens, such as a delete or a file that is not a fast-forward. On those, `deny` beats `allow` for a subject the event already hit. It does not create the event.
+
+How the lists are added to the defaults, and how to take one pattern off, is under [Configuring the rules](#configuring-the-rules).
 
 | Rule | Default | Fires on |
 | --- | --- | --- |
@@ -264,9 +320,67 @@ Each rule has `enabled` (default `true`), `color` (`red` or `yellow`), `allow` a
 | `RATE-LIMIT` | red | more than 30 pushes per hour (answer: `rate limited, try later`) |
 | `RATE-YELLOW-STREAK` | red | more than 5 yellow rejections in a repo within 24 h; then every push is red until a human approves a SHA or resets |
 
-The full reasoning per rule: [push-guard-rules.md](push-guard-rules.md). Tune the rules against real history with [`replay`](#commands) before going live.
+The full reasoning per rule: [push-guard-rules.md](push-guard-rules.md).
 
-**Secret scanner.** gitleaks runs as `gitleaks git --log-opts "<new> --not <remote refs>"` with `--config` (the repo folder's `gitleaks.toml`, else the wall's, else a generated one that extends the gitleaks defaults), `--gitleaks-ignore-path` (the repo folder's `gitleaksignore`, else the wall's, else an empty file) and `--ignore-gitleaks-allow`, so nothing in the pushed repo can switch it off. Findings are redacted. Switching `CONTENT-SECRET` off (`rules: {CONTENT-SECRET: {enabled: false}}`) is the only way to run without gitleaks, and it is a deliberate choice per repo or for the wall.
+### Configuring the rules
+
+The table above is what each rule does with the built-in defaults.
+
+A change goes under `rules:` in one of two files.
+
+- `defaults.yaml` applies to every repo of this guard.
+- `repos/<name>/warden.yaml` applies to that one repo.
+
+For one rule you can:
+
+- turn it off, with `enabled: false`
+- choose who deals with a hit, with `color: red` or `color: yellow`
+- add a pattern, with `match`, `allow`, or `deny`
+- take a pattern away, with `match_remove`, `allow_remove`, or `deny_remove`
+- set one of its limits, such as `max_files` or `max_age`
+
+`match`, `allow` and `deny` are lists of patterns. A list you write is added to the list the rule already has. The patterns already there stay.
+
+`PATH-RED` uses `match`. That list already contains the workflows, the licence files, and the agent instruction files. This adds `scripts/release.sh`. The workflow pattern stays, and so does every other pattern already on the list.
+
+```yaml
+rules:
+  PATH-RED:
+    match: ['scripts/release\.sh']
+```
+
+To stop protecting one of those paths, name its pattern under `match_remove`. The text has to be a copy of the pattern already on the list. GitHub Actions workflows are on the list as `\.github/workflows/.*`, which is every file under `.github/workflows/`. Copy that pattern. The name of one workflow file, such as `ci.yml`, is not the list entry, so it does not remove anything.
+
+```yaml
+rules:
+  PATH-RED:
+    match_remove: ['\.github/workflows/.*']
+```
+
+After this, a change under `.github/workflows/` is no longer red from `PATH-RED`. The other CI patterns stay, including `\.github/actions/.*`, `\.gitlab-ci\.yml`, and `Jenkinsfile`.
+
+`allow_remove` and `deny_remove` do the same thing for the `allow` and `deny` lists. A pattern that is not on the list is an error. A shorter or reworded pattern does not match the entry, and the old pattern stays.
+
+`check-config` refuses the file in four cases: the rule id is unknown, a pattern is not a valid regular expression, a limit is outside its range, or a `*_remove` pattern is not on that list. It prints the problem and changes nothing.
+
+Then run `replay` against a clone that already has the history. It treats each commit on one branch as a push, forwards nothing, and prints which rules would have fired. That is how you see whether a change is too strict before an agent pushes.
+
+```bash
+push-guard check-config --config /etc/warden
+push-guard replay --config /etc/warden git-warden --git-dir ~/src/git-warden
+```
+
+[Configuring the rules](push-guard-configuring-rules.md) has the rest: examples of changes you are likely to want (reserving `main`, letting the agent rewrite its own branches, allowing images), how a pattern is matched against a whole ref or path, and how to read the replay output.
+
+**Secret scanner.** gitleaks runs as `gitleaks git --log-opts "<new> --not <remote refs>"`. The range is the new commits, and not the commits the remote already has. A secret that was added and then removed again in the same push is still a hit.
+
+The guard passes three flags so the pushed repository cannot change the scan:
+
+- `--config` is the repo folder's `gitleaks.toml` when that file exists, otherwise the wall's `gitleaks.toml`. When neither exists, the guard writes a temporary config that extends the gitleaks defaults.
+- `--gitleaks-ignore-path` is the repo folder's `gitleaksignore`, otherwise the wall's, otherwise an empty file.
+- `--ignore-gitleaks-allow` makes an inline `gitleaks:allow` comment in the pushed repository do nothing.
+
+Findings are redacted before they are shown or stored. The only way to run without gitleaks is to switch `CONTENT-SECRET` off, with `rules: {CONTENT-SECRET: {enabled: false}}`. That is a deliberate choice, for one repo or for the whole wall.
 
 Check a configuration with:
 
@@ -277,11 +391,9 @@ push-guard check-config --config /etc/warden --remote   # plus ls-remote per rep
 
 ## Running it
 
-The agent reaches the wall in one of two ways. On both, a hook in a repository on the wall runs the rules, and a green push is forwarded with the write credential. The commands differ because a different program is listening.
+The agent reaches the wall through `serve`. A hook in the guard repository runs the rules. A green push is forwarded with the write credential.
 
-### Over HTTP
-
-This is the setup in [Using it](#using-it). Nothing on the wall is already listening for Git, so `serve` is the listener. Start it and leave it running:
+This is the setup in [Using it](#using-it). Nothing on the wall is already listening for Git over HTTP, so `serve` is the listener. Start it and leave it running:
 
 ```bash
 push-guard serve --config /etc/warden --listen 0.0.0.0:8418
@@ -289,23 +401,32 @@ push-guard serve --config /etc/warden --listen 0.0.0.0:8418
 
 The agent pushes to `http://hermit:$TOKEN@warden.internal:8418/git-warden.git`. `$TOKEN` is the password in `agent.token_file`. The user name is not checked; the log name is `agent.name`.
 
-`serve` answers only Git smart HTTP routes `/<name>.git/…` through `git http-backend`. The password is required because a green push is forwarded with the write credential and a fetch returns the repository; without it the listen port is open to anyone who can connect. The repository does not have to exist beforehand. The first request for a configured repository creates `state_dir/repos/<name>.git` and installs the hook. Before every fetch or push, `serve` copies the remote's branches and tags into that repository, so a fetch shows the current remote. Put TLS in front of it if the traffic leaves the host.
+`serve` answers only Git's smart HTTP routes, the paths under `/<name>.git/`. It hands those requests to `git http-backend`.
 
-### Over SSH, or a local path
+The caller must send the password from `agent.token_file`. A green push is then forwarded with the write credential, and a fetch returns the repository the guard holds. Without the password, anyone who can open the listen port can push and fetch.
 
-The wall's SSH server is already listening. It accepts a push only to a repository that is already on disk, so there is nothing for `push-guard` to keep running. `init-repo` creates that repository, installs the same hook, copies the remote's branches and tags once, prints the path, and exits:
+The repository does not have to exist beforehand. The first request for a configured repository creates `state_dir/repos/<name>.git` and installs the hook. Before every fetch or push, `serve` copies the remote's branches and tags into that repository. A fetch then shows the current remote.
 
-```bash
-push-guard init-repo --config /etc/warden git-warden
-```
+Put TLS in front of `serve` when the traffic leaves the host. The agent's password is in the request.
 
-The printed path is `state_dir/repos/git-warden.git`, here `/var/lib/warden/repos/git-warden.git`. The agent pushes to it over SSH, for example `ssh://wall/var/lib/warden/repos/git-warden.git`. An account whose shell is `git-shell` can push and fetch, and cannot run other commands. The SSH login decides who gets in. A push from a program already on the wall uses the same path with no SSH in front.
+**Preflight.** `serve` refuses to start when any of these is true. It names every problem, and it serves nothing.
 
-A fetch from that repository shows the remote as of the last `init-repo`. Run `init-repo` again to copy the remote once more. On every push the hook still reads the real remote before it applies the rules.
+- `defaults.yaml` is missing or does not load.
+- `git` is older than 2.42.
+- No repo is configured.
+- A repo has every rule disabled.
+- A repo needs gitleaks for `CONTENT-SECRET`, and the binary is missing or is not version 8.x.
 
-**Preflight** (fails closed, before anything is served or set up): `serve` and `init-repo` refuse to start, naming every problem, if the wall's `defaults.yaml` is missing or doesn't load, `git` is older than 2.42, no repo is configured, a repo has every rule disabled, or the gitleaks a repo needs for `CONTENT-SECRET` is missing or isn't 8.x. The hook repeats the per-repo part on every push and fails closed (`internal error, try again later`). `check-config` reports the same problems.
+The hook repeats the checks that belong to one repo on every push. When one of them fails, the push is rejected with `internal error, try again later`. `check-config` reports the same problems and does not start the guard.
 
-What one push does, on both paths: the hook reads the remote's refs fresh, fetches remote objects it lacks into the push's quarantine, runs every rule, and then forwards (green), rejects with the findings (yellow), or rejects silently, keeps the commits and warns (red). The worked example is [Using it](#using-it).
+On every push the hook does four things:
+
+1. It reads the remote's current refs.
+2. It fetches any remote objects it does not yet have into the push's quarantine. The quarantine is discarded with the push if the push is rejected.
+3. It runs every rule.
+4. It then forwards the push (green), rejects it and returns the findings (yellow), or rejects it without the findings, keeps the commits, and warns a human (red).
+
+The walk-through of a real repository is [Using it](#using-it).
 
 ## Commands
 
@@ -313,29 +434,50 @@ What one push does, on both paths: the hook reads the remote's refs fresh, fetch
 | --- | --- |
 | `push-guard serve --config DIR --listen ADDR` | The HTTP listener. Stays running. Creates each guard repository on the first request and copies the remote before every fetch or push. |
 | `push-guard pre-receive --config DIR --repo NAME` | The hook; run by Git, not by hand. |
-| `push-guard init-repo --config DIR <repo>` | One-time setup for SSH or a local path. Creates the repository, installs the hook, copies the remote, prints the path, and exits. The SSH server, or a local `git push`, receives the later pushes. |
-| `push-guard approve --config DIR <repo> <ref> <sha>` | The agent's next push of exactly that SHA (a unique prefix of a rejected push's SHA is enough; an ambiguous prefix is refused) to that ref is forwarded without re-checking, with a lease if it rewrites or deletes the ref. The lease is the remote tip recorded on that rejected push. A manual approval with no rejected push leases against the zero OID, so the ref must be absent. Ends an active yellow streak. Logged with the rule IDs of the overruled push. Any other SHA is checked from scratch. |
+| `push-guard approve --config DIR <repo> <ref> <sha>` | Forwards the agent's next push of exactly that SHA without checking the rules again. The paragraphs under this table say when a prefix is enough, and what the lease is. |
 | `push-guard reset-streak --config DIR <repo>` | Ends a `RATE-YELLOW-STREAK` without approving anything. |
 | `push-guard check-config --config DIR [--remote]` | Preflight, files and credentials; `--remote` adds `ls-remote` per repo. |
-| `push-guard replay --config DIR <repo> --git-dir PATH [--branch main] [--skip-scanner] [-v]` | Treats every first-parent step of a branch's history as one push (with the commit's committer time as the time of the push), forwards nothing, writes nothing, and prints the hits per rule. Use it to tune the rules before going live. |
+| `push-guard replay --config DIR <repo> --git-dir PATH [--branch main] [--skip-scanner] [-v]` | Treats every first-parent step of a branch's history as one push (with the commit's committer time as the time of the push), forwards nothing, writes nothing, and prints the hits per rule. How to read it: [Configuring the rules](push-guard-configuring-rules.md#try-the-rules-on-existing-history). |
 | `push-guard version` | Prints the version. |
 
-`approve`, `reset-streak` and `replay` run on the wall host; being able to run them there is the authentication. Exit codes: `0` success, `1` failure, `2` usage error.
+`approve` forwards one commit you have already decided to allow. You pass the repo, the ref, and the SHA. A unique prefix of a rejected SHA is enough. A prefix that matches more than one rejected SHA approves nothing.
+
+The next push of exactly that SHA to that ref is forwarded, and the rules are not run again. Any other SHA is checked from scratch.
+
+If that push rewrites or deletes the ref, the approval carries a lease. The lease is the remote's tip at the time of the rejected push. The forward is refused when the remote tip has moved since then. An approval you type by hand, with no rejected push behind it, is leased against the id Git uses for a missing ref, so the ref must not exist on the remote yet.
+
+An approval ends an active yellow streak. The log line names the rule ids of the push you overruled.
+
+`approve`, `reset-streak`, and `replay` run on the wall. Being able to run them there is the authentication. Exit codes: `0` success, `1` failure, `2` usage error.
 
 ## State
 
 - `state_dir/repos/<name>.git`: the guard repositories, with the hook installed.
-- `state_dir/push.jsonl`: one JSON line per push (time, id, agent, repo, updates with remote old, new and kind, findings, verdict, forwarded, remote message) and per approval, reset and streak. Append-only. A malformed line makes every push fail closed until a human fixes it.
+- `state_dir/push.jsonl`: one JSON line per push. The line has the time, the push id, the agent, the repo, and the updates. Each update names the ref, the old tip, the new tip, and a kind: `create`, `delete`, `ff` (fast-forward), `non_ff`, `tag_move`, or `noop` when the remote was already at that commit. The line also has the findings, the verdict, whether the push was forwarded, and the message from the remote. Approvals, streak resets, and streak events are lines in the same file. The file is append-only. A line that is not valid JSON makes every push fail with `internal error, try again later` until a human repairs the file.
 - `state_dir/pending/<repo>/<id>.bundle`: new commits of red pushes, kept for now.
 - `state_dir/error.log`: errors that could not go into `push.jsonl`.
 
 ## Looking and restoring
 
-The remote never received a rejected push, so there is nothing to restore there. A red push's commits are in `state_dir/pending/<repo>/<id>.bundle`; inspect them in a scratch clone with `git fetch <bundle> 'refs/*:refs/pending/*'`, then `approve` the SHA or leave it. `push.jsonl` answers what was pushed, decided and forwarded when.
+The remote never received a rejected push. There is nothing to undo on the remote.
+
+The commits of a red push are in `state_dir/pending/<repo>/<id>.bundle`. To look at them, make a scratch clone and run:
+
+```bash
+git fetch <bundle> 'refs/*:refs/pending/*'
+```
+
+Then approve the SHA, or leave the bundle where it is.
+
+`push.jsonl` is the record of what was pushed, what was decided, and what was forwarded.
 
 ## Warnings
 
-`notify.command`, the setting in `defaults.yaml`, is started with one JSON object on its standard input. Facts come first. The agent's commit messages appear only under `untrusted`, cut short, and marked as an unverified quote. The `approve` field is the command to run on the wall; see [Resolve a red push](#6-resolve-a-red-push).
+When `notify.command` is set in `defaults.yaml`, the guard starts that program and writes one JSON object to its standard input.
+
+The facts come first: which agent, which repo, which refs, and which rules fired. The agent's own commit messages are only under `untrusted`. They are cut short, and they are marked as an unverified quote. They are not instructions to you or to the program that reads the JSON.
+
+The `approve` field is the command to run on the wall. The steps around it are under [Resolve a red push](#6-resolve-a-red-push).
 
 A red push that tried to update `main` of this repository looks like this. The commit ids are illustrative.
 

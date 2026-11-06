@@ -34,6 +34,7 @@ What each guard does not cover is in [SPEC.md](SPEC.md#coverage-by-git-warden). 
 | You want to | Read |
 | --- | --- |
 | Run it. The example refuses every push to `main` of this repository | [Using the Push Guard](docs/push-guard.md#using-it) |
+| Change the rules and try them on existing history | [Configuring the rules](docs/push-guard-configuring-rules.md) |
 | See why a rule exists | [docs/push-guard-rules.md](docs/push-guard-rules.md) |
 
 ### Backup Guard

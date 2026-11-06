@@ -23,9 +23,8 @@ type Ready struct {
 	Gitleaks map[string]string // gitleaks binary -> version, for every binary a repo with CONTENT-SECRET uses
 }
 
-// Preflight checks what the Push Guard needs before it serves agents or sets
-// up a guard repository, and fails closed with one error naming every
-// problem:
+// Preflight checks what the Push Guard needs before serve starts, and fails
+// closed with one error naming every problem:
 //
 //   - the wall configuration: <dir>/defaults.yaml exists and loads;
 //   - git on PATH, 2.42 or newer;

@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pihme/git-warden/internal/pushguard"
 	"github.com/pihme/git-warden/internal/testutil"
 )
 
@@ -89,8 +88,7 @@ rules:
   REF-DELETE: {allow: ['refs/heads/testrun-.*']}
 `, url, tokenFile),
 	})
-	e.run("init-repo", "--config", e.config, "live")
-	e.guardDir = pushguard.RepoPath(e.state, "live")
+	e.prepareGuard("live")
 	e.agent = testutil.Open(t, filepath.Join(base, "agent"))
 	testutil.Run(t, "", "clone", "--quiet", e.guardDir, e.agent.Dir)
 	e.agent.Git("checkout", "--quiet", "-b", branch, "origin/main")

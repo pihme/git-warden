@@ -313,6 +313,10 @@ These behaviours are within the spec's wording or on the safe side, but may not 
 
 The remaining uncovered statements in `internal/rules` (49 of 739) are `if err != nil` branches after git calls and config reads that are validated at load time, plus the `gitleaks` fallback in `NewScanner`, which config already fills in. They are reachable only with a broken git or a hand-built config. That a failing rule rejects the push is covered by the `REQ-PG-004` tests.
 
+## End-to-end harness
+
+The tests in `cmd/push-guard` (`e2e_test.go`, `live_test.go`, `ssh_test.go`) create the guard repository in the test by calling `pushguard.EnsureRepo` and then `pushguard.Sync`. They do not run a setup command. The suite then pushes to that repository by file path so the hook runs. That file-path push is how the tests drive the hook; it is not a supported agent path. Agents reach the guard only through `serve`, which `TestServeOverHTTP` uses. `TestMissingScannerFailsClosed` checks that the hook fails closed when gitleaks is gone after setup, and that `serve` refuses to start. `TestSSHRemote` starts a local `sshd` as the upstream remote the guard forwards to; the clone still pushes the guard repository by file path. `TestLiveRemote` uses an HTTPS upstream the same way and skips unless `WARDEN_LIVE_REMOTE` and `WARDEN_LIVE_TOKEN_FILE` are set.
+
 ## Running
 
 ```sh

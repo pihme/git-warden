@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pihme/git-warden/internal/pushguard"
 	"github.com/pihme/git-warden/internal/testutil"
 )
 
@@ -143,8 +142,7 @@ rules:
 		"repos/" + repoName + "/warden.yaml": repoYAML(key, known),
 	})
 	assertContains(t, e.run("check-config", "--config", e.config, "--remote"), "remote "+url)
-	e.run("init-repo", "--config", e.config, repoName)
-	e.guardDir = pushguard.RepoPath(e.state, repoName)
+	e.prepareGuard(repoName)
 	e.agent = testutil.Open(t, filepath.Join(base, "agent"))
 	testutil.Run(t, "", "clone", "--quiet", e.guardDir, e.agent.Dir)
 

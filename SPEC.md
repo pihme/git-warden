@@ -92,7 +92,7 @@ The full Push Guard rule set is in [docs/push-guard-rules.md](docs/push-guard-ru
 
 ```
 Push Guard     on the wall                                   push-guard
-  ├── Git smart HTTP (or SSH) endpoint for agents → rules + secret scan → forward or reject
+  ├── Git smart HTTP endpoint for agents → rules + secret scan → forward or reject
   ├── pending/<repo>/<id>.bundle   rejected pushes, kept for a human
   ├── push.jsonl                   append-only event log
   └── write credential per repo, only here, never in the agent's environment
@@ -202,13 +202,13 @@ Where this section and the design above differ, this section wins.
 
 ### Preflight
 
-- **At start, before anything is served or set up:** `push-guard serve` and `push-guard init-repo` refuse to start, with one message that lists every problem, unless:
+- **At start, before anything is served:** `push-guard serve` refuses to start, with one message that lists every problem, unless:
   - the wall's `defaults.yaml` exists and the configuration loads;
   - `git` 2.42 or newer is on `PATH`;
-  - at least one repo is configured (`repos/<name>/warden.yaml`) and each loads (`init-repo`: the repo it is given);
+  - at least one repo is configured (`repos/<name>/warden.yaml`) and each loads;
   - each repo has at least one rule enabled, so a configuration that switches every rule off is refused rather than forwarding unchecked;
   - for every repo with `CONTENT-SECRET` enabled (the default), its gitleaks (`gitleaks.path`, by default `gitleaks` on `PATH`) is found and `gitleaks version` reports 8.x. With `CONTENT-SECRET` disabled everywhere, gitleaks isn't needed.
-- **In the hook, on every push:** the per-repo part of the same checks (an enabled rule; gitleaks found if `CONTENT-SECRET` is enabled) runs before the remote is read. A failure answers `internal error, try again later` and is logged in `push.jsonl`. This covers a guard repository used without `serve` (SSH, local path) and a gitleaks removed after the start.
+- **In the hook, on every push:** the per-repo part of the same checks (an enabled rule; gitleaks found if `CONTENT-SECRET` is enabled) runs before the remote is read. A failure answers `internal error, try again later` and is logged in `push.jsonl`. This covers a gitleaks removed after `serve` has started.
 - **`check-config`** runs the same preflight and reports its problems with the rest. `serve` logs `preflight ok (git …, N repo(s), gitleaks …)` when it starts.
 - Same shape as the Backup Guard's preflight; both use the same git check (`internal/gitx`).
 
@@ -235,13 +235,13 @@ Testable requirements for these quirks and for every rule are numbered as `REQ-P
 
 ### Human commands
 
-`push-guard approve <repo> <ref> <sha>` and `push-guard reset-streak <repo>` (the design's `warden approve` / `warden reset-streak`), plus `check-config`, `init-repo`, `replay` and `version`. All take `--config DIR`.
+`push-guard approve <repo> <ref> <sha>` and `push-guard reset-streak <repo>` (the design's `warden approve` / `warden reset-streak`), plus `check-config`, `replay` and `version`. All take `--config DIR`.
 
 ### Serve
 
 `push-guard serve` wraps `git http-backend` (net/http/cgi), accepts only the smart HTTP routes of `/<name>.git`, and authenticates with HTTP basic auth against the password in `agent.token_file` (constant-time compare). The user name in the URL is not checked: one guard serves one agent, and the log name is `agent.name`. The password is the lock on the listen port. A green push is forwarded with the write credential, and a fetch returns the repository, so an open port would let anyone who can connect push and fetch as that agent. It creates guard repositories on demand with `http.receivepack=true`, `receive.fsckObjects=true` and the hook installed (the hook script embeds the absolute binary path, the config directory and the repo name), and syncs them from the remote before every ref advertisement, so agents fetch through the guard too. `serve` stays running because nothing else on the wall is listening for Git over HTTP.
 
-`init-repo` is the other way in. The wall's SSH server, or a local `git push`, is already the listener, and it accepts a push only to a repository that exists. `init-repo` creates `state_dir/repos/<name>.git`, installs the same hook, syncs once, prints the path, and exits. Nothing keeps running, and nothing copies the remote again until `init-repo` is run again. The hook still reads the remote fresh on every push.
+Agents reach the Push Guard only through `serve` (decided 2026-11-06; [Decided](docs/push-guard-spec.md#decided)). `init-repo` is removed. Over SSH or a local path the wall's copy of branch tips was refreshed only when that command ran, so an agent whose only remote was that path saw a stale repository. Outbound SSH from the guard to the real remote is unchanged.
 
 ## Backup Guard: what the implementation settled
 
@@ -286,7 +286,7 @@ Git Warden has no model in its decisions, so the persuasion techniques against A
 | Failure mode | Consequence | Countermeasure |
 | --- | --- | --- |
 | A guard down | Push Guard: pushes fail, agents keep working locally. Backup Guard: backups pause | Nothing goes to the remote unchecked; heartbeat |
-| A prerequisite missing (gitleaks, git-everref) or no configuration | Push Guard: `serve` and `init-repo` refuse to start, every push fails closed. Backup Guard: the preflight fails, nothing runs | `check-config`; a failed run warns; the [container image and Nix flake](#provisioning-docker-and-nix) bring the pinned programs along |
+| A prerequisite missing (gitleaks, git-everref) or no configuration | Push Guard: `serve` refuses to start, every push fails closed. Backup Guard: the preflight fails, nothing runs | `check-config`; a failed run warns; the [container image and Nix flake](#provisioning-docker-and-nix) bring the pinned programs along |
 | Push Guard or Backup Guard host compromised | Write credential or backup gone | Separate hosts, neither on the agents' machine; offsite write-once bundles; rotatable write keys |
 | Alert fatigue | A human waves things through | `red` used sparingly, digests, facts first |
 | False negative | A subtle backdoor gets through | Not covered by Git Warden (no semantic review); the backup keeps the history, human review still needed |

@@ -81,6 +81,7 @@ Each requirement is one shall/must behaviour. Where a rule ID applies, it is nam
 
 - **Limits (Peter, 2026-10-11).** Every configurable limit has a lower and an upper bound and is refused outside it, never clamped ([Limit bounds](push-guard-rules.md#limit-bounds), `REQ-PG-046`, `047`). Fixed internal limits are requirements with their exact value (`REQ-PG-048`–`053`). The maximum diff line drops from 256 MiB to 16 MiB so it can be tested. Output of programs the guard starts is bounded: what is evaluated fails closed above 1 MiB, what is only shown keeps its last 1 MiB. Output of the guard's own `git` calls is not bounded this way; its size follows the repository, and `REQ-PG-049` bounds the diff lines.
 - **Retention:** pending bundles of rejected pushes are kept forever for now. Disk space is cheap compared with lost history.
+- **Agent endpoint (2026-11-06).** Agents reach the Push Guard only through `serve`. `init-repo` is removed. Over SSH or a local path the wall's copy of branch tips was refreshed only when `init-repo` ran, so an agent whose only remote was that path saw a stale repository. `serve` refreshes that copy before every fetch and push. Outbound SSH from the guard to the real remote is unchanged.
 
 ## Open questions
 

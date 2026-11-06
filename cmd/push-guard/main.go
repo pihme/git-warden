@@ -27,7 +27,6 @@ const usage = `push-guard checks agents' pushes and forwards only green ones.
 Usage:
   push-guard serve        --config DIR --listen ADDR
   push-guard pre-receive  --config DIR --repo NAME      (run by the Git hook)
-  push-guard init-repo    --config DIR <repo>
   push-guard approve      --config DIR <repo> <ref> <sha>
   push-guard reset-streak --config DIR <repo>
   push-guard check-config --config DIR [--remote]
@@ -72,12 +71,6 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			break
 		}
 		err = serve(ctx, *configDir, *listen, stderr)
-	case "init-repo":
-		var pos []string
-		if pos, err = parse(fs, args, 1, configDir); err != nil {
-			break
-		}
-		err = initRepo(ctx, *configDir, pos[0], stdout)
 	case "approve":
 		var pos []string
 		if pos, err = parse(fs, args, 3, configDir); err != nil {
@@ -154,34 +147,6 @@ func self() (string, error) {
 		return "", err
 	}
 	return filepath.EvalSymlinks(exe)
-}
-
-func initRepo(ctx context.Context, configDir, repo string, out io.Writer) error {
-	cfg, err := config.LoadRepo(configDir, repo)
-	if err != nil {
-		return err
-	}
-	if _, err := pushguard.Preflight(ctx, configDir, []string{repo}); err != nil {
-		return err
-	}
-	exe, err := self()
-	if err != nil {
-		return err
-	}
-	path, err := pushguard.EnsureRepo(ctx, cfg, exe)
-	if err != nil {
-		return err
-	}
-	unlock, err := pushguard.LockRepo(cfg.StateDir, repo)
-	if err != nil {
-		return err
-	}
-	defer unlock()
-	if err := pushguard.Sync(ctx, cfg, path); err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "guard repository ready: %s\n", path)
-	return nil
 }
 
 func checkConfig(ctx context.Context, configDir string, remote bool, out io.Writer) error {
