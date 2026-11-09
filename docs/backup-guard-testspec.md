@@ -2,7 +2,7 @@
 
 This document maps every requirement in [backup-guard-spec.md](backup-guard-spec.md#requirements) (`REQ-BG-001` to `REQ-BG-118`) to the automated tests that check it. Requirement tests are named `TestREQ_BG_<nnn>_…`, so `go test ./internal/backupguard ./cmd/backup-guard -run 'TestREQ_BG_081'` runs the tests of one requirement. Older tests that already covered a requirement before the numbering are listed with their own names.
 
-Status is as of `main` @ `0d52412` (Peter's decisions of 2026-10-06 included) plus branch `qa/backup-guard-tests` (6.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
+Status is as of `main` @ `0d52412` (the owner's decisions of 2026-10-06 included) plus branch `qa/backup-guard-tests` (6.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
 
 ## Summary
 
@@ -245,7 +245,7 @@ The mutation campaign of October 2026 added tests in `internal/backupguard/backu
 
 ## Limits (2026-10-11)
 
-Tests for the limit requirements Peter approved on 2026-10-11. Every bound is tested just inside and just outside. Status: **written** (tests red first, then the code).
+Tests for the limit requirements the owner approved on 2026-10-11. Every bound is tested just inside and just outside. Status: **written** (tests red first, then the code).
 
 | REQ | Test | File | Cases |
 | --- | --- | --- | --- |
@@ -263,7 +263,7 @@ None.
 
 ### Fixed
 
-- Everything Peter decided on 2026-10-06 (`REQ-BG-001`, `012`, `013`, `015`, `016`, `037`, `075`, `081` for `add`, `097`, `105` to `113`), fixed by Maintainer in `ec030cc` and `0d52412`.
+- Everything the owner decided on 2026-10-06 (`REQ-BG-001`, `012`, `013`, `015`, `016`, `037`, `075`, `081` for `add`, `097`, `105` to `113`), fixed by Maintainer in `ec030cc` and `0d52412`.
 - **`REQ-BG-081`, end of everref's output was lost** (`TestREQ_BG_081_OutputTail`). `run.go` took the last 40 lines but `truncate(…, 4000)` kept the *first* 4000 bytes. Now the last 4000 bytes are kept, cut at a line start (or at least a UTF-8 boundary) and marked with a leading `…`, in `backup.jsonl` and the warning; the same for the short error text and `add_failed` reasons.
 
 ## Observations (no requirement broken)

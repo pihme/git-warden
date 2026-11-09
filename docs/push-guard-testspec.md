@@ -240,7 +240,7 @@ Afterwards there is no `*_mutants_test.go` file and no `TestMutants` name left (
 
 ## Limits (2026-10-11)
 
-Tests for the limit requirements Peter approved on 2026-10-11 (`REQ-PG-046` to `053`). Every bound is tested just inside and just outside. "Fails closed" means the push is rejected as an internal error (`REQ-PG-004`). Status: **written** (tests red first, then the code).
+Tests for the limit requirements the owner approved on 2026-10-11 (`REQ-PG-046` to `053`). Every bound is tested just inside and just outside. "Fails closed" means the push is rejected as an internal error (`REQ-PG-004`). Status: **written** (tests red first, then the code).
 
 | REQ | Test | File | Cases |
 | --- | --- | --- | --- |
@@ -282,7 +282,7 @@ Points the tests raised that are now decided. The spec ([push-guard-spec.md](pus
 
 | # | Requirement | Question | Decision |
 | --- | --- | --- | --- |
-| C1 | `REQ-PG-003` (A15) | Another writer moves the ref between a human's approval and the agent's repush. Does the approved rewrite overwrite that commit? | No. The lease is the old OID recorded with the approval. If the remote moved, the guard rejects with the fixed message `Remote moved since approval`, leaves the remote unchanged and drops the approval, so a new check and approval are needed (`57aabff`). The owner gets no warning for this (Peter, 2026-10-05). |
+| C1 | `REQ-PG-003` (A15) | Another writer moves the ref between a human's approval and the agent's repush. Does the approved rewrite overwrite that commit? | No. The lease is the old OID recorded with the approval. If the remote moved, the guard rejects with the fixed message `Remote moved since approval`, leaves the remote unchanged and drops the approval, so a new check and approval are needed (`57aabff`). The owner gets no warning for this (owner, 2026-10-05). |
 | C2 | `REQ-PG-041` (A16) | Does `deny` make a rule fire on its own? | Only for rules that scan a subject (`REF-NAMESPACE`, `PATH-*`). Event rules (`REF-DELETE`, `REF-NON-FF`, `REF-TAG-NEW`, `REF-TAG-MOVE`, `MODE-*`, `META-*`, `SIZE-*`, `CONTENT-*`) apply `deny` only when they already fire (`41d8035`, `82be3bf`). |
 | C3 | `REQ-PG-005` | What does `approve` do with a SHA prefix that fits two different rejected SHAs? | It approves nothing and asks for more digits, like git. The same SHA rejected twice is not ambiguous; the newest push counts (`f223de4`). |
 | C4 | `REQ-PG-032` | May a limit of the wrong kind (`max_skew: 600`, `max_files: '10m'` or `1.5`) load? | No. Limits are checked for the kind the rule reads when the config loads, so `check-config` rejects them instead of every push failing later (`7cee044`). |
