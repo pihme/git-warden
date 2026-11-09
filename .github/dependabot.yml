@@ -5,7 +5,7 @@
 # environment and the artifact depends on it (e.g. the Go toolchain of a released
 # binary); it is then also a release path in .github/release.json.
 # Here nix/reference-env/flake.lock is one (the release job builds both binaries with
-# its Go toolchain). The nix block bumps all three shells in one commit, so it uses fix.
+# its Go toolchain), so it has its own nix block with fix; the other Nix locks use chore.
 # Never reword a Dependabot title into feat! (see AGENTS.md).
 version: 2
 updates:
@@ -53,12 +53,29 @@ updates:
       docker:
         patterns: ["*"]
 
-  # All Nix shells in one block and one group: one bundled PR per run.
-  # Add every extra shell (nix/<name>/flake.lock) under `directories:`.
+  # Release-input Nix lock: nix/reference-env/flake.lock is a release path in
+  # .github/release.json, so its bump is fix(deps) and cuts a patch release.
+  - package-ecosystem: nix
+    directories:
+      - /nix/reference-env
+    schedule:
+      interval: weekly
+      day: saturday
+    open-pull-requests-limit: 5
+    labels: [dependencies, ready-for-maintainer]
+    commit-message:
+      prefix: fix
+      include: scope
+    groups:
+      nix-release:
+        patterns: ["*"]
+
+  # All other Nix locks (root package flake, git-tools, scanners): no release input,
+  # chore(deps), no release. One group: one bundled PR per run.
+  # Add every extra shell (nix/<name>/flake.lock) under `directories:` of the matching block.
   - package-ecosystem: nix
     directories:
       - /
-      - /nix/reference-env
       - /nix/git-tools
       - /nix/scanners
     schedule:
@@ -67,8 +84,7 @@ updates:
     open-pull-requests-limit: 5
     labels: [dependencies, ready-for-maintainer]
     commit-message:
-      # fix when a lock in this block is a release input (see above), otherwise chore.
-      prefix: fix
+      prefix: chore
       include: scope
     groups:
       nix:
