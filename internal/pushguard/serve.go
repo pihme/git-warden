@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/pihme/git-warden/internal/config"
@@ -183,12 +182,7 @@ func spoolUnsizedBody(r *http.Request) (func(), error) {
 	if err != nil {
 		return noop, err
 	}
-	done := false
 	cleanup := func() {
-		if done {
-			return
-		}
-		done = true
 		f.Close()
 		os.Remove(f.Name())
 	}
@@ -206,9 +200,5 @@ func spoolUnsizedBody(r *http.Request) (func(), error) {
 	r.Body = f
 	r.ContentLength = n
 	r.TransferEncoding = nil
-	if r.Header != nil {
-		r.Header.Del("Transfer-Encoding")
-		r.Header.Set("Content-Length", strconv.FormatInt(n, 10))
-	}
 	return cleanup, nil
 }
