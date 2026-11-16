@@ -34,6 +34,7 @@ What each guard does not cover is in [SPEC.md](SPEC.md#coverage-by-git-warden). 
 | You want to | Read |
 | --- | --- |
 | Run it. The example refuses every push to `main` of this repository | [Using the Push Guard](docs/push-guard.md#using-it) |
+| Run it next to a Hermetarium habitat, so clone and push need no credential inside | [Next to a Hermetarium habitat](docs/push-guard.md#next-to-a-hermetarium-habitat) |
 | Change the rules and try them on existing history | [Configuring the rules](docs/push-guard-configuring-rules.md) |
 | See why a rule exists | [docs/push-guard-rules.md](docs/push-guard-rules.md) |
 
@@ -113,7 +114,7 @@ Docker, Nix and the live test: [docs/install.md](docs/install.md).
 - `META-UNSIGNED` checks only that a signature is present. The wall has no keyring, so it does not verify signatures. With fewer than `lookback` commits of history the rule stays quiet.
 - `CONTENT-PAGES-SCRIPT` looks at one added line at a time, so a tag split across lines is missed. A host counts as known if its name appears anywhere in the old tree.
 - `push.jsonl` is read in full on every push. That is fine for now and will need rotation or an index later.
-- One Push Guard per agent. Rate limits count every push of that installation.
+- One Push Guard per agent. The password is the only thing that tells agents apart. Rate limits count every push of that installation.
 - No registry checks for new dependencies, and no semantic review of the code. See [what is not covered](SPEC.md#coverage-by-git-warden).
 - The Backup Guard only sees the states present at its runs. A state that exists only between two runs, or history rewritten before the first run, is not in the backup. Very large, busy repositories are too slow for git-everref v1.0.0. LFS file contents and submodule targets are not backed up. The LFS pointer files in the commits are ordinary Git objects, so those are recorded.
 

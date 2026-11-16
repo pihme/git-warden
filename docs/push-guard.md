@@ -11,6 +11,7 @@ Where to read more:
 - Which risks the guard covers: [Coverage by Git Warden](../SPEC.md#coverage-by-git-warden).
 - Settings both guards share: [docs/configuration.md](configuration.md).
 - Which credential to create: [docs/credentials.md](credentials.md).
+- On a Hermetarium habitat, where the gate holds the password: [Next to a Hermetarium habitat](#next-to-a-hermetarium-habitat).
 
 ## Using it
 
@@ -83,7 +84,7 @@ agent:
   token_file: /etc/warden/agent-token
 ```
 
-Git sends a user name along with the password. The guard does not read that user name. There is only one agent, and `agent.name` is already the name in the log.
+Git sends a user name along with the password. The guard does not read that user name. There is only one agent, and `agent.name` is already the name in the log. The password is the only thing that tells agents apart. A second agent is a second Push Guard, with its own password and its own `agent.name`.
 
 #### The remote and its credential
 
@@ -162,6 +163,8 @@ git push origin agent/fix-typo
 `$TOKEN` is the password in the file `agent.token_file` points at. The user name `hermit` can be any word. The guard does not check it. The log still says `hermit-1`, which is `agent.name`.
 
 This URL is the agent's only remote for this repository. The write credential from step 1 stays on the wall. The agent never uses the GitHub URL.
+
+That URL is for an agent that holds the password. A Hermetarium inhabitant does not. The gate holds it: [Next to a Hermetarium habitat](#next-to-a-hermetarium-habitat).
 
 ### 5. What the agent gets back
 
@@ -427,6 +430,50 @@ On every push the hook does four things:
 4. It then forwards the push (green), rejects it and returns the findings (yellow), or rejects it without the findings, keeps the commits, and warns a human (red).
 
 The walk-through of a real repository is [Using it](#using-it).
+
+## Next to a Hermetarium habitat
+
+[Hermetarium](https://github.com/pihme/hermetarium) is one wall, not a requirement. An inhabitant inside a habitat reaches the remote through the Push Guard. [Squid](https://www.squid-cache.org/) is the habitat's gate, and the only door. The inhabitant clones, fetches and pushes with no credential of its own. The gate adds the password. The write credential stays on the wall.
+
+The gate file and the Git stand-in name are Hermetarium's. See [the gate file](https://github.com/pihme/hermetarium/blob/main/USAGE.md#the-gate-file), [stand-in hosts](https://github.com/pihme/hermetarium/blob/main/inhabitants/README.md), and [the habitat setup](https://github.com/pihme/hermetarium/issues/12). Nothing here starts a habitat.
+
+### Run the guard beside the gate
+
+Use the configuration from [Using it](#using-it): the directory `/etc/warden`, the password file `agent.token_file` points at, and the write credential for each remote. Those files stay on the wall. The inhabitant never sees them.
+
+The guard runs next to the gate, not inside the habitat.
+
+```bash
+push-guard check-config --config /etc/warden
+push-guard serve --config /etc/warden --listen 0.0.0.0:8418
+```
+
+Leave `serve` running. On start it writes a line to standard error containing `serving on 0.0.0.0:8418`. That is the address passed to `--listen`. The port in the gate file is that same port, `8418`. The host in the gate file is an address the gate can open. `0.0.0.0` is not that host. The habitat must not be able to open the guard's address. Only the gate can. The [container](install.md#docker) runs this same command. Publish `8418` only where the gate can use it, not into the habitat.
+
+One Push Guard per habitat. Every inhabitant of that habitat is the one agent named by `agent.name`. The password is the only thing that tells agents apart, and the habitat has one password, so the journal records every push under that name. The user name is not checked. Another habitat is another guard, with its own password and its own `agent.name`.
+
+### Route Git in the gate file
+
+Add [examples/warden/squid-git.conf](../examples/warden/squid-git.conf) to the habitat's gate file. Those lines are not a full `squid.conf`, and `push-guard` does not read them. Replace the three placeholders.
+
+`<git stand-in host>` is the name the habitat uses for Git. Hermetarium chooses it; this repository does not. `<push guard address>` is the address the gate opens, from the step above. `<base64 of user:password>` is the base64 of any word, a colon, and the password in `agent.token_file`. The guard does not check the user name. The file holds the password and nothing else. Encode that password, not a surrounding newline. The habitat does not hold this value. The gate file does. It is not the write credential.
+
+The gate drops any `Authorization` header the habitat sends, and sets this one for the stand-in host. `!inbound` keeps the password off the inbound port. The name `inbound` is already defined in the gate file. These lines do not define it.
+
+Put `http_access allow githost` with the other allows, before the gate file's `http_access deny all`.
+
+The guard's address is in the gate file before `hermetarium create`. Writing it there is the habitat setup linked above, not a `push-guard` command.
+
+### What an inhabitant sees
+
+No credential in the habitat, and no proxy setting. `git-warden` in the URL is the folder `repos/git-warden`.
+
+```bash
+git clone http://<git stand-in host>/git-warden.git
+git push origin agent/fix-typo
+```
+
+Clone and fetch work. They return the repository the guard holds, including a commit that landed on the remote without going through the guard. A green push is forwarded with the write credential. A push the rules refuse comes back as the guard's own message, the same one as [What the agent gets back](#5-what-the-agent-gets-back). Yellow is one line per finding: rule, ref, path, line, why. Red is only `rejected: waiting for a human (push <id>)`. The inhabitant has no GitHub URL and no write credential.
 
 ## Commands
 
