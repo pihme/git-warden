@@ -435,7 +435,7 @@ The walk-through of a real repository is [Using it](#using-it).
 
 [Hermetarium](https://github.com/pihme/hermetarium) is one wall, not a requirement. An inhabitant inside a habitat reaches the remote through the Push Guard. [Squid](https://www.squid-cache.org/) is the habitat's gate, and the only door. The inhabitant clones, fetches and pushes with no credential of its own. The gate adds the password. The write credential stays on the wall.
 
-The gate file is Hermetarium's. See [the gate file](https://github.com/pihme/hermetarium/blob/main/USAGE.md#the-gate-file). The Git stand-in is its own name, not an existing model host. [hermetarium#12](https://github.com/pihme/hermetarium/issues/12) is where that name is set. Nothing here starts a habitat.
+The gate file is Hermetarium's. See [the gate file](https://github.com/pihme/hermetarium/blob/main/USAGE.md#the-gate-file). The Git stand-in is its own name, not an existing model host. [hermetarium#12](https://github.com/pihme/hermetarium/issues/12) tracks that choice. Nothing here starts a habitat.
 
 ### Run the guard beside the gate
 
@@ -456,7 +456,7 @@ One Push Guard per habitat. Every inhabitant of that habitat is the one agent na
 
 Add [examples/warden/squid-git.conf](../examples/warden/squid-git.conf) to the habitat's gate file. Those lines are not a full `squid.conf`, and `push-guard` does not read them. Replace the three placeholders.
 
-`<git stand-in host>` is the habitat's own name for Git, not an existing model host. [hermetarium#12](https://github.com/pihme/hermetarium/issues/12) sets that name; this repository does not. `<push guard address>` is the address the gate opens, from the step above. `<base64 of user:password>` is the base64 of any word, a colon, and the trimmed password in `agent.token_file` (no surrounding whitespace). The guard does not check the user name. The file holds the password and nothing else. The habitat does not hold this value. The gate file does. It is not the write credential.
+`<git stand-in host>` is the habitat's own name for Git, not an existing model host. [hermetarium#12](https://github.com/pihme/hermetarium/issues/12) tracks that choice. This repository does not choose the name. `<push guard address>` is the address the gate opens, from the step above. `<base64 of user:password>` is the base64 of any word, a colon, and the trimmed password in `agent.token_file` (no surrounding whitespace). The guard does not check the user name. The file holds the password and nothing else. The habitat does not hold this value. The gate file does. It is not the write credential.
 
 The gate drops any `Authorization` header the habitat sends, and sets this one for the stand-in host. `!inbound` keeps the password off the inbound port. The name `inbound` is already defined in the gate file. These lines do not define it.
 
