@@ -8,16 +8,23 @@ package main
 // commits, branches, a moved tag and the default branch that landed on the
 // remote without going through the guard. The new file must be readable, a
 // following push must start from that commit, a deleted ref must disappear,
-// and a broken remote must not be advertised.
+// and a broken remote must not be advertised. TestServeChunkedPush pushes a
+// pack larger than http.postBuffer, which Git sends with no Content-Length.
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -568,5 +575,73 @@ func TestServeOverHTTP(t *testing.T) {
 	}
 	if listed, err = clone.Try("ls-remote", "origin"); err == nil || strings.Contains(listed, next) {
 		t.Fatalf("stale advertisement after the remote disappeared: %v\n%s", err, listed)
+	}
+}
+
+// TestServeChunkedPush is the push Git sends once the pack exceeds
+// http.postBuffer (1 MiB): chunked, with no Content-Length. The bytes are
+// random so the pack stays over that size. Rules that would reject the blob
+// for its size or for being binary are widened here; the HTTP layer is what
+// this test checks.
+func TestServeChunkedPush(t *testing.T) {
+	e := setup(t, "CONTENT-BINARY: {allow: ['blob\\.bin']}\nSIZE-LARGE: {max_file_bytes: 10000000}")
+	srv, err := pushguard.NewServer(e.config, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hs := httptest.NewServer(srv)
+	defer hs.Close()
+	url := strings.Replace(hs.URL, "http://", "http://agent:synthetic-test-token@", 1) + "/" + repoName + ".git"
+	clone := testutil.Open(t, filepath.Join(e.base, "http-agent"))
+	testutil.Run(t, "", "clone", "--quiet", url, clone.Dir)
+
+	const size = 3 << 20 // a few MiB, past the 1 MiB postBuffer
+	payload := make([]byte, size)
+	if _, err := rand.Read(payload); err != nil {
+		t.Fatal(err)
+	}
+	head := clone.Commit("chunked pack", map[string]string{"blob.bin": string(payload)})
+	// Pin the documented default. A raised postBuffer would hide the bug by
+	// sending Content-Length instead of a chunked body.
+	out, err := clone.Try("-c", "http.postBuffer=1048576", "push", "origin", "HEAD:refs/heads/chunked")
+	if err != nil {
+		t.Fatalf("chunked push: %v\n%s", err, out)
+	}
+	if got := e.remoteRef("refs/heads/chunked"); got != head {
+		t.Fatalf("chunked push not forwarded: remote %q, want %s", got, head)
+	}
+	if got := testutil.Run(t, e.remote.Dir, "cat-file", "-s", head+":blob.bin"); got != strconv.Itoa(size) {
+		t.Fatalf("forwarded blob size %s, want %d", got, size)
+	}
+}
+
+type brokenBody struct{}
+
+func (brokenBody) Read([]byte) (int, error) { return 0, errors.New("read failed") }
+
+// TestServeUnsizedBodyReadError is the same ContentLength < 0 state a chunked
+// push leaves on the handler. The body cannot be read, so the push is not
+// forwarded and the agent sees only the internal error.
+func TestServeUnsizedBodyReadError(t *testing.T) {
+	e := setup(t, "")
+	srv, err := pushguard.NewServer(e.config, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logs strings.Builder
+	srv.Log = log.New(&logs, "", 0)
+	const marker = "PACKBYTES-SHOULD-NOT-BE-LOGGED"
+	req := httptest.NewRequest(http.MethodPost, "/"+repoName+".git/git-receive-pack", io.MultiReader(strings.NewReader(marker), brokenBody{}))
+	req.ContentLength = -1
+	req.TransferEncoding = []string{"chunked"}
+	req.Header.Set("Content-Type", "application/x-git-receive-pack-request")
+	req.SetBasicAuth("agent", "synthetic-test-token")
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable || !strings.Contains(rr.Body.String(), pushguard.MsgInternal) {
+		t.Fatalf("status %d body %q", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(logs.String(), marker) || strings.Contains(rr.Body.String(), marker) {
+		t.Fatalf("pack bytes leaked: log %q body %q", logs.String(), rr.Body.String())
 	}
 }

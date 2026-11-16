@@ -5,12 +5,14 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/cgi"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/pihme/git-warden/internal/config"
@@ -141,6 +143,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, MsgInternal, http.StatusServiceUnavailable)
 		return
 	}
+	// A chunked Git push has no length. cgi answers 400 while
+	// TransferEncoding is still "chunked", and omits CONTENT_LENGTH when
+	// ContentLength < 0, so git http-backend never runs the hook.
+	cleanup, err := spoolUnsizedBody(r)
+	defer cleanup()
+	if err != nil {
+		s.Log.Printf("request body: %v", err)
+		http.Error(w, MsgInternal, http.StatusServiceUnavailable)
+		return
+	}
 	h := &cgi.Handler{
 		Path: gitBin,
 		Args: []string{"http-backend"},
@@ -154,4 +166,49 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Logger:     s.Log,
 	}
 	h.ServeHTTP(w, r)
+}
+
+// spoolUnsizedBody copies a body with no Content-Length into a temporary
+// file and records that length on r. The pack is not held in memory. The
+// caller removes the file. A read error is returned unchanged.
+func spoolUnsizedBody(r *http.Request) (func(), error) {
+	noop := func() {}
+	if r.ContentLength >= 0 {
+		return noop, nil
+	}
+	if r.Body == nil {
+		return noop, errors.New("request body is missing")
+	}
+	f, err := os.CreateTemp("", "push-guard-pack-*")
+	if err != nil {
+		return noop, err
+	}
+	done := false
+	cleanup := func() {
+		if done {
+			return
+		}
+		done = true
+		f.Close()
+		os.Remove(f.Name())
+	}
+	n, err := io.Copy(f, r.Body)
+	if err != nil {
+		r.Body.Close()
+		return cleanup, err
+	}
+	if err := r.Body.Close(); err != nil {
+		return cleanup, err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return cleanup, err
+	}
+	r.Body = f
+	r.ContentLength = n
+	r.TransferEncoding = nil
+	if r.Header != nil {
+		r.Header.Del("Transfer-Encoding")
+		r.Header.Set("Content-Length", strconv.FormatInt(n, 10))
+	}
+	return cleanup, nil
 }
