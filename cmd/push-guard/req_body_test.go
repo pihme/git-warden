@@ -221,8 +221,18 @@ func TestREQ_PG_054_ChunkedPushOverLimit(t *testing.T) {
 		t.Fatalf("temporary pack left behind: %v", left)
 	}
 
-	srv.MaxBody = 8 << 20
-	if out, err := clone.Try("-c", "http.postBuffer=1048576", "push", "origin", "HEAD:refs/heads/big"); err != nil {
+	// A second server, not a changed field: the first one may still be
+	// serving the refused connection.
+	raised, err := pushguard.NewServer(e.config, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raised.MaxBody = 8 << 20
+	raised.Log = log.New(io.Discard, "", 0)
+	hr := httptest.NewServer(raised)
+	defer hr.Close()
+	rurl := strings.Replace(hr.URL, "http://", "http://agent:synthetic-test-token@", 1) + "/" + repoName + ".git"
+	if out, err := clone.Try("-c", "http.postBuffer=1048576", "push", rurl, "HEAD:refs/heads/big"); err != nil {
 		t.Fatalf("push under the raised limit: %v\n%s", err, out)
 	}
 	if e.remoteRef("refs/heads/big") != head {
