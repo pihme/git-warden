@@ -16,7 +16,7 @@
 #   git-everref     v1.0.0 via scripts/install-everref.sh (SHA-256 pinned there)
 
 # --- build: both binaries, static ------------------------------------------
-FROM golang:1.27-trixie@sha256:c47c3fda018d13d43a6bf5ebac3e5bba8a23a35782aa4faf531afaf47c64c39f AS build
+FROM golang:1.27-trixie@sha256:f18c3d73a184fb0582828510722e723b63a93f7188d11dd223d9be6f6880e65d AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
