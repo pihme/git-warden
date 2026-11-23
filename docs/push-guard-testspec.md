@@ -1,12 +1,12 @@
 # Push Guard: test specification
 
-This document maps every requirement in [push-guard-spec.md](push-guard-spec.md#requirements) (`REQ-PG-001` to `REQ-PG-053`) to the automated tests that check it. Test names start with `TestREQ_PG_<nnn>_`, so `go test ./... -run 'TestREQ_PG_020'` runs the tests of one requirement.
+This document maps every requirement in [push-guard-spec.md](push-guard-spec.md#requirements) (`REQ-PG-001` to `REQ-PG-054`) to the automated tests that check it. Test names start with `TestREQ_PG_<nnn>_`, so `go test ./... -run 'TestREQ_PG_020'` runs the tests of one requirement.
 
 Status is as of `main` @ `f223de4` plus branch `qa/journal-tests` (5.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
 
 ## Summary
 
-- 53 of 53 requirements have at least one test; 100 requirement tests in total. `REQ-PG-046` to `053` (limits, 2026-10-11) are listed below.
+- 54 of 54 requirements have at least one test; 140 requirement tests in total (`rg -c "^func TestREQ_PG_"`, 2026-11-23). `REQ-PG-046` to `053` (limits, 2026-10-11) and `REQ-PG-054` (request body, #68) are listed below.
 - 89 green, 0 red. All findings so far are fixed (see below).
 
 ## Coverage
@@ -253,6 +253,16 @@ Tests for the limit requirements the owner approved on 2026-10-11 (`REQ-PG-046` 
 | `REQ-PG-051` | `TestREQ_PG_051_NotifyOutputKeepsTail` | `internal/pushguard` | A `notify.command` that writes 3 MiB and exits non-zero: the recorded error text comes from the end of the output (marker written last is present, marker written first is not); the verdict is unchanged. |
 | `REQ-PG-052` | `TestREQ_PG_052_ShortenedTexts` | `internal/rules`, `internal/pushguard` | SHA 12 / 13 characters, program error text 300 / 301, `replay` subject 72 / 73, alert with 20 / 21 commits, commit message 500 / 501 characters. |
 | `REQ-PG-053` | `TestREQ_PG_053_ChildHoldingThePipe` | `internal/gitx` | A killed program whose child keeps the output pipe open returns after about 5 s, not later. The 30 s limits (version calls, HTTP header read, shutdown) are untested on purpose like `REQ-BG-010`, unless the maintainer makes them injectable for tests. |
+
+## Request body (#68, 2026-11-23)
+
+`REQ-PG-054` caps a Git request body in `serve` at 10 GiB. The tests lower the cap through `Server.MaxBody` so the bounds can be tested without 10 GiB bodies. Status: **green**.
+
+| REQ | Test | File | Cases |
+| --- | --- | --- | --- |
+| `REQ-PG-054` | `TestREQ_PG_054_UnsizedBodyBounded` | `cmd/push-guard/req_body_test.go` | Chunked body (no `Content-Length`) of exactly the limit is read in full and handed to `git http-backend` (not 413); limit + 1, eight times the limit and an endless body are refused with 413 `request body too large`, read at most one read buffer past the limit, and leave no `push-guard-pack-*` file; the pack bytes are not logged, the rejection is. |
+| `REQ-PG-054` | `TestREQ_PG_054_SizedBodyOverLimit` | `cmd/push-guard/req_body_test.go` | `Content-Length` of limit + 1: 413 with `Connection: close`, no byte of the body read; the same request with a wrong password: 401; `Content-Length` of exactly the limit is handed on (not 413) and not spooled. |
+| `REQ-PG-054` | `TestREQ_PG_054_ChunkedPushOverLimit` | `cmd/push-guard/req_body_test.go` | A real chunked `git push` (`http.postBuffer` 1 MiB) of a 3 MiB random blob with the limit at 2 MiB fails with `HTTP 413`; the remote ref is not created, the journal does not grow, no temporary pack is left. With the limit at 8 MiB the same push is forwarded. |
 
 **Existing tests that change:** `TestPropNegativeLimitsRefused` (`internal/config/limits_prop_test.go`, `fuzz` tag) expects zero to load for every count and duration; under `REQ-PG-046` zero loads only for `lookback`, `max_skew` and `min_lines`. The generators of `TestPropCountLimitRoundTrip` and the other limit property tests must stay inside the ranges. The test for `timeout: 1ns` (moved from the mutation campaign into the `timeout` test) becomes a refused case. Fixtures that set limits outside the ranges to switch a rule off or make it always fire need values inside the ranges.
 

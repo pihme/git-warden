@@ -17,6 +17,14 @@ import (
 	"github.com/pihme/git-warden/internal/config"
 )
 
+// MaxRequestBody is the largest Git request body serve reads (REQ-PG-054):
+// 10 GiB, the upper bound of SIZE-LIMIT max_bytes. A pack the rules could
+// still accept, or hold red for a human, under any valid configuration fits.
+const MaxRequestBody int64 = 10 << 30
+
+// MsgBodyTooLarge is the answer, with 413, to a body over the limit.
+const MsgBodyTooLarge = "request body too large"
+
 // Server serves the guard repositories over Git smart HTTP through
 // git http-backend, with HTTP basic auth against the agent's token.
 type Server struct {
@@ -24,6 +32,15 @@ type Server struct {
 	HookBinary string // absolute path of push-guard, written into the hooks
 	Log        *log.Logger
 	Summary    string // what the preflight found, for the start-up log
+	// MaxBody overrides MaxRequestBody when positive (tests).
+	MaxBody int64
+}
+
+func (s *Server) maxBody() int64 {
+	if s.MaxBody > 0 {
+		return s.MaxBody
+	}
+	return MaxRequestBody
 }
 
 // NewServer runs the Preflight (wall configuration, repos and their rules,
@@ -117,6 +134,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, MsgInternal, http.StatusServiceUnavailable)
 		return
 	}
+	// Refuse a declared length over the limit before any work on the repo.
+	limit := s.maxBody()
+	if r.ContentLength > limit {
+		s.Log.Printf("repo %s: request body of %d bytes over %d, rejected", name, r.ContentLength, limit)
+		w.Header().Set("Connection", "close")
+		http.Error(w, MsgBodyTooLarge, http.StatusRequestEntityTooLarge)
+		return
+	}
 	path, err := EnsureRepo(r.Context(), cfg, s.HookBinary)
 	if err != nil {
 		s.Log.Printf("repo %s: %v", name, err)
@@ -145,8 +170,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// A chunked Git push has no length. cgi answers 400 while
 	// TransferEncoding is still "chunked", and omits CONTENT_LENGTH when
 	// ContentLength < 0, so git http-backend never runs the hook.
+	// The read stops one byte past the limit, so no body, sized or not,
+	// puts more than the limit on disk.
+	if r.Body != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
+	}
 	cleanup, err := spoolUnsizedBody(r)
 	defer cleanup()
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		s.Log.Printf("repo %s: request body over %d bytes, rejected", name, limit)
+		http.Error(w, MsgBodyTooLarge, http.StatusRequestEntityTooLarge)
+		return
+	}
 	if err != nil {
 		s.Log.Printf("request body: %v", err)
 		http.Error(w, MsgInternal, http.StatusServiceUnavailable)
@@ -169,7 +205,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // spoolUnsizedBody copies a body with no Content-Length into a temporary
 // file and records that length on r. The pack is not held in memory. The
-// caller removes the file. A read error is returned unchanged.
+// caller removes the file. A read error is returned unchanged; the caller
+// bounds r.Body (http.MaxBytesReader), so a body over the limit ends the
+// copy with *http.MaxBytesError.
 func spoolUnsizedBody(r *http.Request) (func(), error) {
 	noop := func() {}
 	if r.ContentLength >= 0 {

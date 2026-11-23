@@ -406,6 +406,8 @@ The agent pushes to `http://hermit:$TOKEN@warden.internal:8418/git-warden.git`. 
 
 `serve` answers only Git's smart HTTP routes, the paths under `/<name>.git/`. It hands those requests to `git http-backend`.
 
+`serve` reads a request body of at most 10 GiB, the largest `max_bytes` that `SIZE-LIMIT` accepts. A larger push gets HTTP 413 `request body too large` (Git shows `RPC failed; HTTP 413`). It never reaches the hook, so it leaves no journal line and no pending bundle. A push without `Content-Length`, which Git sends once the pack is over `http.postBuffer`, is buffered in a temporary file under `TMPDIR` until it is complete. Keep the 10 GiB free there for each push that can run at the same time.
+
 The caller must send the password from `agent.token_file`. A green push is then forwarded with the write credential, and a fetch returns the repository the guard holds. Without the password, anyone who can open the listen port can push and fetch.
 
 The repository does not have to exist beforehand. The first request for a configured repository creates `state_dir/repos/<name>.git` and installs the hook. Before every fetch or push, `serve` copies the remote's branches, tags and default branch into that repository. A fetch then shows the current remote, including a commit that landed without going through the guard. Other refs, such as notes, are not copied.
