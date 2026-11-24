@@ -63,6 +63,7 @@ Each requirement is one shall/must behaviour. Where a rule ID applies, it is nam
 | `REQ-PG-051` | Output of a program the Push Guard starts only to show or log it (`notify.command`) shall be kept up to its last 1 MiB, stdout and stderr together; the rest shall be dropped and the program shall run on normally. | Limits (2026-10-11) |
 | `REQ-PG-052` | Text shall be shortened to these fixed lengths: a SHA in messages to 12 characters, an error text from a program to 300 characters (for `notify.command` its last 300, since the cause is usually at the end; for the others their first 300), a commit subject in `replay` to 72 characters; an alert shall quote at most 20 commits and at most 500 characters per commit message. | Limits (2026-10-11) |
 | `REQ-PG-053` | These fixed time limits shall apply: `gitleaks version` and `git version` 30 s each; after a program is killed, at most 5 s more for its output pipes to close; the HTTP server 30 s to read request headers and 30 s to shut down. | Limits (2026-10-11) |
+| `REQ-PG-054` | A request body with no `Content-Length` (the chunked push path) shall be spooled up to 1 GiB; a byte more shall be refused with `413 Request Entity Too Large` and the spool file removed. The bound shall apply to a stream that does not end either. A body that carries a `Content-Length` shall be passed through unchanged, so `git http-backend` still sees the client's length and the hook still runs. | Limits (2026-11-24) |
 
 ## Decided
 

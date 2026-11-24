@@ -149,6 +149,8 @@ push-guard serve --config /etc/warden --listen 0.0.0.0:8418
 
 `serve` is the program the agent talks to over HTTP. Leave it running. It refuses to start until the same checks pass. Once it is running, it accepts a push for every folder under `repos/`.
 
+A push whose body arrives without a `Content-Length` (a chunked push) is spooled to a temporary file, up to 1 GiB. One byte more is refused with `413 Request Entity Too Large`, so a stream that never ends cannot fill the disk. A body that already carries a length is passed through untouched, and `SIZE-LIMIT` still refuses an oversized pack afterwards.
+
 Put TLS in front of `serve` when the traffic leaves the host. The agent's password is in the request.
 
 ### 4. Point the agent at the guard
