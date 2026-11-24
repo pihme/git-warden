@@ -18,7 +18,7 @@ Gate DNS keeps the current lookup log and one older file, `dns.jsonl` and `dns.j
 
 The same mail settings are the wall's one mail configuration. The Push Guard's mail for a red push uses this file and `omakase/mail.sh`. The Push Guard itself does not send mail: you set `notify.command` in its `defaults.yaml` to a program, and the guard hands that program one JSON object on standard input ([Warnings](https://github.com/pihme/git-warden/blob/main/docs/push-guard.md#warnings)). A program that sends the warning as mail, or as anything else you will see, is yours to write; `mail.sh` is what the digest uses there. A password stays in a file that the mail program reads. It is not written in `mail.env`.
 
-The settings file is `~/.config/hermetarium/mail.env` because Hermetarium's `digest.env` points at it: the timer reads that file, and `digest.sh` hands its path to `mail.sh`. A Push Guard warning program that should use the same address reads the same file.
+The mail settings live in `~/.config/hermetarium/mail.env` (or `$XDG_CONFIG_HOME/hermetarium/mail.env`). `mail.sh` resolves that path itself; the timer reads `digest.env`, not this file, and `digest.env` only overrides the path when it sets `HERMETARIUM_MAIL_ENV`. A Push Guard warning program that should use the same address reads the same file.
 
 ## Settings
 
@@ -63,3 +63,5 @@ cp omakase/hermetarium-digest.service omakase/hermetarium-digest.timer ~/.config
 systemctl --user daemon-reload
 systemctl --user enable --now hermetarium-digest.timer
 ```
+
+`loginctl enable-linger` keeps the timer running when you are logged out.

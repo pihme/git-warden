@@ -112,7 +112,7 @@ A second remote is another folder next to this one, for example `repos/another-r
 
 `notify.command` is optional. It is a setting in the same `defaults.yaml`. Set it when you want a program to be started each time the guard warns you.
 
-1. Choose a program that reads one JSON object from its standard input and delivers it where you will see it (mail, ntfy, or anything else). The guard does not include that program. `/usr/local/bin/warden-notify` below is only a path you might use. On a wall that runs the denied-request digest, the wall's one mail configuration is `omakase/mail.sh` and its `mail.env` ([Omakase](../../omakase/README.md)); a warning program that should send mail uses the same file, and the guard itself sends nothing.
+1. Choose a program that reads one JSON object from its standard input and delivers it where you will see it (mail, ntfy, or anything else). The guard does not include that program. `/usr/local/bin/warden-notify` below is only a path you might use. On a wall that runs the denied-request digest, the wall's one mail configuration is `omakase/mail.sh` and its `mail.env` ([Omakase](../omakase/README.md)); a warning program that should send mail uses the same file, and the guard itself sends nothing.
 2. Add the program, then its arguments, as a list:
 
 ```yaml
