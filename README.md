@@ -52,6 +52,12 @@ What each guard does not cover is in [SPEC.md](SPEC.md#coverage-by-git-warden). 
 | See the settings both guards share | [docs/configuration.md](docs/configuration.md) |
 | Choose a credential | [docs/credentials.md](docs/credentials.md) |
 
+### Next to a wall
+
+| You want to | Read |
+| --- | --- |
+| Mail yourself the requests a Hermetarium habitat was denied, with the wall's one mail configuration | [omakase](omakase/README.md) |
+
 ## How it works
 
 A **wall** is the host the agents do not run on. The Push Guard's configuration and its write credential live there. The agents cannot read or change them.
