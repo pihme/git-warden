@@ -1,13 +1,13 @@
 # Push Guard: test specification
 
-This document maps every requirement in [push-guard-spec.md](push-guard-spec.md#requirements) (`REQ-PG-001` to `REQ-PG-053`) to the automated tests that check it. Test names start with `TestREQ_PG_<nnn>_`, so `go test ./... -run 'TestREQ_PG_020'` runs the tests of one requirement.
+This document maps every requirement in [push-guard-spec.md](push-guard-spec.md#requirements) (`REQ-PG-001` to `REQ-PG-054`) to the automated tests that check it. Test names start with `TestREQ_PG_<nnn>_`, so `go test ./... -run 'TestREQ_PG_020'` runs the tests of one requirement.
 
 Status is as of `main` @ `f223de4` plus branch `qa/journal-tests` (5.10.2026). **Red** means the test fails because the code does not meet the requirement yet; the tests are written against the spec, not against the current code.
 
 ## Summary
 
-- 53 of 53 requirements have at least one test; 100 requirement tests in total. `REQ-PG-046` to `053` (limits, 2026-10-11) are listed below.
-- 89 green, 0 red. All findings so far are fixed (see below).
+- 54 of 54 requirements have at least one test; 104 requirement tests in total. `REQ-PG-046` to `054` (limits) are listed below.
+- 93 green, 0 red. All findings so far are fixed (see below).
 
 ## Coverage
 
@@ -253,6 +253,7 @@ Tests for the limit requirements the owner approved on 2026-10-11 (`REQ-PG-046` 
 | `REQ-PG-051` | `TestREQ_PG_051_NotifyOutputKeepsTail` | `internal/pushguard` | A `notify.command` that writes 3 MiB and exits non-zero: the recorded error text comes from the end of the output (marker written last is present, marker written first is not); the verdict is unchanged. |
 | `REQ-PG-052` | `TestREQ_PG_052_ShortenedTexts` | `internal/rules`, `internal/pushguard` | SHA 12 / 13 characters, program error text 300 / 301, `replay` subject 72 / 73, alert with 20 / 21 commits, commit message 500 / 501 characters. |
 | `REQ-PG-053` | `TestREQ_PG_053_ChildHoldingThePipe` | `internal/gitx` | A killed program whose child keeps the output pipe open returns after about 5 s, not later. The 30 s limits (version calls, HTTP header read, shutdown) are untested on purpose like `REQ-BG-010`, unless the maintainer makes them injectable for tests. |
+| `REQ-PG-054` | `TestREQ_PG_054_UnsizedBodyCapped`, `TestREQ_PG_054_EndlessBodyRefused`, `TestREQ_PG_054_StalledBodyTimesOut`, `TestREQ_PG_054_KnownLengthUntouched`, `TestREQ_PG_054_ServedBodyOverCap` | `internal/pushguard`, `cmd/push-guard` | An unsized body of exactly the cap is spooled and its length recorded; one byte more returns a "too large" error that maps to 413. A body that never ends is refused at the cap rather than read to the end. A body that stalls mid-stream is released by the read bound and maps to 408. A body with a `Content-Length` is left untouched. End to end, a served stalled or oversized body answers 413/408 and leaves no spool file. |
 
 **Existing tests that change:** `TestPropNegativeLimitsRefused` (`internal/config/limits_prop_test.go`, `fuzz` tag) expects zero to load for every count and duration; under `REQ-PG-046` zero loads only for `lookback`, `max_skew` and `min_lines`. The generators of `TestPropCountLimitRoundTrip` and the other limit property tests must stay inside the ranges. The test for `timeout: 1ns` (moved from the mutation campaign into the `timeout` test) becomes a refused case. Fixtures that set limits outside the ranges to switch a rule off or make it always fire need values inside the ranges.
 
